@@ -63,6 +63,14 @@ Fill in `context/` (product, customers, glossary, roadmap) and replace
 Inside a pack a bare name means "this pack". The core (the repo root) is the pack called `core`:
 it holds the Worker, Operator and Reviewer agents, the infra skills, and the core principles.
 
+Built-in packs:
+
+| Pack | What it does |
+| --- | --- |
+| `cos` | The Chief of Staff manual; `AGENTS.md` is generated from it |
+| `pm` | PRDs, sprint planning, roadmap diffs, Jira tickets, release notes, and the `pm/router` |
+| `forge` | Builds pm-os itself: `forge/new-mode` adds a mode to a pack, `forge/new-pack` creates a pack |
+
 ### Principles
 
 Principles are how pm-os encodes judgment once and reuses it everywhere (the same idea as pstack's
@@ -96,6 +104,12 @@ and `state/catalog.md` and `AGENTS.md` are regenerated, so the CoS sees the new 
 Guards: a pack can't be removed while another depends on it or while it has open tasks; the pack
 that supplies the CoS (`cos_pack` in `pm-os.yaml`) can't be removed until another one is configured.
 For a pack from another repo, clone it (e.g. into `vendor/`) and `pack add` the folder.
+
+**Grants are enforced, not just recorded.** `pmos validate` and `pmos task new` refuse a mode
+whose grants exceed what its pack was approved for. Widening a grant (a new system, or
+read → draft → write) means bumping the pack's version and re-running
+`pmos pack add <path> --upgrade --approve-grants`. `--dry-run` runs admission and lists the grants
+without installing.
 
 **Composition rules.** The CoS may start any mode a pack exports. A mode may call modes of its own
 pack, plus exported modes of packs it lists in `depends`. Roles, skills and principles follow the
@@ -153,6 +167,15 @@ outputs/<task id>/       artifacts and result.json
 ```
 
 ## Adding to a pack
+
+The easy way is to ask the CoS: "add a mode to pm that drafts the weekly leadership update" runs
+`forge/new-mode`. It designs the contract and golden task first, stages a skeleton under
+`outputs/<task>/staged/` with `packs/forge/scripts/forge.py`, fills it in, lints it, and runs a
+dry-run admission. You approve the file list like any other change, the Operator copies the files
+into `packs/`, and you run the install command the result gives you. `forge/new-pack` does the same
+for a whole pack, building each first mode as its own `forge/new-mode` child task.
+
+By hand:
 
 - **Mode**: `packs/<pack>/modes/<mode>/` with `mode.yaml` (name `<pack>/<mode>`), `SKILL.md`
   (frontmatter `name: <pack>-<mode>`) and at least one golden task in `evals/`. Add it to the

@@ -1,0 +1,24 @@
+name: forge/new-pack
+version: 0.1.0
+contract: task@1
+author: dima
+summary: Design a new pack (its roles, principles and first modes), stage it, check it, and propose it for approval
+verbs: [plan]
+accepts:
+  name: string          # the pack's name, e.g. "gtm"
+  summary: string       # one line the CoS will see
+  purpose: string       # what the pack is for, in the PM's words
+  modes: list?          # optional first modes: [{"name": "...", "purpose": "..."}]
+returns:
+  staged: diff_ref
+skill: SKILL.md
+default_role: pack-architect
+calls: [forge/new-mode@^0.1]
+grants: { repo: draft }
+approval: before_execute
+risk: medium
+principles: [contract-first, smallest-unit, compose-dont-copy]
+rubric:
+  - The pack's scope doesn't overlap an installed pack; overlaps are reused through depends
+  - Every first mode was built by a forge/new-mode child task
+evals: evals/

@@ -10,7 +10,7 @@ packs:
   grants_approved: {}
   installed_at: '2026-10-24T18:30:00+00:00'
 - name: pm
-  version: 0.1.0
+  version: 0.2.0
   path: packs/pm
   source: local
   enabled: true
@@ -18,4 +18,12 @@ packs:
     docs: draft
     jira: read
     roadmap: read
-  installed_at: '2026-10-24T18:30:00+00:00'
+  installed_at: '2026-10-24T18:36:21+00:00'
+- name: forge
+  version: 0.1.0
+  path: packs/forge
+  source: local
+  enabled: true
+  grants_approved:
+    repo: draft
+  installed_at: '2026-10-24T18:38:46+00:00'

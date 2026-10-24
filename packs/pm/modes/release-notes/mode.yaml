@@ -1,0 +1,24 @@
+name: pm/release-notes
+version: 0.1.0
+contract: task@1
+author: dima
+summary: Draft release notes from the tickets closed in a sprint, for customers or for internal teams
+verbs: [draft]
+accepts:
+  sprint: string        # e.g. "2026-S22"
+  project: string       # Jira project key
+  audience: string?     # "customers" (default) or "internal"
+returns:
+  notes: doc_ref
+skill: SKILL.md
+default_role: communicator
+calls: []
+grants: { jira: read, docs: draft }
+approval: before_publish
+risk: low
+principles: [cite-customer-claims]
+rubric:
+  - Every item links its ticket key
+  - Customer notes leave out internal-only work (spikes, refactors, tooling)
+  - Leads with what changed for the reader, not with ticket titles
+evals: evals/

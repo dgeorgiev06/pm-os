@@ -1,0 +1,8 @@
+[
+  { "key": "STK-401", "summary": "Route new stake away from degraded operators", "type": "Story", "labels": ["router"], "description": "New stake avoids operators failing health checks." },
+  { "key": "STK-402", "summary": "Per-operator exposure report", "type": "Story", "labels": ["reporting"], "description": "Compliance can export stake by operator as CSV." },
+  { "key": "STK-405", "summary": "Ethereum operator adapter spike", "type": "Spike", "labels": ["eth"], "description": "Time-boxed research." },
+  { "key": "STK-406", "summary": "Router API rate limiting", "type": "Task", "labels": ["api"], "description": "Per-client limits on router API calls." },
+  { "key": "STK-407", "summary": "Rewards total off by one epoch", "type": "Bug", "labels": ["rewards"], "description": "Rewards totals now include the latest epoch." },
+  { "key": "STK-409", "summary": "Split router service module", "type": "Task", "labels": ["refactor"], "description": "Internal code restructuring." }
+]
