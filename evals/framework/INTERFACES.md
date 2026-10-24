@@ -70,7 +70,7 @@ Owner = the review folder whose fix agent implements it (see `findings/README.md
 | P11 | Default acceptance | mode.yaml `acceptance: [...]`; used for the envelope when `--acceptance` isn't given. Every built-in mode declares it. | mode-default-acceptance |
 | P12 | `check_plan.py` | `packs/pm/modes/sprint-planning/scripts/check_plan.py PLAN.json CAPACITY.json`: exit 1 with `over capacity` when the sum of `committed[].points` exceeds `committed_points`; the SKILL runs it. | plan-capacity-check |
 | P13 | `merge_child_actions` | mode.yaml `merge_child_actions: true`: at the parent's `task result`, pmos appends the actions of its `done` children whose approval rolled up to it (M16), skipping idempotency keys already present. | child-actions-merged |
-| P14 | Gated children skip review | A child with envelope approval `none` whose parent's approval isn't `none` goes from a `done` result straight to `done`; its work is reviewed in the parent. | gated-child-skips-review |
+| P14 | Gated children skip review | A child with envelope approval `none` whose parent's approval isn't `none` (or whose approval rolled up to its parent, `approval_from`, M16) goes from a `done` result straight to `done`; its work is reviewed in the parent. | gated-child-skips-review |
 | P15 | Two counters | `revisions` counts failed reviews (against `max_revisions`); `change_requests` counts PM "change X" moves (`awaiting_approval → revise`). | revision-counters-separate |
 | P16 | Stable-first `task show` | Mode, role and principles come before anything task-specific (the id, envelope, history). | task-show-stable-first |
 

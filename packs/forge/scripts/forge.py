@@ -122,6 +122,14 @@ def fail(msg: str) -> int:
     return 1
 
 
+def rel(path: Path) -> str:
+    """PATH relative to the repo when it is inside it (PMOS_OUTPUTS_DIR may point elsewhere)."""
+    try:
+        return str(Path(path).resolve().relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
 def pmos(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, str(ROOT / "scripts" / "pmos.py"), *args], cwd=ROOT,
                           capture_output=True, text=True)
@@ -211,7 +219,7 @@ def cmd_stage_mode(a) -> int:
     (mode_dir / "evals" / "golden-01.json").write_text(json.dumps(golden, indent=2) + "\n", encoding="utf-8")
     add_export(pack_dir / "pack.yaml", "modes", a.name)
     version = bump_minor(pack_dir / "pack.yaml") if bump else None
-    print(json.dumps({"staged_pack": str(pack_dir.relative_to(ROOT)), "mode_dir": str(mode_dir.relative_to(ROOT)),
+    print(json.dumps({"staged_pack": rel(pack_dir), "mode_dir": rel(mode_dir),
                       "pack_version": version}, indent=2))
     return 0
 
@@ -231,7 +239,7 @@ def cmd_stage_pack(a) -> int:
     fmt = {"name": a.name, "summary": a.summary.replace('"', "'"), "role": role}
     (pack_dir / "pack.yaml").write_text(PACK_YAML.format(**fmt), encoding="utf-8")
     (pack_dir / "roles.yaml").write_text(ROLES_YAML.format(**fmt), encoding="utf-8")
-    print(json.dumps({"staged_pack": str(pack_dir.relative_to(ROOT)), "role": role}, indent=2))
+    print(json.dumps({"staged_pack": rel(pack_dir), "role": role}, indent=2))
     return 0
 
 
@@ -249,7 +257,7 @@ def cmd_lint(a) -> int:
             continue
         for i, line in enumerate(text.splitlines(), 1):
             if "TODO" in line:
-                problems.append(f"{f.relative_to(ROOT)}:{i}: unresolved TODO")
+                problems.append(f"{rel(f)}:{i}: unresolved TODO")
     for mode_yaml in [f for f in files if f.name == "mode.yaml"]:
         man = yaml.safe_load(mode_yaml.read_text(encoding="utf-8")) or {}
         skill = mode_yaml.parent / man.get("skill", "SKILL.md")
@@ -257,7 +265,7 @@ def cmd_lint(a) -> int:
             m = re.search(r"^name:\s*(\S+)", skill.read_text(encoding="utf-8"), flags=re.M)
             want = str(man.get("name", "")).replace("/", "-")
             if m and m.group(1) != want:  # the name is optional; `pmos render` generates it
-                problems.append(f"{skill.relative_to(ROOT)}: frontmatter name should be '{want}'")
+                problems.append(f"{rel(skill)}: frontmatter name should be '{want}'")
     if problems:
         print("FAIL")
         print("\n".join(f"- {p}" for p in problems))

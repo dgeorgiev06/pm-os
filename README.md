@@ -110,21 +110,26 @@ Built-in packs:
 
 Prompts ask agents to behave; these rules hold in code whatever an agent does.
 
-- **State.** Only `pmos` changes task state. Only `task review` takes a task out of `in_review`,
-  and only `task approve` puts it in `approved`. A hand-edited task file is refused.
+- **State.** Only `pmos` changes task state. `task move` can't take a task out of `in_review` (only
+  `task review` does, or `task result` itself for a child reviewed with its parent), and only
+  `task approve` puts it in `approved`. A hand-edited task file is refused.
 - **Composition.** The CoS may start any mode a pack exports. A child task (`--parent`) needs a
   `running` parent, and its mode must be in the parent mode's `calls` (`["*"]` means any mode the
   pack can see), at the pinned version. A pack sees its own items plus what packs in its `depends`
   export. Call depth and cycles are checked.
 - **Grants.** `validate` and `task new` refuse a mode whose grants exceed what its pack was approved
-  for. `task result` refuses an action on a system the mode isn't granted (at `draft` or `write`).
-- **Approval.** `task new` can't set a weaker approval or a lower risk than the mode's. The
-  Operator runs `pmos action run <id>`, which refuses unless the task is `approved` and its actions
-  are exactly the ones you approved.
-- **Budgets.** `task result` refuses a result whose `usage` exceeds the task's budget. A child's
-  spend counts against its parent's `max_usd`.
-- **Review.** The Reviewer gives a verdict per checklist line; pmos computes pass or fail
-  ([quality/README.md](quality/README.md)).
+  for, and `validate` flags approved grants edited by hand in `packs.yaml`. `task result` refuses an
+  action on a system the mode isn't granted (at `draft` or `write`).
+- **Approval.** `task new` can't set a weaker approval or a lower risk than the mode's; only a child
+  may lower its approval, when its parent's approval covers it (its actions then roll up to the
+  parent's gate). `task result` refuses actions that no approval would ever cover. The Operator runs
+  `pmos action run <id>`, which refuses unless the task is `approved` and its actions are exactly
+  the ones you approved.
+- **Budgets.** `task result` refuses a result whose `usage` exceeds the task's budget (`max_usd`,
+  `max_minutes`) unless its status is `failed`, and a summary over 80 words. A child's spend counts
+  against its parent's (and every ancestor's) `max_usd`.
+- **Review.** The Reviewer gives a verdict for every checklist line (pmos refuses missing ones), and
+  pmos computes pass or fail ([quality/README.md](quality/README.md)).
 - **Versions.** `pack add --upgrade` refuses unless the pack's version goes up.
 
 ## Installing packs
