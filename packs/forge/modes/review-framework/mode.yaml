@@ -1,5 +1,5 @@
 name: forge/review-framework
-version: 0.1.1
+version: 0.1.2
 contract: task@1
 author: dima
 summary: "Re-run one framework review of pm-os (conformance evals plus judgment) and report it in the original reviews' shape"

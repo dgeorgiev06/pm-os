@@ -1,0 +1,34 @@
+kind: conformance
+name: coverage-enforced-at-admission
+covers: [script:scripts/pmos.py]
+finding: request:eval@1
+severity: high
+failure: true
+desc: >-
+  Admission (`pack add`, including --dry-run) refuses a pack with an uncovered feature: an exported
+  mode needs a golden case and a failure-path case, every script and `actions:` handler a
+  conformance case, a router a workflow case. The error lists each missing feature and the folder to
+  add a case to. With the cases added, it passes and runs the pack's conformance cases.
+setup:
+  copy: {packs/x-uncovered: packs/x-uncovered}
+steps:
+  - name: every gap is listed, with the folder to add a case to
+    run: $PMOS pack add packs/x-uncovered --dry-run
+    expect:
+      exit: nonzero
+      output:
+        - '(?i)coverage'
+        - 'mode:x-uncovered/main'
+        - 'script:scripts/tool\.py'
+        - 'action:thing\.do'
+        - 'router:x-uncovered/main'
+        - 'packs/x-uncovered/modes/main/evals/'
+        - 'packs/x-uncovered/evals/conformance/'
+        - 'packs/x-uncovered/evals/workflows/'
+  - name: refused without --dry-run too, and not installed
+    run: $PMOS pack add packs/x-uncovered --approve-grants
+    expect: {exit: nonzero, output: '(?i)coverage'}
+  - run: '! grep -n "x-uncovered" packs.yaml'
+  - name: with the missing cases it passes, after running the conformance cases
+    run: cp -r $FX/patches/x-uncovered/. packs/x-uncovered/ && $PMOS pack add packs/x-uncovered --dry-run
+    expect: {stdout: ['(?i)passes admission', '(?i)conformance\D*1/1']}

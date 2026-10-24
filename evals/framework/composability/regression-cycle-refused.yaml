@@ -1,4 +1,6 @@
+kind: conformance
 name: regression-cycle-refused
+covers: [script:scripts/pmos.py]
 finding: composability#good
 owner: composability
 severity: high

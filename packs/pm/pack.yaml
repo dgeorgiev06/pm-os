@@ -1,10 +1,10 @@
 name: pm
-version: 0.2.1
+version: 0.2.2
 contract: pack@1
 author: dima
 summary: Product management — PRDs, sprint planning, roadmap diffs, Jira tickets, release notes
 requires:
-  core: ^0.2
+  core: ^0.3
 depends: []
 router: pm/router          # entry for goal-level asks ("get the router beta launch-ready")
 exports:

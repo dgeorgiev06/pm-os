@@ -1,4 +1,6 @@
+kind: conformance
 name: router-star-calls
+covers: [script:scripts/pmos.py]
 finding: composability#1
 owner: modularity
 severity: medium

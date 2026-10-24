@@ -1,5 +1,9 @@
 {
+  "kind": "golden",
   "name": "orphan/stray fixture case",
+  "covers": [
+    "mode:orphan/stray"
+  ],
   "envelope": {
     "verb": "draft",
     "mode": "orphan/stray",

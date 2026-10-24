@@ -1,0 +1,25 @@
+kind: conformance
+name: todos-apply-atomic
+covers: [script:scripts/todos.py]
+failure: true
+desc: >-
+  `todos.py apply DIFF` applies add, reschedule, edit, done and drop ops, all or nothing: a diff
+  with one bad op leaves the list untouched.
+setup:
+  copy: {todos.yaml: t.yaml}
+  files:
+    good.json: '[{"op": "add", "title": "Prep demo", "due": "2026-10-28", "estimate_h": 2}, {"op": "reschedule", "id": "td-4", "due": "2026-10-31"}, {"op": "edit", "id": "td-3", "title": "Release notes S21"}, {"op": "done", "id": "td-2"}, {"op": "drop", "id": "td-1"}]'
+    bad-op.json: '[{"op": "add", "title": "Never saved"}, {"op": "archive", "id": "td-1"}]'
+    bad-id.json: '[{"op": "done", "id": "td-2"}, {"op": "done", "id": "td-99"}]'
+steps:
+  - run: cp t.yaml before.yaml && PMOS_TODOS_FILE=t.yaml $PY $PACK/scripts/todos.py apply bad-op.json
+    expect: {exit: nonzero, stderr: "unknown op 'archive'"}
+  - run: cmp t.yaml before.yaml
+  - run: PMOS_TODOS_FILE=t.yaml $PY $PACK/scripts/todos.py apply bad-id.json
+    expect: {exit: nonzero, stderr: 'no todo td-99'}
+  - run: cmp t.yaml before.yaml
+  - run: PMOS_TODOS_FILE=t.yaml $PY $PACK/scripts/todos.py apply good.json
+    expect:
+      stdout: ['added td-5', 'edited td-4', 'edited td-3', 'done td-2', 'dropped td-1']
+      files: {contains: {t.yaml: ["due: '2026-10-31'", 'title: Release notes S21', 'title: Prep demo']}}
+  - run: '! cmp -s t.yaml before.yaml'

@@ -1,0 +1,23 @@
+{
+  "kind": "golden",
+  "name": "gtm/launch-pack fixture workflow",
+  "covers": [
+    "router:gtm/launch-pack",
+    "mode:gtm/launch-pack"
+  ],
+  "envelope": {
+    "verb": "plan",
+    "mode": "gtm/launch-pack",
+    "inputs": {
+      "goal": "x"
+    },
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "medium",
+    "approval": "none"
+  },
+  "expect": [
+    "the router's children are created through its calls"
+  ]
+}

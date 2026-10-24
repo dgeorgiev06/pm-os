@@ -1,4 +1,6 @@
+kind: conformance
 name: regression-quick-start-runs
+covers: [script:scripts/pmos.py]
 finding: clarity#good
 owner: clarity
 severity: high

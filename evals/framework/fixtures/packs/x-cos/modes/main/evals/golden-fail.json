@@ -1,0 +1,23 @@
+{
+  "kind": "golden",
+  "name": "x-cos/main fixture failure case",
+  "covers": [
+    "mode:x-cos/main"
+  ],
+  "failure": true,
+  "envelope": {
+    "verb": "plan",
+    "mode": "x-cos/main",
+    "inputs": {
+      "goal": "x"
+    },
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "low",
+    "approval": "none"
+  },
+  "expect": [
+    "an unanswerable request is returned as status blocked with one open question"
+  ]
+}

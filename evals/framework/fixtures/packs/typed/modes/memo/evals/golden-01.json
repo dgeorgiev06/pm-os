@@ -1,5 +1,9 @@
 {
+  "kind": "golden",
   "name": "typed/memo fixture case",
+  "covers": [
+    "mode:typed/memo"
+  ],
   "envelope": {
     "verb": "draft",
     "mode": "typed/memo",

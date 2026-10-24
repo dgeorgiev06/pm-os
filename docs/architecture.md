@@ -104,19 +104,20 @@ improvement loop.
 
 | Lever | Mainly improves |
 | --- | --- |
-| Model tiering by role; top tier only for strategy, architecture and high-risk review | cost, speed |
+| Model tiering by role; top tier only for strategy and architecture. Effort (how hard the model reasons) is set separately per role, mode or task | cost, speed |
 | Prompt caching: stable prefix (system, skills, context) first, task last | cost, speed |
 | Brief, don't forward: the CoS passes a task id; agents fetch what they need | cost, accuracy |
 | Code before models (codify ladder) | cost, speed, accuracy |
 | Parallel child tasks for independent work | speed |
-| Async CoS; results come back as digests | perceived speed |
+| Async CoS; results come back as digests: subagents run with `dispatch: background` by default (`task show` prints `run:`; COS.md never waits on a background run) | perceived speed |
 | Batch runs for evals and weekly analysis | cost |
-| Risk-scaled review depth | cost, accuracy |
+| Risk-scaled review depth (effort): the Reviewer's effort follows the task's risk, one level up for high and down for low; so does the Worker's unless `--effort` is given | cost, accuracy |
 | Structured results validated by `pmos` | accuracy |
 | Fresh-context Reviewer that never sees producer reasoning | accuracy |
 | Systems of record read fresh at task start | accuracy |
 | Per-task budgets; a child's spend counts against its parent's `max_usd` | cost |
 
 Measure from day one: cost per task type, p50/p90 latency, first-pass review rate, and your edit
-rate. These drive tier and routing changes. `pmos stats` reports them per mode from the traces, with
-the PM's "change X" after review (revise after approval) as the edit-rate proxy.
+rate. These drive tier, effort and routing changes. `pmos stats` reports them per mode and per effort
+level from the traces, with the PM's "change X" after review (revise after approval) as the edit-rate
+proxy.

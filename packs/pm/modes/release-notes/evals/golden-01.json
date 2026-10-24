@@ -1,10 +1,21 @@
 {
+  "kind": "golden",
   "name": "customer notes leave out internal work",
+  "covers": [
+    "mode:pm/release-notes"
+  ],
   "envelope": {
     "verb": "draft",
     "mode": "pm/release-notes",
-    "inputs": { "sprint": "2026-S22", "project": "STK", "audience": "customers" },
-    "acceptance": ["no internal-only tickets", "every line ends with its ticket key"],
+    "inputs": {
+      "sprint": "2026-S22",
+      "project": "STK",
+      "audience": "customers"
+    },
+    "acceptance": [
+      "no internal-only tickets",
+      "every line ends with its ticket key"
+    ],
     "risk": "low",
     "approval": "before_publish"
   },

@@ -1,4 +1,6 @@
+kind: conformance
 name: eval-runs-isolated
+covers: [script:scripts/pmos.py]
 finding: performance#4
 owner: performance
 severity: high

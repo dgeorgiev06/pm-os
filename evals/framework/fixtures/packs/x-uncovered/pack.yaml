@@ -1,0 +1,16 @@
+name: x-uncovered
+version: 0.1.0
+contract: pack@1
+author: framework-evals
+summary: "Fixture: a router, a script and an action handler, with only a happy-path golden case"
+requires:
+  core: ^0.3
+depends: []
+router: main
+actions:
+  thing.do: scripts/tool.py
+exports:
+  modes: [main]
+  roles: [writer]
+  skills: []
+  principles: []

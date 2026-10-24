@@ -16,18 +16,24 @@ approves and the Operator applies it. Follow the `forge:authoring` skill for eve
 3. `[model]` Design, in `outputs/<id>/design.md`: the mode's one job; `accepts` and `returns`; the
    approval rule; which existing role runs it (or the one new role it needs); which principles it
    cites; any modes it calls; the steps, each tagged `[model]`, `[code]` or `[candidate-code]`; and
-   the golden task's expectations. Write the contract and the golden task first (`forge:contract-first`).
+   the eval cases: the golden task's expectations, a failure path (a gate, a refusal, a missing
+   input), and a conformance case per script. Write the contract and the cases first
+   (`forge:contract-first`).
 4. Stage the skeleton:
-   `[code: python packs/forge/scripts/forge.py stage-mode --task <id> --pack <pack> --name <name> --summary "<one line>" [--role <role>] [--into <into>]]`
-   This copies the pack to staging (unless `into` is set), adds the mode, exports it, and bumps the
+   `[code: python packs/forge/scripts/forge.py stage-mode --task <id> --pack <pack> --name <name> --summary "<one line>" [--role <role>] [--into <into>] [--script <name> ...] [--router]]`
+   This copies the pack to staging (unless `into` is set), adds the mode with `evals/golden-01.json`
+   and `evals/golden-fail.json`, a script and its conformance case per `--script`, and with
+   `--router` the pack's router setting and a workflow case; it exports the mode and bumps the
    pack's minor version.
-5. `[model]` Replace every `TODO` in the staged `mode.yaml`, `SKILL.md` and `evals/golden-01.json`
-   with the design. Add a role to the staged `roles.yaml` only if no existing role fits. Add scripts
-   for `[code]` steps under the mode's `scripts/`.
-6. `[code: python packs/forge/scripts/forge.py lint outputs/<id>/staged/<pack> --target packs/<pack>]` — fix until PASS.
+5. `[model]` Replace every `TODO:` marker in the staged `mode.yaml`, `SKILL.md`, eval cases and
+   scripts with the design (eval@1 cases: `forge:authoring`). Add a role to the staged `roles.yaml`
+   only if no existing role fits. Put fixtures in the pack's `evals/fixtures/`.
+6. `[code: python packs/forge/scripts/forge.py lint outputs/<id>/staged/<pack> --target packs/<pack>]` — fix until PASS
+   (it also reports coverage gaps from `pmos eval --coverage`).
 7. Unless `into` is set (then the parent forge/new-pack checks the whole pack):
    `[code: python scripts/pmos.py pack add outputs/<id>/staged/<pack> --upgrade --dry-run]` — fix until
-   it passes admission. Note any grants it lists as new or wider.
+   it passes admission, which also runs the pack's conformance cases in a sandbox. Note any grants it
+   lists as new or wider.
 8. `[code: python packs/forge/scripts/forge.py changes outputs/<id>/staged/<pack> --target packs/<pack>]`
    — the file list for the action.
 9. Submit the result:

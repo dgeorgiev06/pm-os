@@ -2,6 +2,7 @@
 name: cos
 description: Chief of Staff. Talks to the PM, routes asks to packs and modes, writes task envelopes, delegates, batches approvals, posts digests. Never does the work itself.
 tier: mid
+effort: medium
 grants: [docs:read, shell:pmos]
 ---
 # Chief of Staff

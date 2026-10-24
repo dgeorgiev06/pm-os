@@ -10,13 +10,12 @@ forge/review-framework). The tree under review is never modified; output goes to
   conformance.py --task ID --verify-clean
       Exit 1 if the repo's HEAD or `git status --porcelain` changed since the run above.
 
-Run it from the repo root. PMOS_OUTPUTS_DIR overrides outputs/.
+Run it from the repo root. Output goes to `pmos path outputs`/<id>/.
 """
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -40,8 +39,10 @@ def repo_root() -> Path:
 
 
 def out_dir(root: Path, task: str) -> Path:
-    base = Path(os.environ["PMOS_OUTPUTS_DIR"]) if os.environ.get("PMOS_OUTPUTS_DIR") else root / "outputs"
-    d = base / task
+    proc = subprocess.run([sys.executable, "scripts/pmos.py", "path", "outputs"], cwd=root, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise SystemExit(f"error: `pmos path outputs` failed: {proc.stderr.strip()}")
+    d = Path(proc.stdout.strip()) / task
     d.mkdir(parents=True, exist_ok=True)
     return d
 

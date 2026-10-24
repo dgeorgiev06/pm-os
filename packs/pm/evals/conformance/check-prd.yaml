@@ -1,0 +1,7 @@
+kind: conformance
+name: check-prd
+covers: [script:modes/prd/scripts/check_prd.py, mode:pm/prd]
+desc: check_prd.py passes a PRD with every required section and numbered requirements.
+steps:
+  - run: $PY $PACK/modes/prd/scripts/check_prd.py $FX/prd-good.md
+    expect: {stdout: '^PASS'}

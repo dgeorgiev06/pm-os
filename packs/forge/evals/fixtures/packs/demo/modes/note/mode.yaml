@@ -1,0 +1,22 @@
+name: demo/note
+version: 0.1.0
+contract: task@1
+author: forge-evals
+summary: "Fixture: write a short note"
+verbs: [draft]
+accepts:
+  goal: string
+returns:
+  note: doc_ref
+skill: SKILL.md
+default_role: writer
+calls: []
+grants: { docs: draft }
+approval: before_publish
+risk: low
+principles: []
+rubric:
+  - "The note answers the goal"
+acceptance:
+  - "The note answers the goal"
+evals: evals/

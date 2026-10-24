@@ -1,0 +1,59 @@
+kind: conformance
+name: eval-cases-validated
+covers: [script:scripts/pmos.py]
+finding: request:eval@1
+severity: high
+failure: true
+desc: >-
+  eval@1 is one schema for both kinds (contracts/eval.schema.json); every case in core and the
+  installed packs declares `kind` and `covers` and validates, and `validate` names a case that
+  doesn't (missing covers, wrong kind for its folder, a feature its pack doesn't have).
+steps:
+  - name: the two contracts exist
+    run: 'true'
+    expect:
+      files:
+        contains:
+          contracts/eval.schema.json: ['"\$id": "pm-os/eval@1"', '"conformance"', '"golden"', '"covers"']
+          contracts/eval-result.schema.json: ['"\$id": "pm-os/eval-result@1"', '"first_failure"', '"usd"']
+  - name: every existing case validates against eval@1
+    run: |
+      $PY - <<'PY'
+      import glob, json, sys, yaml, jsonschema
+      schema = json.load(open("contracts/eval.schema.json"))
+      files = (glob.glob("evals/framework/*/*.yaml") + glob.glob("packs/*/modes/*/evals/*.json")
+               + glob.glob("packs/*/evals/conformance/*.yaml") + glob.glob("packs/*/evals/workflows/*.json"))
+      bad = []
+      for f in files:
+          case = json.load(open(f)) if f.endswith(".json") else yaml.safe_load(open(f))
+          errs = list(jsonschema.Draft202012Validator(schema).iter_errors(case))
+          if errs:
+              bad.append(f"{f}: {errs[0].message}")
+      print(len(files), "case files;", len(bad), "invalid"); print("\n".join(bad))
+      sys.exit(1 if bad or len(files) < 80 else 0)
+      PY
+  - run: $PMOS validate
+    expect: {stdout: '^OK'}
+  - name: a golden case without covers
+    run: |
+      $PY -c "import json; p='packs/pm/modes/prd/evals/golden-01.json'; d=json.load(open(p)); d.pop('covers'); json.dump(d, open(p,'w'))" &&
+      $PMOS validate
+    expect: {exit: nonzero, output: ['packs/pm/modes/prd/evals/golden-01\.json', 'covers']}
+  - name: restored, then a case of the wrong kind for its folder
+    run: |
+      $PY -c "import json; p='packs/pm/modes/prd/evals/golden-01.json'; d=json.load(open(p)); d['covers']=['mode:pm/prd']; json.dump(d, open(p,'w'))" &&
+      printf 'kind: golden\nname: wrong-kind\ncovers: [mode:pm/prd]\nenvelope: {verb: draft, mode: pm/prd, inputs: {goal: g}}\nexpect: [x]\n' > packs/pm/evals/conformance/wrong-kind.yaml &&
+      $PMOS validate
+    expect: {exit: nonzero, output: ['wrong-kind\.yaml', '(?i)kind']}
+  - name: a case covering a feature its pack doesn't have
+    run: |
+      rm packs/pm/evals/conformance/wrong-kind.yaml &&
+      printf 'kind: conformance\nname: ghost\ncovers: [script:scripts/ghost.py]\nsteps:\n  - run: "true"\n' > packs/pm/evals/conformance/ghost.yaml &&
+      $PMOS validate
+    expect: {exit: nonzero, output: ['ghost\.yaml', 'script:scripts/ghost\.py']}
+  - name: a core case without covers
+    run: |
+      rm packs/pm/evals/conformance/ghost.yaml &&
+      printf 'kind: conformance\nname: zz-bad\nfinding: request:eval@1\nsteps:\n  - run: "true"\n' > evals/framework/clarity/zz-bad.yaml &&
+      $PMOS validate
+    expect: {exit: nonzero, output: ['zz-bad', 'covers']}

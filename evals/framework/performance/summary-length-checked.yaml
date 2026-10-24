@@ -1,4 +1,6 @@
+kind: conformance
 name: summary-length-checked
+covers: [script:scripts/pmos.py]
 finding: performance#6
 owner: performance
 severity: medium

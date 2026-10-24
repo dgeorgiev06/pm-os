@@ -1,0 +1,23 @@
+{
+  "kind": "golden",
+  "name": "star/route fixture workflow",
+  "covers": [
+    "router:star/route",
+    "mode:star/route"
+  ],
+  "envelope": {
+    "verb": "plan",
+    "mode": "star/route",
+    "inputs": {
+      "goal": "x"
+    },
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "medium",
+    "approval": "none"
+  },
+  "expect": [
+    "the router's children are created through its calls"
+  ]
+}

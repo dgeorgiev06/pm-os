@@ -1,0 +1,40 @@
+kind: conformance
+name: effort-schemas-and-defaults
+covers: [script:scripts/pmos.py]
+finding: request:effort
+severity: medium
+failure: true
+desc: >-
+  `effort: low | medium | high | max` is in the roles, mode and agent schemas, and the built-in
+  defaults are set: CoS medium, operator low, jira-curator and todo-planner low, doc-writer and
+  program-manager medium, roadmap-strategist and framework-reviewer high, reviewer medium.
+steps:
+  - run: 'true'
+    expect:
+      files:
+        contains:
+          contracts/roles.schema.json: '"effort"'
+          contracts/mode.schema.json: '"effort"'
+          contracts/agent.schema.json: ['"effort"', '"max"']
+          agents/operator.md: '(?m)^effort: low$'
+          agents/reviewer.md: '(?m)^effort: medium$'
+          packs/cos/agents/cos.md: '(?m)^effort: medium$'
+          pm-os.yaml: ['(?m)^\s+effort: medium', '(?m)^effort:', '(?m)^\s+min: low', '(?m)^\s+max: max']
+  - run: |
+      for r in pm/jira-curator:low cos/todo-planner:low pm/doc-writer:medium pm/program-manager:medium \
+               pm/roadmap-strategist:high forge/framework-reviewer:high core/reviewer:medium; do
+        $PMOS role show ${r%:*} | head -1 | grep -E "effort: ${r#*:}\)" || { echo "role ${r%:*} is not ${r#*:}"; exit 1; }
+      done
+  - name: an unknown level in a role is refused
+    run: $PY $FX/bin/yset.py packs/pm/roles.yaml roles.jira-curator.effort huge --str && $PMOS validate
+    expect: {exit: nonzero, output: ['packs/pm/roles\.yaml', 'effort']}
+  - name: in a mode
+    run: |
+      $PY $FX/bin/yset.py packs/pm/roles.yaml roles.jira-curator.effort low --str &&
+      $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml effort extreme --str && $PMOS validate
+    expect: {exit: nonzero, output: ['packs/pm/modes/prd/mode\.yaml', 'effort']}
+  - name: in an agent
+    run: |
+      $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml effort high --str &&
+      sed -i 's/^effort: low$/effort: extreme/' agents/operator.md && $PMOS validate
+    expect: {exit: nonzero, output: ['agents/operator\.md', 'effort']}

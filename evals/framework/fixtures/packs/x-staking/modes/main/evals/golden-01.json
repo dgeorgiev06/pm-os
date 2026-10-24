@@ -1,5 +1,9 @@
 {
+  "kind": "golden",
   "name": "x-staking/main fixture case",
+  "covers": [
+    "mode:x-staking/main"
+  ],
   "envelope": {
     "verb": "draft",
     "mode": "x-staking/main",

@@ -1,0 +1,14 @@
+kind: conformance
+name: group-tickets
+covers: [script:modes/release-notes/scripts/group_tickets.py, mode:pm/release-notes]
+failure: true
+desc: >-
+  group_tickets.py drops internal work (spikes, refactors) from customer notes, puts bugs under
+  fixed, keeps internal work for an internal audience, and refuses an unknown audience.
+steps:
+  - run: $PY $PACK/modes/release-notes/scripts/group_tickets.py $PACK/modes/release-notes/evals/fixtures/closed.json
+    expect: {stdout: ['"audience": "customers"', '(?s)"fixed": \[[^\]]*STK-407', '(?s)"dropped": \[[^\]]*STK-405[^\]]*STK-409']}
+  - run: $PY $PACK/modes/release-notes/scripts/group_tickets.py $PACK/modes/release-notes/evals/fixtures/closed.json --audience internal
+    expect: {stdout: ['(?s)"internal": \[[^\]]*STK-405', '"dropped": \[\]']}
+  - run: $PY $PACK/modes/release-notes/scripts/group_tickets.py $PACK/modes/release-notes/evals/fixtures/closed.json --audience partners
+    expect: {exit: nonzero, stderr: 'invalid choice'}

@@ -1,0 +1,14 @@
+{
+  "kind": "golden",
+  "name": "x-uncovered/main blocks on an empty goal",
+  "covers": ["mode:x-uncovered/main"],
+  "failure": true,
+  "envelope": {
+    "verb": "plan",
+    "mode": "x-uncovered/main",
+    "inputs": { "goal": "" },
+    "risk": "low",
+    "approval": "before_publish"
+  },
+  "expect": ["the result has status blocked with one open question"]
+}

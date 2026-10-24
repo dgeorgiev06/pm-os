@@ -1,5 +1,9 @@
 {
+  "kind": "golden",
   "name": "typed/note fixture case",
+  "covers": [
+    "mode:typed/note"
+  ],
   "envelope": {
     "verb": "draft",
     "mode": "typed/note",

@@ -1,4 +1,6 @@
+kind: conformance
 name: readme-defines-before-use
+covers: [script:scripts/pmos.py]
 finding: clarity#3
 owner: clarity
 severity: medium

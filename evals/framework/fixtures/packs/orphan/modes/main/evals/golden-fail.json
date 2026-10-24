@@ -1,0 +1,23 @@
+{
+  "kind": "golden",
+  "name": "orphan/main fixture failure case",
+  "covers": [
+    "mode:orphan/main"
+  ],
+  "failure": true,
+  "envelope": {
+    "verb": "draft",
+    "mode": "orphan/main",
+    "inputs": {
+      "goal": "x"
+    },
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "low",
+    "approval": "before_publish"
+  },
+  "expect": [
+    "an unanswerable request is returned as status blocked with one open question"
+  ]
+}

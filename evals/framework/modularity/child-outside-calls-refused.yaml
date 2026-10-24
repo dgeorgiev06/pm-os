@@ -1,4 +1,6 @@
+kind: conformance
 name: child-outside-calls-refused
+covers: [script:scripts/pmos.py]
 finding: modularity#1
 owner: modularity
 severity: high

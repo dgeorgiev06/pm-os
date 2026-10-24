@@ -1,4 +1,6 @@
+kind: conformance
 name: one-version-rule
+covers: [script:scripts/pmos.py]
 finding: clarity#5
 owner: clarity
 severity: medium

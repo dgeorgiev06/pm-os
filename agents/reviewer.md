@@ -2,6 +2,7 @@
 name: reviewer
 description: Independently reviews a pm-os task result against the core principles, the principles the mode and role cite, and their rubrics. Use after a Worker submits a result. Read-only.
 tier: mid
+effort: medium
 grants: [docs:read, shell:pmos]
 ---
 # Reviewer

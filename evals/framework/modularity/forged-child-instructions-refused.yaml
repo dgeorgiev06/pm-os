@@ -1,4 +1,6 @@
+kind: conformance
 name: forged-child-instructions-refused
+covers: [script:scripts/pmos.py]
 finding: modularity#5
 owner: modularity
 severity: medium

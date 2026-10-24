@@ -1,0 +1,53 @@
+kind: conformance
+name: effort-resolution
+covers: [script:scripts/pmos.py]
+finding: request:effort
+severity: high
+desc: >-
+  Effort is resolved at `task new` and stored on the task: --effort > mode > role > agent >
+  defaults.effort. Envelope risk high raises it one level and low lowers it one, clamped by
+  effort.min/effort.max in pm-os.yaml, never on top of an explicit --effort.
+steps:
+  - name: role default (pm/jira-curator is low; risk medium)
+    run: $PMOS task new --mode pm/jira-tickets --inputs '{"plan":"outputs/plan.json","project":"STK"}'
+    capture: {J: '(T-\d{8}-\d{3,})'}
+    expect: {task: {id: $J, fields: {effort: '^low$', effort_source: '^role$'}}}
+  - run: $PMOS task show $J
+    expect: {stdout: '(?m)^delegate to: worker-small · effort: low · run: background$'}
+  - name: risk high raises the role's level (pm/doc-writer is medium)
+    run: $PMOS task new --mode pm/prd --inputs '{"goal":"g"}' --risk high
+    capture: {H: '(T-\d{8}-\d{3,})'}
+    expect: {task: {id: $H, fields: {effort: '^high$', effort_source: '^role$', effort_base: '^medium$'}}}
+  - name: risk low lowers the default (pm/communicator and the worker set none)
+    run: $PMOS task new --mode pm/release-notes --inputs '{"sprint":"S","project":"STK"}'
+    capture: {L: '(T-\d{8}-\d{3,})'}
+    expect: {task: {id: $L, fields: {effort: '^low$', effort_source: '^default$'}}}
+  - name: an explicit --effort is never risk-scaled
+    run: $PMOS task new --mode pm/prd --inputs '{"goal":"g"}' --risk high --effort low
+    capture: {F: '(T-\d{8}-\d{3,})'}
+    expect: {task: {id: $F, fields: {effort: '^low$', effort_source: '^flag$'}}}
+  - name: the agent's effort comes before the default
+    run: |
+      sed -i 's/^tier: mid$/tier: mid\neffort: high/' agents/worker.md &&
+      $PMOS task new --mode pm/release-notes --inputs '{"sprint":"S","project":"STK"}'
+    capture: {A: '(T-\d{8}-\d{3,})'}
+    expect: {task: {id: $A, fields: {effort: '^medium$', effort_source: '^agent$'}}}
+  - name: the mode's effort comes before the role's
+    run: $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml effort low --str && $PMOS task new --mode pm/prd --inputs '{"goal":"g"}'
+    capture: {M: '(T-\d{8}-\d{3,})'}
+    expect: {task: {id: $M, fields: {effort: '^low$', effort_source: '^mode$'}}}
+  - name: clamped by effort.max (roadmap-strategist high + risk high would be max)
+    run: |
+      $PY $FX/bin/yset.py pm-os.yaml effort.max high --str &&
+      $PMOS task new --mode pm/sprint-planning --inputs '{"sprint":"S","project":"STK"}' --role pm/roadmap-strategist
+    capture: {C: '(T-\d{8}-\d{3,})'}
+    expect: {task: {id: $C, fields: {effort: '^high$'}}}
+  - name: clamped by effort.min (todo-planner low, risk low)
+    run: |
+      $PY $FX/bin/yset.py pm-os.yaml effort.min medium --str &&
+      $PMOS task new --mode cos/todos --inputs '{"request":"plan my week"}'
+    capture: {N: '(T-\d{8}-\d{3,})'}
+    expect: {task: {id: $N, fields: {effort: '^medium$'}}}
+  - name: an unknown level is refused
+    run: $PMOS task new --mode pm/prd --inputs '{"goal":"g"}' --effort huge
+    expect: {exit: nonzero, output: '(?i)effort|invalid choice'}

@@ -2,6 +2,7 @@
 name: operator
 description: Executes approved actions from a pm-os task result (Jira writes, roadmap diffs, sending drafted comms). Use only after the Chief of Staff has recorded the PM's approval. The only agent with write access.
 tier: small
+effort: low
 grants: [docs:read, docs:write, jira:read, jira:write, comms:send, repo:write, shell:pmos]
 ---
 # Operator

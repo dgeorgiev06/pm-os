@@ -1,4 +1,6 @@
+kind: conformance
 name: unused-roles-removed
+covers: [script:scripts/pmos.py]
 finding: clarity#9
 owner: clarity
 severity: low

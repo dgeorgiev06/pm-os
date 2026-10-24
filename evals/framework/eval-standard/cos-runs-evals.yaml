@@ -1,0 +1,16 @@
+kind: conformance
+name: cos-runs-evals
+covers: [script:scripts/pmos.py]
+finding: request:eval@1
+severity: medium
+desc: >-
+  A pack's evals run from the CoS or any hub: COS.md has an Evals section (the CoS runs conformance
+  itself and reports the per-pack table; golden runs only after the PM's go, with the budget
+  stated), and the README says any hub implementing eval@1 can run a pack's evals.
+steps:
+  - run: $PY $FX/bin/section.py packs/cos/COS.md '^Evals'
+    expect: {stdout: ['eval <pack> --kind conformance', '--all', '(?i)golden', "(?i)PM's go|go-ahead|asks? the PM", '(?i)budget', 'max_usd']}
+  - run: $PY $FX/bin/section.py README.md 'evals'
+    expect: {stdout: ['eval@1', '(?i)any hub', 'evals/framework/README\.md', '(?i)reference runner']}
+  - run: 'true'
+    expect: {files: {contains: {AGENTS.md: '(?m)^## Evals'}}}

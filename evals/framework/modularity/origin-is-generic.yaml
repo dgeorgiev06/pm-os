@@ -1,4 +1,6 @@
+kind: conformance
 name: origin-is-generic
+covers: [script:scripts/pmos.py]
 finding: modularity#4
 owner: modularity
 severity: high

@@ -1,5 +1,9 @@
 {
+  "kind": "golden",
   "name": "star/route fixture case",
+  "covers": [
+    "mode:star/route"
+  ],
   "envelope": {
     "verb": "plan",
     "mode": "star/route",

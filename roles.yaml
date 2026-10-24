@@ -4,6 +4,7 @@ roles:
   reviewer:
     agent: reviewer
     tier: mid
+    effort: medium              # risk-scaled: a task's risk moves the review's effort one level
     persona: Independent reviewer. Judges the artifact against principles and rubrics only; never sees the producer's reasoning.
     skills: [infra/envelope-io]
     context: []

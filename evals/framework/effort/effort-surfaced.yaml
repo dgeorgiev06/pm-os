@@ -1,0 +1,22 @@
+kind: conformance
+name: effort-surfaced
+covers: [script:scripts/pmos.py]
+finding: request:effort
+severity: medium
+desc: >-
+  `task list` shows each task's effort, and `pmos stats` groups cost and first-pass rate by effort
+  as well as by mode.
+steps:
+  - run: $PMOS task new --mode pm/jira-tickets --inputs '{"plan":"outputs/plan.json","project":"STK"}'
+    capture: {J: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task list
+    expect: {stdout: 'worker-small\s+low'}
+  - run: $PMOS task new --mode pm/prd --inputs '{"goal":"g"}' --risk high
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: |
+      $PMOS task move $T running && $PY $FX/bin/mkresult.py --task $T --usage '{"usd":0.2,"seconds":30}' --submit &&
+      $PY $FX/bin/advance.py --task $T --to awaiting_approval
+  - run: $PMOS stats --json
+    expect: {stdout: ['"efforts"', '"high": \{[^}]*"usd_total": 0\.2[^}]*"first_pass_rate": 1', '"low"', '"modes"']}
+  - run: $PMOS stats
+    expect: {stdout: '(?i)\| Effort \|'}

@@ -1,4 +1,6 @@
+kind: conformance
 name: forge-apply-source-checked
+covers: [script:scripts/pmos.py]
 finding: modularity#10
 owner: modularity
 severity: low

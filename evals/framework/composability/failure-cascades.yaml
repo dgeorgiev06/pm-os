@@ -1,4 +1,6 @@
+kind: conformance
 name: failure-cascades
+covers: [script:scripts/pmos.py]
 finding: composability#2
 owner: composability
 severity: high

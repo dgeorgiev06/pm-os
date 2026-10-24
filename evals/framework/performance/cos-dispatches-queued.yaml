@@ -1,4 +1,6 @@
+kind: conformance
 name: cos-dispatches-queued
+covers: [script:scripts/pmos.py]
 finding: performance#2
 owner: performance
 severity: high

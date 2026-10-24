@@ -1,0 +1,9 @@
+kind: conformance
+name: tool-works
+covers: [script:scripts/tool.py, action:thing.do]
+desc: The fixture tool prints "tool ok", and fails loudly with --fail.
+steps:
+  - run: $PY $PACK/scripts/tool.py
+    expect: {stdout: 'tool ok'}
+  - run: $PY $PACK/scripts/tool.py --fail
+    expect: {exit: nonzero, stdout: 'failed'}

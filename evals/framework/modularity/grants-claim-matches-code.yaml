@@ -1,4 +1,6 @@
+kind: conformance
 name: grants-claim-matches-code
+covers: [script:scripts/pmos.py]
 finding: modularity#7
 owner: modularity
 severity: medium

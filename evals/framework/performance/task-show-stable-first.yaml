@@ -1,4 +1,6 @@
+kind: conformance
 name: task-show-stable-first
+covers: [script:scripts/pmos.py]
 finding: performance#9
 owner: performance
 severity: low

@@ -1,4 +1,6 @@
+kind: conformance
 name: cli-help-complete
+covers: [script:scripts/pmos.py]
 finding: clarity#8
 owner: clarity
 severity: low

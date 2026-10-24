@@ -1,5 +1,9 @@
 {
+  "kind": "golden",
   "name": "x-forge/main fixture case",
+  "covers": [
+    "mode:x-forge/main"
+  ],
   "envelope": {
     "verb": "plan",
     "mode": "x-forge/main",

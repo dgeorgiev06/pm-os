@@ -4,7 +4,7 @@ contract: pack@1
 author: framework-evals
 summary: "Go-to-market fixture: a launch pack composed from pm's PRD and release-notes modes"
 requires:
-  core: ^0.2
+  core: ^0.3
 depends: [pm@^0.2]
 router: gtm/launch-pack
 exports:

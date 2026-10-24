@@ -1,4 +1,6 @@
+kind: conformance
 name: task-show-survives-upgrade
+covers: [script:scripts/pmos.py]
 finding: composability#3
 owner: composability
 severity: high

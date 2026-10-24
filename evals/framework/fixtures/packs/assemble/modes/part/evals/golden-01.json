@@ -1,5 +1,9 @@
 {
+  "kind": "golden",
   "name": "assemble/part fixture case",
+  "covers": [
+    "mode:assemble/part"
+  ],
   "envelope": {
     "verb": "draft",
     "mode": "assemble/part",

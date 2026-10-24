@@ -18,7 +18,8 @@ are applied by the Operator with `apply`, after the PM approves.
   apply DIFF.json                         apply an approved diff (Operator only)
   apply-action ACTION.json                the `todos.apply_diff` handler `pmos action run` calls
 
-Files: PMOS_TODOS_FILE overrides context/todos.yaml. Task state comes from `pmos task state`.
+Files: PMOS_TODOS_FILE overrides context/todos.yaml. Paths come from `pmos path`, task state from
+`pmos task state`.
 """
 from __future__ import annotations
 
@@ -53,7 +54,9 @@ class TodoError(Exception):
 
 
 def todos_file() -> Path:
-    return Path(os.environ.get("PMOS_TODOS_FILE") or ROOT / "context" / "todos.yaml")
+    if os.environ.get("PMOS_TODOS_FILE"):
+        return Path(os.environ["PMOS_TODOS_FILE"])
+    return pmos_path("context") / "todos.yaml"
 
 
 def today() -> str:
@@ -120,9 +123,17 @@ def task_state(task_id: str) -> str | None:
     return proc.stdout.strip() or None
 
 
+def pmos_path(name: str) -> Path:
+    """A configured path from `pmos path NAME` (pmos applies its overrides, e.g. for outputs)."""
+    proc = subprocess.run([sys.executable, str(ROOT / "scripts" / "pmos.py"), "path", name],
+                          cwd=ROOT, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise TodoError(f"`pmos path {name}` failed: {proc.stderr.strip()}")
+    return Path(proc.stdout.strip()).resolve()
+
+
 def outputs_dir() -> Path:
-    paths = (yaml.safe_load((ROOT / "pm-os.yaml").read_text(encoding="utf-8")) or {}).get("paths") or {}
-    return Path(os.environ.get("PMOS_OUTPUTS_DIR") or ROOT / paths.get("outputs", "outputs")).resolve()
+    return pmos_path("outputs")
 
 
 def sort_key(t: dict):

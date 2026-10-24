@@ -1,5 +1,5 @@
 name: forge/new-mode
-version: 0.1.1
+version: 0.1.2
 contract: task@1
 author: dima
 summary: Design a new mode for an installed pack, stage it, check it, and propose it for approval

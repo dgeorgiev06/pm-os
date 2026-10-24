@@ -1,4 +1,6 @@
+kind: conformance
 name: regression-admission-installs-gtm
+covers: [script:scripts/pmos.py]
 finding: composability#good
 owner: composability
 severity: high

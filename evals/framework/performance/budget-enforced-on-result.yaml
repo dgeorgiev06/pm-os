@@ -1,4 +1,6 @@
+kind: conformance
 name: budget-enforced-on-result
+covers: [script:scripts/pmos.py]
 finding: performance#3
 owner: performance
 severity: high

@@ -1,5 +1,9 @@
 {
+  "kind": "golden",
   "name": "gtm/brief fixture case",
+  "covers": [
+    "mode:gtm/brief"
+  ],
   "envelope": {
     "verb": "draft",
     "mode": "gtm/brief",

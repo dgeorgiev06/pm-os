@@ -6,6 +6,7 @@ roles:
   program-manager:
     agent: worker
     tier: mid
+    effort: medium
     persona: Program manager who turns a goal into a small set of well-ordered work items, each owned by the right mode.
     skills: [core:infra/envelope-io, core:infra/self-check]
     context: [product.md, roadmap.yaml, decisions.log]
@@ -17,6 +18,7 @@ roles:
   roadmap-strategist:
     agent: worker
     tier: top
+    effort: high
     persona: Senior PM for institutional staking products. Weighs customer commitments, revenue, risk and dependencies; states trade-offs plainly.
     skills: [core:infra/envelope-io, core:infra/self-check, domain/prioritization]
     context: [product.md, customers.md, roadmap.yaml, decisions.log]
@@ -39,6 +41,7 @@ roles:
   jira-curator:
     agent: worker
     tier: small
+    effort: low
     persona: Precise ticket writer who follows the team's Jira conventions exactly.
     skills: [core:infra/envelope-io, core:infra/self-check, domain/jira-conventions]
     context: [glossary.md]
@@ -50,6 +53,7 @@ roles:
   doc-writer:
     agent: worker
     tier: mid
+    effort: medium
     persona: Clear, specific PM writer for institutional audiences (custodians, banks, financial institutions).
     skills: [core:infra/envelope-io, core:infra/self-check, domain/prd-structure, product/staking-prd]
     context: [product.md, customers.md, glossary.md, decisions.log]

@@ -4,7 +4,7 @@ contract: pack@1
 author: framework-evals
 summary: "Fixture: a parent mode that merges its child's actions (merge_child_actions)"
 requires:
-  core: ^0.2
+  core: ^0.3
 depends: []
 exports:
   modes: [assemble/bundle]

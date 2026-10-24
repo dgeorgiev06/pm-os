@@ -1,4 +1,6 @@
+kind: conformance
 name: hand-edited-grants-detected
+covers: [script:scripts/pmos.py]
 finding: modularity#3
 owner: modularity
 severity: high

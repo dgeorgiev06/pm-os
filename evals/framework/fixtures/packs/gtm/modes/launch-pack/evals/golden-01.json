@@ -1,5 +1,9 @@
 {
+  "kind": "golden",
   "name": "gtm/launch-pack fixture case",
+  "covers": [
+    "mode:gtm/launch-pack"
+  ],
   "envelope": {
     "verb": "plan",
     "mode": "gtm/launch-pack",

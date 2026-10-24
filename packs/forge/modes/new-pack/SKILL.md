@@ -27,15 +27,18 @@ Track your stage in `outputs/<id>/progress.json` (`{"stage": "design" | "modes" 
 
 6. For each first mode, create a child:
    `[code: python scripts/pmos.py task new --parent <id> --mode forge/new-mode --verb draft --approval none --inputs '{"pack": "<name>", "name": "<mode>", "purpose": "<purpose>", "into": "outputs/<id>/staged/<name>"}']`
+   For the router, say so in `purpose`: that child stages it with `--router`, which adds the
+   workflow case (`evals/workflows/`) the coverage rule requires.
    Each child's approval rolls up to this task, so it skips its own review and goes straight to
    `done` when it submits; its mode is reviewed with the whole pack, in this task's review.
 7. Set stage to `"check"`, then `[code: python scripts/pmos.py task move <id> waiting]`.
 
 ## Stage: check
 
-8. `[code: python packs/forge/scripts/forge.py lint outputs/<id>/staged/<name> --target packs/<name>]` — fix until PASS.
-9. `[code: python scripts/pmos.py pack add outputs/<id>/staged/<name> --dry-run]` — fix until it passes;
-   note the grants it lists.
+8. `[code: python packs/forge/scripts/forge.py lint outputs/<id>/staged/<name> --target packs/<name>]` — fix until PASS
+   (markers, names, and eval coverage of the whole pack).
+9. `[code: python scripts/pmos.py pack add outputs/<id>/staged/<name> --dry-run]` — fix until it passes
+   (it runs the pack's conformance cases in a sandbox); note the grants it lists.
 10. `[code: python packs/forge/scripts/forge.py changes outputs/<id>/staged/<name> --target packs/<name>]`
 11. Submit `status: "needs_approval"` with `design.md` as an artifact,
     `outputs: {"staged": "outputs/<id>/staged/<name>"}` and one action:

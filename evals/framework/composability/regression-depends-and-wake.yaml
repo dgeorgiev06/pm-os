@@ -1,4 +1,6 @@
+kind: conformance
 name: regression-depends-and-wake
+covers: [script:scripts/pmos.py]
 finding: composability#good
 owner: composability
 severity: high

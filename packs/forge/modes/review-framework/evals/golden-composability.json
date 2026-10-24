@@ -1,5 +1,9 @@
 {
+  "kind": "golden",
   "name": "composability review of the working tree",
+  "covers": [
+    "mode:forge/review-framework"
+  ],
   "envelope": {
     "verb": "review",
     "mode": "forge/review-framework",

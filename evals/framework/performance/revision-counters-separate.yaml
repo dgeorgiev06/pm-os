@@ -1,4 +1,6 @@
+kind: conformance
 name: revision-counters-separate
+covers: [script:scripts/pmos.py]
 finding: performance#8
 owner: performance
 severity: low

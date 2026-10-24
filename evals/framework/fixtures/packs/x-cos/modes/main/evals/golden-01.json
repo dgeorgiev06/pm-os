@@ -1,5 +1,9 @@
 {
+  "kind": "golden",
   "name": "x-cos/main fixture case",
+  "covers": [
+    "mode:x-cos/main"
+  ],
   "envelope": {
     "verb": "plan",
     "mode": "x-cos/main",

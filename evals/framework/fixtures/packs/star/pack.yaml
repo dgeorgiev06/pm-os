@@ -4,7 +4,7 @@ contract: pack@1
 author: framework-evals
 summary: "Fixture: a router that may call any mode visible to its pack"
 requires:
-  core: ^0.2
+  core: ^0.3
 depends: [pm@^0.2]
 router: star/route
 exports:

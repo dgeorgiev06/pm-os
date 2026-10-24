@@ -4,13 +4,18 @@ Everything is staged under outputs/<task id>/staged/ first. Nothing touches pack
 Operator runs `apply` for an approved task.
 
   stage-mode --task ID --pack PACK --name NAME --summary TEXT [--role ROLE] [--into STAGED_PACK_DIR]
+             [--script NAME ...] [--router]
       Copy the installed pack to the staging area (or use --into, a pack staged by forge/new-pack),
-      add a skeleton mode, export it, and bump the pack's minor version.
+      add a skeleton mode with the eval@1 cases the coverage rule needs (a golden case and a failure
+      case), export it, and bump the pack's minor version. --script adds modes/<mode>/scripts/NAME.py
+      with a conformance case; --router makes the mode the pack's router, with a workflow case.
   stage-pack --task ID --name NAME --summary TEXT [--role ROLE]
-      Create a skeleton pack in the staging area.
-  lint DIR [--target packs/NAME]
-      Fail on TODO markers and on skill names that don't match their mode (a name is optional). With --target, only the
-      files this task added or changed are checked (a new pack's files are all new).
+      Create a skeleton pack in the staging area (with evals/conformance/ and evals/workflows/).
+  lint [DIR] [--target packs/NAME]
+      Fail on `TODO:` markers, on skill names that don't match their mode (a name is optional), and on
+      coverage gaps (`pmos eval --coverage DIR`). With DIR and --target, only the files this task
+      added or changed are checked for markers (a new pack's files are all new); with only --target,
+      DIR is the target and every file is checked.
   changes STAGED --target packs/NAME
       JSON list of files added or modified relative to the target.
   apply STAGED --target packs/NAME [--files PATH ...]
@@ -85,18 +90,66 @@ description: "{summary}. Use when a Worker has been given a pm-os task whose env
 """
 
 GOLDEN = {
-    "name": "TODO: what this case proves",
-    "envelope": {"verb": "draft", "mode": "{pack}/{name}", "inputs": {"goal": "TODO"},
-                 "acceptance": ["TODO"], "risk": "medium", "approval": "before_publish"},
+    "kind": "golden",
+    "name": "TODO: what this case proves (the main path)",
+    "covers": ["mode:{pack}/{name}"],
+    "envelope": {"verb": "draft", "mode": "{pack}/{name}", "inputs": {"goal": "TODO: a realistic input"},
+                 "acceptance": ["TODO: an acceptance line"], "risk": "medium", "approval": "before_publish"},
     "expect": ["TODO: a line a grader can check"],
 }
+
+GOLDEN_FAIL = {
+    "kind": "golden",
+    "name": "TODO: the failure path this case proves (a gate, a refusal, a missing input)",
+    "covers": ["mode:{pack}/{name}"],
+    "failure": True,
+    "envelope": {"verb": "draft", "mode": "{pack}/{name}", "inputs": {"goal": "TODO: an input the mode must not guess on"},
+                 "risk": "medium", "approval": "before_publish"},
+    "expect": ["TODO: e.g. the result is status blocked with one open question, and no actions"],
+}
+
+WORKFLOW = {
+    "kind": "golden",
+    "name": "TODO: a goal this router turns into a plan of the pack's modes",
+    "covers": ["router:{pack}/{name}", "mode:{pack}/{name}"],
+    "envelope": {"verb": "plan", "mode": "{pack}/{name}", "inputs": {"goal": "TODO: a goal-level ask"},
+                 "risk": "medium", "approval": "none"},
+    "expect": ["TODO: which child modes the plan runs, and how their outputs are wired ($from)"],
+}
+
+SCRIPT_PY = '''"""{script} — a codified step of {pack}/{name}.
+
+TODO: what it reads, what it prints, and its exit codes.
+"""
+import argparse
+import sys
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.parse_args()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+'''
+
+SCRIPT_CASE = """kind: conformance
+name: {case}
+covers: [script:modes/{name}/scripts/{script}.py]
+desc: "TODO: what {script}.py must do, on a fixture in evals/fixtures/"
+steps:
+  - run: $PY $PACK/modes/{name}/scripts/{script}.py --help
+    expect: {{stdout: 'usage'}}
+"""
 
 PACK_YAML = """name: {name}
 version: 0.1.0
 contract: pack@1
 summary: "{summary}"
 requires:
-  core: ^0.2
+  core: ^0.3
 depends: []                       # other packs this one uses, e.g. [pm@^0.2]
 exports:
   modes: []
@@ -123,7 +176,7 @@ def fail(msg: str) -> int:
 
 
 def rel(path: Path) -> str:
-    """PATH relative to the repo when it is inside it (PMOS_OUTPUTS_DIR may point elsewhere)."""
+    """PATH relative to the repo when it is inside it (the outputs folder may be elsewhere)."""
     try:
         return str(Path(path).resolve().relative_to(ROOT))
     except ValueError:
@@ -145,8 +198,11 @@ def installed_pack_dir(pack: str, required: bool = True) -> Path | None:
 
 
 def outputs_dir() -> Path:
-    paths = (yaml.safe_load((ROOT / "pm-os.yaml").read_text(encoding="utf-8")) or {}).get("paths") or {}
-    return Path(os.environ.get("PMOS_OUTPUTS_DIR") or ROOT / paths.get("outputs", "outputs")).resolve()
+    """The outputs folder, from `pmos path outputs` (it applies the outputs override)."""
+    proc = pmos("path", "outputs")
+    if proc.returncode != 0:
+        raise SystemExit(f"error: `pmos path outputs` failed: {proc.stderr.strip()}")
+    return Path(proc.stdout.strip()).resolve()
 
 
 def staging(task: str) -> Path:
@@ -189,6 +245,16 @@ def add_export(pack_yaml: Path, kind: str, item: str) -> None:
                          encoding="utf-8")
 
 
+def set_router(pack_yaml: Path, mode: str) -> None:
+    text = pack_yaml.read_text(encoding="utf-8")
+    line = f"router: {mode}"
+    if re.search(r"^router:.*$", text, flags=re.M):
+        text = re.sub(r"^router:.*$", line, text, count=1, flags=re.M)
+    else:
+        text = re.sub(r"^(exports:)", line + "\n\\1", text, count=1, flags=re.M)
+    pack_yaml.write_text(text, encoding="utf-8")
+
+
 def default_role(pack_dir: Path) -> str:
     roles = (yaml.safe_load((pack_dir / "roles.yaml").read_text(encoding="utf-8")) or {}).get("roles") or {}
     if not roles:
@@ -215,11 +281,32 @@ def cmd_stage_mode(a) -> int:
     fmt = {"pack": a.pack, "name": a.name, "summary": a.summary.replace('"', "'"), "role": role}
     (mode_dir / "mode.yaml").write_text(MODE_YAML.format(**fmt), encoding="utf-8")
     (mode_dir / "SKILL.md").write_text(SKILL_MD.format(**fmt), encoding="utf-8")
-    golden = json.loads(json.dumps(GOLDEN).replace("{pack}", a.pack).replace("{name}", a.name))
-    (mode_dir / "evals" / "golden-01.json").write_text(json.dumps(golden, indent=2) + "\n", encoding="utf-8")
+    def case(template: dict) -> str:
+        return json.dumps(json.loads(json.dumps(template).replace("{pack}", a.pack).replace("{name}", a.name)),
+                          indent=2) + "\n"
+    # eval@1 coverage: a golden case and a failure-path case per mode
+    (mode_dir / "evals" / "golden-01.json").write_text(case(GOLDEN), encoding="utf-8")
+    (mode_dir / "evals" / "golden-fail.json").write_text(case(GOLDEN_FAIL), encoding="utf-8")
+    written = []
+    for script in a.script or []:                      # a script needs a conformance case
+        if not re.fullmatch(r"[a-z0-9_]+", script):
+            return fail("script name: lowercase letters, digits and underscores only")
+        (mode_dir / "scripts").mkdir(exist_ok=True)
+        (mode_dir / "scripts" / f"{script}.py").write_text(SCRIPT_PY.format(script=script, pack=a.pack, name=a.name),
+                                                           encoding="utf-8")
+        cname = f"{a.name}-{script.replace('_', '-')}"
+        (pack_dir / "evals" / "conformance").mkdir(parents=True, exist_ok=True)
+        (pack_dir / "evals" / "conformance" / f"{cname}.yaml").write_text(
+            SCRIPT_CASE.format(case=cname, name=a.name, script=script), encoding="utf-8")
+        written.append(rel(pack_dir / "evals" / "conformance" / f"{cname}.yaml"))
+    if a.router:                                       # a router needs a workflow case
+        set_router(pack_dir / "pack.yaml", a.name)
+        (pack_dir / "evals" / "workflows").mkdir(parents=True, exist_ok=True)
+        (pack_dir / "evals" / "workflows" / f"{a.name}-01.json").write_text(case(WORKFLOW), encoding="utf-8")
+        written.append(rel(pack_dir / "evals" / "workflows" / f"{a.name}-01.json"))
     add_export(pack_dir / "pack.yaml", "modes", a.name)
     version = bump_minor(pack_dir / "pack.yaml") if bump else None
-    print(json.dumps({"staged_pack": rel(pack_dir), "mode_dir": rel(mode_dir),
+    print(json.dumps({"staged_pack": rel(pack_dir), "mode_dir": rel(mode_dir), "cases": written,
                       "pack_version": version}, indent=2))
     return 0
 
@@ -233,7 +320,7 @@ def cmd_stage_pack(a) -> int:
     if pack_dir.exists():
         return fail(f"{pack_dir} already exists")
     role = a.role or f"{a.name}-writer"
-    for sub in ("modes", "skills/principles"):
+    for sub in ("modes", "skills/principles", "evals/conformance", "evals/workflows"):
         (pack_dir / sub).mkdir(parents=True, exist_ok=True)
         (pack_dir / sub / ".gitkeep").write_text("", encoding="utf-8")
     fmt = {"name": a.name, "summary": a.summary.replace('"', "'"), "role": role}
@@ -243,21 +330,28 @@ def cmd_stage_pack(a) -> int:
     return 0
 
 
+TODO_MARK = re.compile(r"\bTODO:")   # the marker forge's skeletons use
+
+
 def cmd_lint(a) -> int:
-    base = Path(a.dir).resolve()
+    if not a.dir and not a.target:
+        return fail("give DIR, --target packs/NAME, or both")
+    base = Path(a.dir or a.target).resolve()
+    if not base.is_dir():
+        return fail(f"{a.dir or a.target} is not a folder")
     problems = []
-    if a.target:
+    if a.dir and a.target:
         files = [base / c["path"] for c in changed_files(base, check_target(a.target))]
     else:
-        files = sorted(p for p in base.rglob("*") if p.is_file())
+        files = sorted(p for p in base.rglob("*") if p.is_file() and "__pycache__" not in p.parts)
     for f in files:
         try:
             text = f.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             continue
         for i, line in enumerate(text.splitlines(), 1):
-            if "TODO" in line:
-                problems.append(f"{rel(f)}:{i}: unresolved TODO")
+            if TODO_MARK.search(line):
+                problems.append(f"{rel(f)}:{i}: unresolved TODO: marker")
     for mode_yaml in [f for f in files if f.name == "mode.yaml"]:
         man = yaml.safe_load(mode_yaml.read_text(encoding="utf-8")) or {}
         skill = mode_yaml.parent / man.get("skill", "SKILL.md")
@@ -266,6 +360,11 @@ def cmd_lint(a) -> int:
             want = str(man.get("name", "")).replace("/", "-")
             if m and m.group(1) != want:  # the name is optional; `pmos render` generates it
                 problems.append(f"{rel(skill)}: frontmatter name should be '{want}'")
+    if (base / "pack.yaml").exists():                # eval@1 coverage of the whole pack
+        cov = pmos("eval", "--coverage", str(base))
+        problems += [ln.strip()[2:] for ln in cov.stdout.splitlines() if ln.startswith("  - ")]
+        if cov.returncode not in (0, 1):
+            problems.append(f"`pmos eval --coverage` failed: {(cov.stderr or cov.stdout).strip()[-300:]}")
     if problems:
         print("FAIL")
         print("\n".join(f"- {p}" for p in problems))
@@ -333,8 +432,10 @@ def main() -> int:
     sm = sub.add_parser("stage-mode")
     for flag in ("--task", "--pack", "--name", "--summary"):
         sm.add_argument(flag, required=True)
-    sm.add_argument("--role")
-    sm.add_argument("--into")
+    sm.add_argument("--role", help="the role to run it (default: the pack's first role)")
+    sm.add_argument("--into", help="a pack staged by forge/new-pack (no copy, no version bump)")
+    sm.add_argument("--script", action="append", help="add modes/<mode>/scripts/SCRIPT.py and its conformance case")
+    sm.add_argument("--router", action="store_true", help="make this mode the pack's router, with a workflow case")
     sm.set_defaults(fn=cmd_stage_mode)
     sp = sub.add_parser("stage-pack")
     for flag in ("--task", "--name", "--summary"):
@@ -342,8 +443,8 @@ def main() -> int:
     sp.add_argument("--role")
     sp.set_defaults(fn=cmd_stage_pack)
     li = sub.add_parser("lint")
-    li.add_argument("dir")
-    li.add_argument("--target")
+    li.add_argument("dir", nargs="?", help="the staged pack (default: --target)")
+    li.add_argument("--target", help="packs/NAME: with DIR, lint only the files DIR adds or changes")
     li.set_defaults(fn=cmd_lint)
     ch = sub.add_parser("changes")
     ch.add_argument("staged")

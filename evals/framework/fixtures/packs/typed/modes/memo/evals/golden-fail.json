@@ -1,0 +1,23 @@
+{
+  "kind": "golden",
+  "name": "typed/memo fixture failure case",
+  "covers": [
+    "mode:typed/memo"
+  ],
+  "failure": true,
+  "envelope": {
+    "verb": "draft",
+    "mode": "typed/memo",
+    "inputs": {
+      "topic": "x"
+    },
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "low",
+    "approval": "before_publish"
+  },
+  "expect": [
+    "an unanswerable request is returned as status blocked with one open question"
+  ]
+}

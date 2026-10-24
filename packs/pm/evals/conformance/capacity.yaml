@@ -1,0 +1,12 @@
+kind: conformance
+name: capacity
+covers: [script:modes/sprint-planning/scripts/capacity.py]
+failure: true
+desc: >-
+  capacity.py turns the last three velocities, availability and the 15% buffer into committed
+  points (21 for the fixture), and refuses an availability outside (0, 1].
+steps:
+  - run: $PY $PACK/modes/sprint-planning/scripts/capacity.py $FX/velocity.json
+    expect: {stdout: ['"committed_points": 21', '"average_velocity": 31']}
+  - run: echo '{"velocities":[30],"availability":0}' > v0.json && $PY $PACK/modes/sprint-planning/scripts/capacity.py v0.json
+    expect: {exit: nonzero, output: 'availability must be'}

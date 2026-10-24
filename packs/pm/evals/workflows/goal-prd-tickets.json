@@ -1,0 +1,27 @@
+{
+  "kind": "golden",
+  "name": "a goal becomes a PRD, then tickets wired to it",
+  "covers": ["router:pm/router", "mode:pm/router", "mode:pm/prd", "mode:pm/jira-tickets"],
+  "envelope": {
+    "verb": "plan",
+    "mode": "pm/router",
+    "inputs": {
+      "goal": "Ship operator failover for the Solana staking router: a PRD, then the Jira tickets for it",
+      "project": "STK"
+    },
+    "acceptance": ["plan uses only pm modes", "the tickets come from the PRD"],
+    "risk": "medium",
+    "approval": "none"
+  },
+  "fixtures": {
+    "existing.json": "packs/pm/evals/fixtures/existing.json",
+    "brief": "doc:packs/pm/modes/prd/evals/fixtures/router-brief.md"
+  },
+  "expect": [
+    "plan.md has exactly two items: pm/prd, then pm/jira-tickets, each with why it is needed",
+    "the router runs without stopping for the PM (two items, no high-risk mode)",
+    "a pm/prd child and a pm/jira-tickets child exist; the tickets child's plan input is {\"$from\": <the PRD child>, \"output\": \"prd\"} and its depends_on names the PRD child",
+    "the PRD child's prd.md passes check_prd.py and has a requirement on operator failover",
+    "the router's own result has no actions; ticket actions, if any, belong to the jira-tickets child"
+  ]
+}

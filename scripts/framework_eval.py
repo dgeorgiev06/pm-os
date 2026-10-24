@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""framework_eval — deterministic conformance evals for the pm-os framework itself. No model.
+"""framework_eval — the conformance runner of pm-os (eval@1, kind `conformance`). No model.
 
-Each case is one YAML file in evals/framework/<review>/ (see evals/framework/README.md for the
-format). A case runs in a fresh temporary copy of the repo; its steps are shell commands run with
-cwd = that copy, and each step's expectations are checked before the next step runs.
+Core's cases are YAML files in evals/framework/<group>/; a pack's are in packs/<pack>/evals/conformance/
+(see evals/framework/README.md for the format). A case runs in a fresh temporary copy of the repo (for
+a pack: of its sandbox, see `pmos eval`); its steps are shell commands run with cwd = that copy, and
+each step's expectations are checked before the next step runs. `pmos eval` calls run_cases().
 
   python scripts/framework_eval.py [REVIEW ...] [--case GLOB] [--json] [--root DIR] [--out FILE]
   python scripts/pmos.py eval --framework [REVIEW ...] [--case GLOB] [--json]
@@ -31,9 +32,11 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-REVIEWS = ["clarity", "performance", "modularity", "composability"]
+REVIEWS = ["clarity", "performance", "modularity", "composability", "eval-standard", "effort", "dispatch"]
+CORE_CTX = {"pack": "core", "pack_rel": ".", "fx_rel": "evals/framework/fixtures", "sync_fixtures": True}
+CHAIN_VAR = "PMOS_CONFORMANCE_CHAIN"   # the cases running above this one, so a case never runs itself
 STEP_TIMEOUT = 180
-CASE_KEYS = {"name", "finding", "owner", "severity", "desc", "regression", "setup", "steps"}
+CASE_KEYS = {"name", "finding", "owner", "severity", "desc", "regression", "setup", "steps", "kind", "covers", "failure"}
 STEP_KEYS = {"name", "run", "capture", "expect"}
 EXPECT_KEYS = {"exit", "stdout", "stdout_not", "stderr", "stderr_not", "output", "output_not",
                "task", "files"}
@@ -62,7 +65,9 @@ def check_case_shape(case: dict) -> None:
     unknown = set(k for k in case if not k.startswith("_")) - CASE_KEYS
     if unknown:
         raise CaseError(f"unknown case keys {sorted(unknown)}")
-    for k in ("name", "finding", "owner", "steps"):
+    if case.get("kind", "conformance") != "conformance":
+        raise CaseError(f"kind is {case.get('kind')!r}; this runner runs conformance cases only")
+    for k in ("name", "owner", "steps"):
         if not case.get(k):
             raise CaseError(f"case is missing '{k}'")
     for i, s in enumerate(case["steps"], 1):
@@ -94,12 +99,14 @@ def ignore_for(src_root: Path):
     return ignore
 
 
-def make_copy(src_root: Path, cases_dir: Path, base: Path) -> Path:
+def make_copy(src_root: Path, cases_dir: Path | None, base: Path) -> Path:
     dest = base / "repo"
     shutil.copytree(src_root, dest, ignore=ignore_for(src_root.resolve()), symlinks=True)
     for d in ("traces", "outputs", "state"):
         (dest / d).mkdir(exist_ok=True)
-    # The cases and fixtures always come from the cases dir, even when --root is another tree.
+    # Core's cases and fixtures always come from the cases dir, even when --root is another tree.
+    if cases_dir is None:
+        return dest
     fx_src = cases_dir / "fixtures"
     fx_dest = dest / "evals" / "framework" / "fixtures"
     if fx_src.resolve() != fx_dest.resolve():
@@ -108,7 +115,8 @@ def make_copy(src_root: Path, cases_dir: Path, base: Path) -> Path:
     return dest
 
 
-def step_env(copy: Path, values: dict[str, str]) -> dict[str, str]:
+def step_env(copy: Path, values: dict[str, str], ctx: dict | None = None, chain: str = "") -> dict[str, str]:
+    ctx = ctx or CORE_CTX
     env = {k: v for k, v in os.environ.items() if not k.startswith("PMOS_")}
     py = sys.executable
     env.update({
@@ -116,9 +124,12 @@ def step_env(copy: Path, values: dict[str, str]) -> dict[str, str]:
         "PMOS": f"{py} scripts/pmos.py",
         "FORGE": f"{py} packs/forge/scripts/forge.py",
         "TODOS": f"{py} packs/cos/scripts/todos.py",
-        "FX": "evals/framework/fixtures",
+        "FX": ctx["fx_rel"],                          # the case's own fixtures (core's, or the pack's)
+        "PACK": ctx["pack_rel"],                      # the pack under test, relative to the copy
+        "CORE_BIN": "evals/framework/fixtures/bin",   # core's helpers (mkresult.py, advance.py, yset.py ...)
         "REPO": str(copy),
         "PYTHONDONTWRITEBYTECODE": "1",
+        CHAIN_VAR: chain,
     })
     env.update(values)
     return env
@@ -265,9 +276,9 @@ def run_shell(cmd: str, copy: Path, env: dict):
         return subprocess.CompletedProcess(cmd, 124, e.stdout or "", (e.stderr or "") + "\n[timeout]")
 
 
-def do_setup(case: dict, copy: Path, env: dict) -> str | None:
+def do_setup(case: dict, copy: Path, env: dict, ctx: dict | None = None) -> str | None:
     setup = case.get("setup") or {}
-    fx = copy / "evals" / "framework" / "fixtures"
+    fx = copy / (ctx or CORE_CTX)["fx_rel"]
     for src, dest in (setup.get("copy") or {}).items():
         s = fx / src if not src.startswith("/") else Path(src)
         if not s.exists():
@@ -293,23 +304,33 @@ def do_setup(case: dict, copy: Path, env: dict) -> str | None:
     return None
 
 
-def run_case(case: dict, src_root: Path, cases_dir: Path, keep: bool) -> dict:
+def run_case(case: dict, src_root: Path, cases_dir: Path | None, keep: bool, ctx: dict | None = None) -> dict:
+    ctx = ctx or CORE_CTX
     started = time.time()
     rec = {"name": case.get("name"), "finding": case.get("finding"), "owner": case.get("owner"),
            "severity": case.get("severity"), "regression": bool(case.get("regression")),
-           "file": case.get("_file"), "result": "pass", "failure": None, "step": None}
+           "file": case.get("_file"), "result": "pass", "failure": None, "step": None,
+           "pack": ctx["pack"], "kind": "conformance", "covers": list(case.get("covers") or []),
+           "failure_path": bool(case.get("failure"))}
+    key = f"{ctx['pack']}/{case.get('name')}"
+    above = [c for c in os.environ.get(CHAIN_VAR, "").split(":") if c]
+    if key in above:  # e.g. a case that runs `pmos eval --all`: it would run itself forever
+        rec.update(result="skipped", failure="skipped: this case is already running further up")
+        rec["seconds"] = 0.0
+        return rec
+    chain = ":".join(above + [key])
     base = Path(tempfile.mkdtemp(prefix="pmos-feval-"))  # no case name: keywords in paths would leak into regexes
     try:
         check_case_shape(case)
-        copy = make_copy(src_root, cases_dir, base)
+        copy = make_copy(src_root, cases_dir if ctx.get("sync_fixtures") else None, base)
         values: dict[str, str] = {}
-        env = step_env(copy, values)
-        problem = do_setup(case, copy, env)
+        env = step_env(copy, values, ctx, chain)
+        problem = do_setup(case, copy, env, ctx)
         if problem:
             rec.update(result="fail", failure=problem, step=0)
             return rec
         for i, step in enumerate(case["steps"], 1):
-            env = step_env(copy, values)
+            env = step_env(copy, values, ctx, chain)
             proc = run_shell(step["run"], copy, env)
             for var, rx in (step.get("capture") or {}).items():
                 rxs = subst(rx, values)
@@ -321,7 +342,7 @@ def run_case(case: dict, src_root: Path, cases_dir: Path, keep: bool) -> dict:
                                        f"(exit {proc.returncode}: {short(last_lines(proc.stdout + proc.stderr, 3))})")
                     return rec
                 values[var] = m.group(1) if m.groups() else m.group(0)
-            env = step_env(copy, values)
+            env = step_env(copy, values, ctx, chain)
             problem = check_expect(step.get("expect") or {}, proc, copy, env, values)
             if problem:
                 label = step.get("name") or short(step["run"], 60)
@@ -366,13 +387,21 @@ def totals(results: list[dict]) -> dict:
     for r in results:
         t = out.setdefault(r["owner"], {"cases": 0, "pass": 0, "fail": 0, "regression_fail": 0})
         t["cases"] += 1
-        if r["result"] == "pass":
+        if r["result"] in ("pass", "skipped"):
             t["pass"] += 1
         else:
             t["fail"] += 1
             if r["regression"]:
                 t["regression_fail"] += 1
     return out
+
+
+def run_cases(cases: list[dict], src_root: Path, cases_dir: Path | None = None, ctx: dict | None = None,
+              keep: bool = False, jobs: int | None = None) -> list[dict]:
+    """Run conformance cases in parallel, each in a fresh copy of SRC_ROOT; return one record per case."""
+    jobs = jobs or min(8, (os.cpu_count() or 2))
+    with cf.ThreadPoolExecutor(max_workers=jobs) as pool:
+        return list(pool.map(lambda c: run_case(c, src_root, cases_dir, keep, ctx), cases))
 
 
 def run(reviews: list[str] | None = None, case: str | None = None, as_json: bool = False,
@@ -389,15 +418,14 @@ def run(reviews: list[str] | None = None, case: str | None = None, as_json: bool
     if not cases:
         print("error: no cases matched", file=sys.stderr)
         return 2
-    jobs = jobs or min(8, (os.cpu_count() or 2))
-    with cf.ThreadPoolExecutor(max_workers=jobs) as pool:
-        results = list(pool.map(lambda c: run_case(c, src_root, cdir, keep), cases))
+    results = run_cases(cases, src_root, cdir, CORE_CTX, keep, jobs)
     order = {r: i for i, r in enumerate(REVIEWS)}
     results.sort(key=lambda r: (order.get(r["owner"], 9), r["name"] or ""))
     summary = {"generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
                "root": str(src_root), "reviews": reviews, "case_filter": case,
                "totals": totals(results),
-               "passed": sum(r["result"] == "pass" for r in results), "failed": sum(r["result"] != "pass" for r in results),
+               "passed": sum(r["result"] in ("pass", "skipped") for r in results),
+               "failed": sum(r["result"] not in ("pass", "skipped") for r in results),
                "cases": results}
     out_path = Path(out) if out else ROOT / "build" / "framework-evals" / "latest.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)

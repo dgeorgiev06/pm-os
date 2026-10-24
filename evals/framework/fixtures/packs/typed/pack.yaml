@@ -4,7 +4,7 @@ contract: pack@1
 author: framework-evals
 summary: "Typed-contract fixture: doc_ref inputs and outputs"
 requires:
-  core: ^0.2
+  core: ^0.3
 depends: []
 exports:
   modes: [typed/memo, typed/note]

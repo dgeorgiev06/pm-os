@@ -1,4 +1,6 @@
+kind: conformance
 name: regression-admission-refuses-violations
+covers: [script:scripts/pmos.py]
 finding: modularity#good
 owner: modularity
 severity: high

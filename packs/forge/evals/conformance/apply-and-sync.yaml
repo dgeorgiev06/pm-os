@@ -1,0 +1,34 @@
+kind: conformance
+name: apply-and-sync
+covers: [script:scripts/forge.py, action:repo.sync_pack, mode:forge/new-mode]
+failure: true
+desc: >-
+  `forge.py apply` copies only staged work (outputs/<id>/staged/…) of an approved task; the
+  `repo.sync_pack` handler that `pmos action run` calls applies it, and refuses a payload without
+  `staged` and `target`.
+setup:
+  install: [demo]
+steps:
+  - name: a stray folder
+    run: mkdir -p stray/demo && echo x > stray/demo/STRAY.md && $PY $PACK/scripts/forge.py apply stray/demo --target packs/demo
+    expect: {exit: nonzero, stderr: '(?i)staged', files: {absent: packs/demo/STRAY.md}}
+  - run: $PMOS task new --mode forge/new-mode --inputs '{"pack":"demo","name":"brief","purpose":"a brief"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $T running && $PY $PACK/scripts/forge.py stage-mode --task $T --pack demo --name brief --summary "Brief"
+  - name: staged, but the task isn't approved
+    run: $PY $PACK/scripts/forge.py apply outputs/$T/staged/demo --target packs/demo
+    expect: {exit: nonzero, stderr: 'not approved', files: {absent: packs/demo/modes/brief}}
+  - name: a payload without staged/target
+    run: |
+      echo "{\"task_id\": \"$T\", \"action\": {\"payload\": {}}}" > act.json && $PY $PACK/scripts/forge.py sync-action act.json
+    expect: {exit: nonzero, stderr: "needs 'staged' and 'target'"}
+  - name: approved, then applied by the handler
+    run: |
+      FILES=$($PY $PACK/scripts/forge.py changes outputs/$T/staged/demo --target packs/demo | $PY -c 'import json,sys; print(json.dumps([c["path"] for c in json.load(sys.stdin)]))') &&
+      $PY $CORE_BIN/mkresult.py --task $T --status needs_approval --submit \
+        --action "{\"system\":\"repo\",\"op\":\"sync_pack\",\"idempotency_key\":\"$T-sync\",\"payload\":{\"staged\":\"outputs/$T/staged/demo\",\"target\":\"packs/demo\",\"files\":$FILES},\"preview\":\"Add demo/brief\"}" &&
+      $PY $CORE_BIN/advance.py --task $T --to awaiting_approval && $PMOS task approve $T --by pm && $PMOS action run $T
+    expect:
+      stdout: '"action": "repo.sync_pack"'
+      task: {id: $T, state: done}
+      files: {exists: packs/demo/modes/brief/mode.yaml, contains: {packs/demo/pack.yaml: 'version: 0\.2\.0'}}

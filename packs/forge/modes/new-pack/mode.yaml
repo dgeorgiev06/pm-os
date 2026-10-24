@@ -1,5 +1,5 @@
 name: forge/new-pack
-version: 0.1.1
+version: 0.1.2
 contract: task@1
 author: dima
 summary: Design a new pack (its roles, principles and first modes), stage it, check it, and propose it for approval

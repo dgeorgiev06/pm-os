@@ -1,0 +1,37 @@
+kind: conformance
+name: eval-runner-per-pack
+covers: [script:scripts/pmos.py, script:scripts/framework_eval.py]
+finding: request:eval@1
+severity: high
+desc: >-
+  `pmos eval [PACK | PACK/MODE | --all] [--kind conformance|golden|all] [--json]` runs a pack's
+  cases: one table per pack plus totals, eval-result@1 JSON with --json (also written to
+  build/evals/results.json), a non-zero exit on any failure. A PACK/MODE target picks the cases
+  covering that mode or its scripts.
+steps:
+  - run: $PMOS eval cos --kind conformance
+    expect: {stdout: ['(?m)^cos: \d+/\d+ passed', '(?m)^total: \d+ passed, 0 failed']}
+  - run: $PMOS eval cos --kind conformance --json
+    expect: {stdout: '"contract": "eval-result@1"', files: {exists: build/evals/results.json}}
+  - name: the JSON is eval-result@1
+    run: $PY -c "import json, jsonschema; jsonschema.validate(json.load(open('build/evals/results.json')), json.load(open('contracts/eval-result.schema.json')))"
+  - name: a mode target selects that mode's cases only
+    run: |
+      $PMOS eval pm/prd --kind conformance --json > /dev/null && $PY - <<'PY'
+      import json, sys
+      cases = json.load(open("build/evals/results.json"))["cases"]
+      off = [c["name"] for c in cases if not any(r == "mode:pm/prd" or r.startswith("script:modes/prd/") for r in c["covers"])]
+      print(len(cases), "cases; off-target:", off)
+      sys.exit(1 if off or not cases else 0)
+      PY
+  - name: golden cases render (no eval.command set), conformance first
+    run: $PMOS eval cos
+    expect:
+      stdout: ['(?i)skipped|rendered', '(?m)^cos: ']
+      files: {exists: build/evals/cos__todos/golden-01/prompt.md}
+  - name: workflow cases render with the pack
+    run: $PMOS eval pm --kind golden
+    expect: {files: {exists: 'build/evals/pm__workflows/*/prompt.md'}}
+  - name: a failing case fails the run
+    run: printf 'print("PASS")\n' > packs/pm/modes/prd/scripts/check_prd.py && $PMOS eval pm/prd --kind conformance
+    expect: {exit: nonzero, stdout: '(?i)\bfail'}

@@ -1,4 +1,6 @@
+kind: conformance
 name: approval-rollup-recorded
+covers: [script:scripts/pmos.py]
 finding: modularity#6
 owner: modularity
 severity: medium

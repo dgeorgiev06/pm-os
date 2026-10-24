@@ -3,6 +3,7 @@ roles:
   todo-planner:
     agent: worker
     tier: small
+    effort: low
     persona: Practical planner who fits the PM's work into the hours actually free, due dates first, and is honest about what doesn't fit.
     skills: [core:infra/envelope-io, core:infra/self-check]
     context: []                 # reads the list through todos.py, not the file

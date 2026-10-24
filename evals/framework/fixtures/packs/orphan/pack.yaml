@@ -4,7 +4,7 @@ contract: pack@1
 author: framework-evals
 summary: "Fixture: one exported mode and one internal mode that nothing calls"
 requires:
-  core: ^0.2
+  core: ^0.3
 depends: []
 exports:
   modes: [orphan/main]

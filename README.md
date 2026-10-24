@@ -100,10 +100,12 @@ Built-in packs:
 | --- | --- |
 | Verb | The kind of work: `plan`, `draft`, `analyze`, `execute` or `review`. `--verb` is optional when a mode lists one |
 | Tier | A role's model size: `small`, `mid` or `top`, mapped to model ids in `pm-os.yaml` |
+| Effort | How hard the model reasons, separate from tier: `low`, `medium`, `high` or `max`. `task new --effort` > mode > role > agent > `defaults.effort`; risk `high` raises it one level and `low` lowers it (not on an explicit `--effort`). The Reviewer's effort follows the task's risk. `effort_map` in `pm-os.yaml` names each provider's parameter |
+| Dispatch | How the CoS runs a subagent: `background` (default: start it, reply, report when it lands) or `foreground` (wait). Resolved like effort, without risk scaling; `task show` prints both: `delegate to: worker-mid · effort: medium · run: background` |
 | Gate | Where a task waits for you: mid-way (a `blocked` result with one question) or at the end (`awaiting_approval`) |
 | Admission | The checks `pmos pack add` runs before it installs a pack (below) |
-| Golden eval | A sample task in a mode's `evals/`, with `expect` lines a grader checks; every mode needs one |
-| Conformance eval | A deterministic check of pm-os itself, in `evals/framework/`; no model |
+| Golden eval | A sample task (eval@1, `kind: golden`) in a mode's `evals/` or a pack's `evals/workflows/`, with `expect` lines a grader checks |
+| Conformance eval | A deterministic check (eval@1, `kind: conformance`), no model: core's in `evals/framework/`, a pack's in `evals/conformance/` |
 | Phase 0 | Today's setup (above); later phases are in [the build plan](docs/phase-0-and-build-plan.md) |
 
 ## What pmos enforces
@@ -131,6 +133,8 @@ Prompts ask agents to behave; these rules hold in code whatever an agent does.
 - **Review.** The Reviewer gives a verdict for every checklist line (pmos refuses missing ones), and
   pmos computes pass or fail ([quality/README.md](quality/README.md)).
 - **Versions.** `pack add --upgrade` refuses unless the pack's version goes up.
+- **Evals.** `pack add` (and `validate`) refuses a pack whose eval cases don't match eval@1 or leave a
+  feature uncovered, and `pack add` refuses one whose conformance cases fail in the sandbox.
 
 ## Installing packs
 
@@ -143,10 +147,11 @@ pmos pack list
 pmos pack remove <name>
 ```
 
-**Admission** checks the pack's and modes' schemas, the core version and `depends`, a golden eval
-for every mode, and that every reference to another pack names something it exports. `pack add`
-then lists the grants the pack's modes request and installs only with `--approve-grants`; an
-upgrade that widens a grant asks again. The pack goes into `packs.yaml`, and `state/catalog.md` and
+**Admission** checks the pack's and modes' schemas, the core version and `depends`, that every
+reference to another pack names something it exports, and the eval coverage rule (below); then it
+runs the pack's conformance cases in a sandbox and refuses on a failure (`--with-golden` also runs
+its golden cases, which cost money). `pack add` then lists the grants the pack's modes request and
+installs only with `--approve-grants`; an upgrade that widens a grant asks again. The pack goes into `packs.yaml`, and `state/catalog.md` and
 `AGENTS.md` are regenerated, so the CoS sees it as one line. Packs register here, not with the CoS,
 so any pack can be swapped, even the one that supplies the CoS (`cos_pack` in `pm-os.yaml`).
 
@@ -172,8 +177,10 @@ change, the Operator copies it into `packs/`, and you run the install command th
    `risk`, `principles`, `rubric`, `acceptance`, `evals`.
 3. Edit `SKILL.md`: a `description` in the frontmatter, then numbered steps, each tagged (see the
    next section). Start with `task show <id>`; end with `task result <id> outputs/<id>/result.json`.
-4. Rewrite `evals/golden-01.json`: `name`, `envelope` (`verb`, `mode`, `inputs`, `acceptance`,
-   `risk`, `approval`), optional `fixtures`, and `expect` (lines a grader checks).
+4. Rewrite the eval cases ([eval@1](evals/framework/README.md)): `evals/golden-01.json` (`kind: golden`,
+   `name`, `covers: ["mode:<pack>/<mode>"]`, `envelope` with `verb`, `mode`, `inputs`, `acceptance`,
+   `risk`, `approval`, optional `fixtures`, and `expect` lines a grader checks), a failure-path case
+   (`"failure": true`), and a conformance case in the pack's `evals/conformance/` for each script you add.
 5. Make it reachable: add the bare name to `exports.modes` in `pack.yaml` (for the CoS and other
    packs), or to another mode's `calls`. `validate` warns about a mode that is neither.
 6. Bump the pack's `version`, run `pmos validate`, then
@@ -183,7 +190,7 @@ change, the Operator copies it into `packs/`, and you run the install command th
 Other units:
 
 - **Role**: an entry in `roles.yaml` with `agent`, `tier`, `persona`, `skills`, `context`,
-  `principles` and `rubric`.
+  `principles` and `rubric`; optionally `effort` and `dispatch` (modes and agents may set them too).
 - **Principle**: `packs/<pack>/skills/principles/<name>/SKILL.md` with `description`,
   `kind: principle` and a one-line `check`. Cite principles instead of restating rules: the Worker
   reads them and the Reviewer scores the same `check` lines.
@@ -210,14 +217,32 @@ folder (e.g. `check_prd.py`, `capacity.py`) and in pack scripts (`todos.py`, `fo
 
 | Layer | What it checks | How to run |
 | --- | --- | --- |
-| Golden evals (per mode) | A mode's output on its sample tasks, graded against `expect`, principles and rubric | `pmos eval [pack \| pack/mode …]` renders `prompt.md` and `grader.md` per case to `build/evals/`; set `eval.command` in `pm-os.yaml` to run them |
-| Conformance evals (the framework) | pm-os's own behaviour: the cases from the framework reviews, in code, no model | `pmos eval --framework [clarity \| performance \| modularity \| composability]` ([details](evals/framework/README.md)) |
-| Framework review (judgment) | What code can't check, scored like the original reviews | ask the CoS for a framework review, or `pmos task new --mode forge/review-framework --inputs '{"aspect": "clarity"}'` |
+Every pack's evals follow one standard, **eval@1** ([contracts/eval.schema.json](contracts/eval.schema.json);
+format in [evals/framework/README.md](evals/framework/README.md)), so any hub that implements it —
+the CoS, a registry, CI — can run a pack's evals; `pmos eval` is the reference runner and writes
+eval-result@1 ([schema](contracts/eval-result.schema.json)). Each case says which features it
+`covers`, and admission enforces coverage: every exported mode has a golden case and a failure-path
+case (`failure: true`), every script and `actions:` handler a conformance case, a router a workflow
+case. Core is the pack `core`; `evals/framework/` is its conformance folder.
+
+| Kind | Where | What it checks |
+| --- | --- | --- |
+| Conformance (code, no model) | core: `evals/framework/<group>/`; a pack: `evals/conformance/` | scripts, action handlers, refusals, pmos itself; runs in a sandbox with only core and the pack's `depends` |
+| Golden (model-graded) | `modes/<mode>/evals/`; workflows across modes: `evals/workflows/` | a mode's output on a sample task, against `expect`, principles and rubric |
+| Framework review (judgment) | `forge/review-framework` | what code can't check, scored like the original reviews |
+
+```bash
+pmos eval pm --kind conformance        # one pack (or pm/prd: one mode's cases); --all = core + every pack
+pmos eval --all --kind conformance     # a table per pack, totals; exit 1 on any failure; --json = eval-result@1
+pmos eval --coverage                   # each pack's features and the cases covering them
+pmos eval pm --kind golden             # renders prompt.md and grader.md per case; runs them if eval.command is set
+```
 
 With `eval.command` set, each golden case runs with its own state, traces and outputs folders
-(`PMOS_OUTPUTS_DIR`) and distinct task ids; a golden task's `gates` list answers the mode's gates so
-multi-stage modes run to the end. Set `eval.grader_command` too and each run is graded into
-`score.json`, with the pass rate in `build/evals/summary.json`.
+(`PMOS_OUTPUTS_DIR`) and distinct task ids, and stops starting new cases once the run has spent
+`eval.max_usd`; a golden task's `gates` list answers the mode's gates so multi-stage modes run to the
+end. Set `eval.grader_command` too and each run is graded into `score.json`, with the pass rate in
+`build/evals/summary.json`. `pmos eval --framework` is an alias for `pmos eval core --kind conformance`.
 
 ## Repo layout
 
@@ -225,12 +250,12 @@ Besides the folders in the Building blocks table:
 
 ```
 AGENTS.md          generated: the CoS manual (from the cos pack) + installed packs
-pm-os.yaml         core config: version, tiers -> model ids, adapters, cos_pack, defaults
+pm-os.yaml         core config: version, tiers -> model ids, effort_map, adapters, cos_pack, defaults
 packs.yaml         installed packs (managed by `pmos pack add/remove`)
 context/           product knowledge, roadmap.yaml, decisions.log
 state/, traces/    tasks, catalog, status board; one JSONL event per state change (pmos writes these)
 outputs/<task>/    artifacts and result.json
-evals/framework/   conformance evals for pm-os itself
+evals/framework/   core's conformance cases (eval@1) and the case format
 ```
 
 ## More

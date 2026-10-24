@@ -1,4 +1,6 @@
+kind: conformance
 name: children-budget-summed
+covers: [script:scripts/pmos.py]
 finding: composability#7
 owner: composability
 severity: medium

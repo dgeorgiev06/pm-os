@@ -1,0 +1,8 @@
+{
+  "kind": "golden",
+  "name": "an empty goal blocks",
+  "covers": ["mode:demo/note"],
+  "failure": true,
+  "envelope": { "verb": "draft", "mode": "demo/note", "inputs": { "goal": "" }, "risk": "low", "approval": "before_publish" },
+  "expect": ["the result has status blocked with one open question"]
+}

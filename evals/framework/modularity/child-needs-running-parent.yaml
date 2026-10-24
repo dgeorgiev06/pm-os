@@ -1,4 +1,6 @@
+kind: conformance
 name: child-needs-running-parent
+covers: [script:scripts/pmos.py]
 finding: modularity#1
 owner: modularity
 severity: high

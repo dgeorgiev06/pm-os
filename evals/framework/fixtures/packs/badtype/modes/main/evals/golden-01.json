@@ -1,5 +1,9 @@
 {
+  "kind": "golden",
   "name": "badtype/main fixture case",
+  "covers": [
+    "mode:badtype/main"
+  ],
   "envelope": {
     "verb": "draft",
     "mode": "badtype/main",

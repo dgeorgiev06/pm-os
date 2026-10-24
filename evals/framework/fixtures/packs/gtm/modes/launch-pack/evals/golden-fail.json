@@ -1,0 +1,23 @@
+{
+  "kind": "golden",
+  "name": "gtm/launch-pack fixture failure case",
+  "covers": [
+    "mode:gtm/launch-pack"
+  ],
+  "failure": true,
+  "envelope": {
+    "verb": "plan",
+    "mode": "gtm/launch-pack",
+    "inputs": {
+      "goal": "x"
+    },
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "medium",
+    "approval": "none"
+  },
+  "expect": [
+    "an unanswerable request is returned as status blocked with one open question"
+  ]
+}

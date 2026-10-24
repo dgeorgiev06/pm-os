@@ -1,4 +1,6 @@
+kind: conformance
 name: artifact-outside-outputs-refused
+covers: [script:scripts/pmos.py]
 finding: modularity#3
 owner: modularity
 severity: high

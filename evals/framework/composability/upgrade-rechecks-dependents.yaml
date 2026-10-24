@@ -1,4 +1,6 @@
+kind: conformance
 name: upgrade-rechecks-dependents
+covers: [script:scripts/pmos.py]
 finding: composability#3
 owner: composability
 severity: high

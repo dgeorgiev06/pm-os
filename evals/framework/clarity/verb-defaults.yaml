@@ -1,4 +1,6 @@
+kind: conformance
 name: verb-defaults
+covers: [script:scripts/pmos.py]
 finding: clarity#7
 owner: clarity
 severity: low

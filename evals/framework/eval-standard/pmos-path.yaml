@@ -1,0 +1,19 @@
+kind: conformance
+name: pmos-path
+covers: [script:scripts/pmos.py]
+finding: request:eval@1
+severity: low
+desc: >-
+  `pmos path NAME` prints a configured path (honoring PMOS_OUTPUTS_DIR and the other overrides);
+  todos.py and forge.py use it instead of reading the environment themselves.
+steps:
+  - run: $PMOS path outputs
+    expect: {stdout: '(?m)/outputs$'}
+  - run: PMOS_OUTPUTS_DIR=$REPO/elsewhere $PMOS path outputs
+    expect: {stdout: '(?m)/elsewhere$'}
+  - run: $PMOS path nope
+    expect: {exit: nonzero, output: '(?i)unknown|paths'}
+  - run: '! grep -n "PMOS_OUTPUTS_DIR" packs/cos/scripts/todos.py packs/forge/scripts/forge.py'
+  - name: forge stages into the overridden outputs folder
+    run: PMOS_OUTPUTS_DIR=$REPO/alt $FORGE stage-mode --task T-20990101-001 --pack pm --name evalnote --summary "Eval note"
+    expect: {files: {exists: alt/T-20990101-001/staged/pm/modes/evalnote/mode.yaml}}

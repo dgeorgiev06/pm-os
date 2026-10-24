@@ -1,6 +1,6 @@
 # pm-os core config. Harness- and model-neutral: nothing here assumes one vendor.
 framework: pm-os
-version: 0.2.0          # core version; packs declare `requires.core` against it
+version: 0.3.0          # core version; packs declare `requires.core` against it
 contract: task@1
 
 paths:
@@ -23,10 +23,25 @@ tiers:
   openai:    { small: "", mid: "", top: "" }   # fill in the ids you use
   google:    { small: "", mid: "", top: "" }
 
+# Effort maps the neutral levels to each provider's reasoning parameter. Like `tiers`, this is the
+# only place vendor-specific names live; the values are examples, change them to what you use.
+effort_map:
+  anthropic: { param: effort,           low: low, medium: medium, high: high, max: max }
+  openai:    { param: reasoning_effort, low: low, medium: medium, high: high, max: high }
+  google:    { param: thinking_level,   low: low, medium: medium, high: high, max: high }
+
+# Risk scaling: envelope risk high raises a task's effort one level, low lowers it one, within
+# these bounds. It never applies on top of an explicit `task new --effort`.
+effort:
+  min: low
+  max: max
+
 defaults:
   budget: { max_usd: 2.0, max_minutes: 30 }
   max_revisions: 2
   max_call_depth: 3
+  effort: medium          # low | medium | high | max, when no task flag, mode, role or agent sets one
+  dispatch: background    # background | foreground: how the CoS runs a subagent, when nothing else sets it
 
 # Adapters turn the neutral sources into one harness's native config (`pmos render <adapter>`).
 adapters:
@@ -34,6 +49,9 @@ adapters:
     provider: anthropic
     model_field: alias              # "alias" writes small/mid/top as haiku/sonnet/opus; "id" writes full ids
     aliases: { small: haiku, mid: sonnet, top: opus }
+    supports_effort: false          # true: write `effort:` (from effort_map) into subagent frontmatter
+    supports_background: false      # true: write a background field into subagent frontmatter
+    background_field: background    # that field's name, if the harness has one
     agents_dir: .claude/agents
     skills_dir: .claude/skills
     # Map framework grants to this harness's tool names. This is what enforces the
@@ -60,3 +78,6 @@ eval:
   # paths. It must print JSON {"passed": bool, "lines": [{"line": ..., "pass": bool}]}, saved as score.json;
   # build/evals/summary.json gets the pass rate. Run it on the reviewer's tier. Empty = no grading.
   grader_command: ""   # e.g. "claude -p --model sonnet \"$(cat {grader_file})\" < {output_file}"
+  # Golden runs cost money: one `pmos eval` run stops starting golden cases once their summed
+  # usage.usd reaches this (each case also runs under defaults.budget.max_usd).
+  max_usd: 10.0

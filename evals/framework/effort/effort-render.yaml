@@ -1,0 +1,38 @@
+kind: conformance
+name: effort-render
+covers: [script:scripts/pmos.py]
+finding: request:effort
+severity: medium
+desc: >-
+  `render generic` writes each agent's and role's effort into models.json with the provider's
+  parameter from effort_map (the only place vendor parameter names live). `render claude-code`
+  writes `effort:` into subagent frontmatter only when adapters.claude-code.supports_effort is true,
+  and otherwise says it left the session default.
+steps:
+  - name: vendor parameter names live only in pm-os.yaml
+    run: |
+      grep -nE '^effort_map:' pm-os.yaml && grep -nE '^\s+(anthropic|openai|google):.*param' pm-os.yaml &&
+      ! grep -rnE 'reasoning_effort|thinking_|anthropic|openai|google' scripts/pmos.py agents packs/*/agents packs/*/roles.yaml roles.yaml
+  - run: $PMOS render generic
+    expect:
+      files:
+        contains:
+          build/generic/models.json:
+            - '"operator": \{[^}]*"effort": "low"'
+            - '"reviewer": \{[^}]*"effort": "medium"'
+            - '"pm/jira-curator": \{[^}]*"effort": "low"[^}]*"provider_param": "effort"'
+            - '"pm/roadmap-strategist": \{[^}]*"effort": "high"'
+  - name: another provider's parameter, from effort_map
+    run: $PY $FX/bin/yset.py pm-os.yaml adapters.generic.provider openai --str && $PMOS render generic
+    expect: {files: {contains: {build/generic/models.json: '"provider_param": "reasoning_effort"'}}}
+  - name: claude-code leaves the session default unless the harness supports effort
+    run: $PMOS render claude-code
+    expect:
+      stdout: '(?i)effort.*session default'
+      files: {not_contains: {.claude/agents/operator.md: '(?m)^effort:'}}
+  - run: $PY $FX/bin/yset.py pm-os.yaml adapters.claude-code.supports_effort true && $PMOS render claude-code
+    expect:
+      files:
+        contains:
+          .claude/agents/operator.md: '(?m)^effort: low$'
+          .claude/agents/reviewer.md: '(?m)^effort: medium$'

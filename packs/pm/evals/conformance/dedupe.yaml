@@ -1,0 +1,10 @@
+kind: conformance
+name: dedupe
+covers: [script:modes/jira-tickets/scripts/dedupe.py, mode:pm/jira-tickets]
+desc: dedupe.py flags a drafted ticket that duplicates STK-402 and leaves an unrelated one alone.
+steps:
+  - run: $PY $PACK/modes/jira-tickets/scripts/dedupe.py $FX/drafts.json $FX/existing.json
+    expect: {stdout: ['"match": "STK-402"', '"draft_index": 0'], stdout_not: '"draft_index": 1'}
+  - name: a strict threshold flags nothing
+    run: $PY $PACK/modes/jira-tickets/scripts/dedupe.py $FX/drafts.json $FX/existing.json --threshold 0.99
+    expect: {stdout: '^\[\]'}

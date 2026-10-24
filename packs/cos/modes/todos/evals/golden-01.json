@@ -1,14 +1,25 @@
 {
+  "kind": "golden",
   "name": "plan three busy days honestly",
+  "covers": [
+    "mode:cos/todos"
+  ],
   "envelope": {
     "verb": "plan",
     "mode": "cos/todos",
     "inputs": {
       "request": "Plan Mon–Wed. Add: prep custodian demo, 2h, due Wednesday. Thursday doesn't matter.",
       "days": 3,
-      "hours": { "2026-10-26": 2, "2026-10-27": 3, "2026-10-28": 1 }
+      "hours": {
+        "2026-10-26": 2,
+        "2026-10-27": 3,
+        "2026-10-28": 1
+      }
     },
-    "acceptance": ["demo prep added and scheduled before Wednesday ends", "overflow listed"],
+    "acceptance": [
+      "demo prep added and scheduled before Wednesday ends",
+      "overflow listed"
+    ],
     "risk": "low",
     "approval": "before_execute"
   },

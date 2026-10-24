@@ -1,5 +1,9 @@
 {
+  "kind": "golden",
   "name": "assemble/bundle fixture case",
+  "covers": [
+    "mode:assemble/bundle"
+  ],
   "envelope": {
     "verb": "plan",
     "mode": "assemble/bundle",

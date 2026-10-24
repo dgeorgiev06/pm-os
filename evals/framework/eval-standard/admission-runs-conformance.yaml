@@ -1,0 +1,31 @@
+kind: conformance
+name: admission-runs-conformance
+covers: [script:scripts/pmos.py, script:scripts/framework_eval.py]
+finding: request:eval@1
+severity: high
+failure: true
+desc: >-
+  Admission runs the pack's conformance cases in a sandbox holding only core, the packs in
+  `depends` and the CoS pack, and refuses on a failure, naming the case. A case that reaches into a
+  pack it doesn't depend on fails there.
+setup:
+  copy:
+    packs/x-uncovered: packs/x-uncovered
+    patches/x-uncovered: packs/x-uncovered
+steps:
+  - name: a failing case blocks admission and is named
+    run: printf 'import sys\nsys.exit(3)\n' > packs/x-uncovered/scripts/tool.py && $PMOS pack add packs/x-uncovered --approve-grants
+    expect: {exit: nonzero, output: ['tool-works', '(?i)conformance']}
+  - run: '! grep -n "x-uncovered" packs.yaml'
+  - name: dry-run runs them too
+    run: $PMOS pack add packs/x-uncovered --dry-run
+    expect: {exit: nonzero, output: 'tool-works'}
+  - name: fixed, it installs
+    run: cp $FX/packs/x-uncovered/scripts/tool.py packs/x-uncovered/scripts/tool.py && $PMOS pack add packs/x-uncovered --approve-grants
+    expect: {stdout: ['(?i)conformance\D*1/1', '(?i)installed x-uncovered']}
+  - name: a case that uses a pack outside depends fails in the sandbox
+    run: |
+      printf 'kind: conformance\nname: leaky\ncovers: [script:scripts/tool.py]\nsteps:\n  - run: $PY packs/forge/scripts/forge.py --help\n' > packs/x-uncovered/evals/conformance/leaky.yaml &&
+      $PY $FX/bin/yset.py packs/x-uncovered/pack.yaml version 0.1.1 --str &&
+      $PMOS pack add packs/x-uncovered --upgrade --approve-grants
+    expect: {exit: nonzero, output: 'leaky'}

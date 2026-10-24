@@ -1,4 +1,6 @@
+kind: conformance
 name: gtm-children-respect-calls-and-pins
+covers: [script:scripts/pmos.py]
 finding: composability#1
 owner: modularity
 severity: high

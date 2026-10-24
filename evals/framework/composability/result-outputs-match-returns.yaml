@@ -1,4 +1,6 @@
+kind: conformance
 name: result-outputs-match-returns
+covers: [script:scripts/pmos.py]
 finding: composability#4
 owner: composability
 severity: high

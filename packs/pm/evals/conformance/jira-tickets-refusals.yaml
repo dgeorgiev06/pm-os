@@ -1,0 +1,16 @@
+kind: conformance
+name: jira-tickets-refusals
+covers: [mode:pm/jira-tickets]
+failure: true
+desc: >-
+  pm/jira-tickets refuses a task without its required `plan`, and a result proposing an action on a
+  system it isn't granted (it holds jira: draft only).
+steps:
+  - run: $PMOS task new --mode pm/jira-tickets --inputs '{"project":"STK"}'
+    expect: {exit: nonzero, output: "missing required input 'plan'"}
+  - run: $PMOS task new --mode pm/jira-tickets --inputs '{"plan":"outputs/plan.json","project":"STK"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: |
+      $PMOS task move $T running && $PY $CORE_BIN/mkresult.py --task $T --status needs_approval --submit \
+        --action '{"system":"comms","op":"send","idempotency_key":"k1","payload":{},"preview":"send"}'
+    expect: {exit: nonzero, output: '(?i)grant'}

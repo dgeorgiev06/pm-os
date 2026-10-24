@@ -1,4 +1,6 @@
+kind: conformance
 name: docs-deduplicated
+covers: [script:scripts/pmos.py]
 finding: clarity#6
 owner: clarity
 severity: medium

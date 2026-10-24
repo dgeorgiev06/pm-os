@@ -6,12 +6,13 @@ framework the same way. Later, the same functions become steps in a durable work
 
   pmos validate                         check core, every installed pack, and their references
   pmos pack list                        installed packs
-  pmos pack add PATH [--source S] [--approve-grants] [--upgrade [--force]] [--dry-run]
+  pmos pack add PATH [--source S] [--approve-grants] [--upgrade [--force]] [--dry-run] [--with-golden]
   pmos pack remove NAME
   pmos pack path NAME                   an installed pack's directory (for pack scripts)
+  pmos path NAME                        a configured path, e.g. outputs (PMOS_OUTPUTS_DIR applied)
   pmos catalog [--pack NAME]            write state/catalog.md + AGENTS.md; --pack prints one pack's modes
   pmos role show PACK/ROLE              a role's persona, skills, principles, context, rubric
-  pmos task new --mode PACK/MODE [--verb V] --inputs JSON [--instructions TEXT] [--origin PACK:REF] [...]
+  pmos task new --mode PACK/MODE [--verb V] --inputs JSON [--effort E] [--dispatch D] [--origin PACK:REF] [...]
   pmos task show ID [--for-review] [--checklist] [--json]
   pmos task move ID STATE [--note TEXT] [--by WHO]
   pmos task result ID RESULT.json
@@ -22,10 +23,11 @@ framework the same way. Later, the same functions become steps in a durable work
   pmos action run ID [--key K]          run an approved task's actions through its pack's handlers
   pmos board                            regenerate state/status.md
   pmos decide "TEXT" [--by WHO]         append to context/decisions.log
-  pmos stats [--mode PACK/MODE] [--json]   per-mode cost, latency, first-pass and revise-after-approval rates
+  pmos stats [--mode PACK/MODE] [--json]   cost, latency, first-pass and revise-after-approval rates per mode and effort
   pmos render agents-md|claude-code|generic
-  pmos eval [PACK | PACK/MODE ...]      render (and optionally run) golden tasks
-  pmos eval --framework [REVIEW ...] [--case GLOB] [--json]   framework conformance evals
+  pmos eval [PACK | PACK/MODE ... | --all] [--kind conformance|golden|all] [--json] [--coverage] [--case GLOB]
+                                        eval@1 cases per pack: conformance (code), then golden (model)
+  pmos eval --framework [GROUP ...] [--case GLOB] [--json]   core's conformance cases (alias of `eval core`)
 
 Naming: modes are <pack>/<mode>; roles <pack>/<role>; skills and principles <pack>:<path>.
 Inside a pack, a bare name means "this pack". Core resources belong to the pack "core".
@@ -35,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import fnmatch
 import hashlib
 import json
 import os
@@ -43,6 +46,8 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
+import time
 from pathlib import Path
 
 try:
@@ -59,6 +64,8 @@ OPEN_STATES = ["queued", "running", "waiting", "in_review", "revise",
 GRANT_LEVEL = {"read": 1, "draft": 2, "write": 3}
 APPROVAL_LEVEL = {"none": 0, "before_publish": 1, "before_execute": 2}   # a mode's approval is a floor
 RISK_LEVEL = {"low": 0, "medium": 1, "high": 2}                        # so is its risk
+EFFORT_LEVELS = ["low", "medium", "high", "max"]                     # how hard the model reasons
+DISPATCH_VALUES = ["background", "foreground"]                      # how the CoS runs a subagent
 SUMMARY_MAX_WORDS = 80      # the CoS forwards a result's summary as-is
 REVIEW_PASS_SCORE = 4       # review passes when every core line holds and the score is at least this
 
@@ -414,6 +421,57 @@ def grant_excess_message(mode: dict) -> str:
             f"Bump {pack}'s version and run `pmos pack add {rel(packs()[pack]['dir'])} --upgrade --approve-grants`.")
 
 
+# --------------------------------------------------------------------------- settings: effort, dispatch
+def agent_meta(name: str | None) -> dict:
+    agent = all_agents().get(name or "")
+    return agent[0] if agent else {}
+
+
+def resolve_setting(key: str, flag: str | None, man: dict | None, role: dict | None) -> tuple[str, str]:
+    """(value, source) for a per-task setting: the task flag > mode.yaml > role > the role's agent >
+    `defaults.<key>` in pm-os.yaml. Used for `effort` and `dispatch`."""
+    if flag:
+        return flag, "flag"
+    for source, holder in (("mode", man or {}), ("role", role or {}), ("agent", agent_meta((role or {}).get("agent")))):
+        if holder.get(key):
+            return holder[key], source
+    fallback = {"effort": "medium", "dispatch": "background"}[key]
+    return (config().get("defaults") or {}).get(key) or fallback, "default"
+
+
+def effort_bounds() -> tuple[int, int]:
+    b = config().get("effort") or {}
+    return EFFORT_LEVELS.index(b.get("min", "low")), EFFORT_LEVELS.index(b.get("max", "max"))
+
+
+def risk_scaled(level: str, risk: str) -> tuple[str, int]:
+    """LEVEL moved one step up for risk high and one down for risk low, clamped by effort.min/max."""
+    adjust = {"high": 1, "low": -1}.get(risk, 0)
+    lo, hi = effort_bounds()
+    i = min(max(EFFORT_LEVELS.index(level) + adjust, lo), hi)
+    return EFFORT_LEVELS[i], adjust
+
+
+def resolve_effort(flag: str | None, man: dict | None, role: dict | None, risk: str) -> dict:
+    """The effort a task runs at. An explicit --effort is used as given; anything else is risk-scaled."""
+    base, source = resolve_setting("effort", flag, man, role)
+    level, adjust = (base, 0) if source == "flag" else risk_scaled(base, risk)
+    return {"effort": level, "effort_source": source, "effort_base": base, "effort_risk_adjust": adjust}
+
+
+def review_effort(risk: str) -> str:
+    """The Reviewer's effort for a task: core/reviewer's (role > agent > default), scaled by the task's risk."""
+    role = all_roles().get(f"{CORE}/reviewer") or {"agent": "reviewer"}
+    base, _ = resolve_setting("effort", None, None, role)
+    return risk_scaled(base, risk)[0]
+
+
+def effort_param(provider: str, level: str) -> tuple[str | None, str]:
+    """The provider's parameter name and value for LEVEL, from effort_map in pm-os.yaml."""
+    m = (config().get("effort_map") or {}).get(provider) or {}
+    return m.get("param"), str(m.get(level, level))
+
+
 def principles_for(mode: dict, role: dict) -> list[tuple[str, str, dict]]:
     """(group, id, principle) for core 'always' principles, then the mode's, then the role's."""
     principles = all_principles()
@@ -521,11 +579,7 @@ def check_pack(name: str, check_grants: bool = True) -> tuple[list[str], list[st
     for aname, (meta, _b, path, apack) in agents.items():
         if apack != name:
             continue
-        for key in ("name", "description", "tier", "grants"):
-            if key not in meta:
-                errors.append(f"{rel(path)}: frontmatter missing '{key}'")
-        if meta.get("tier") not in ("small", "mid", "top"):
-            errors.append(f"{rel(path)}: tier must be small, mid or top")
+        errors += schema_errors(meta, "agent", f"{rel(path)} frontmatter")
 
     # modes
     mode_names = set()
@@ -604,6 +658,7 @@ def check_pack(name: str, check_grants: bool = True) -> tuple[list[str], list[st
             for mname in sorted(mode_names - set(exported) - called):
                 warnings.append(f"mode {mname} is internal (not in exports.modes) and no mode of pack '{name}' "
                                 f"calls it, so nothing can start it; export it or add it to a mode's calls")
+    errors += eval_errors(name)      # eval@1: every case valid, every feature covered
     return errors, warnings
 
 
@@ -803,6 +858,18 @@ def cmd_pack_add(args) -> int:
                 print("Upgrade those packs first, or re-run with --force to install anyway.")
                 return 1
 
+    if args.with_golden and not (config().get("eval") or {}).get("command"):
+        clear_cache()
+        raise PmosError("--with-golden runs the golden cases through eval.command; set eval.command in pm-os.yaml")
+    if not os.environ.get("PMOS_EVAL_SANDBOX"):     # (inside the sandbox itself: just install)
+        failures = admission_evals(name, d, man, args.with_golden)
+        if failures:
+            clear_cache()
+            print(f"Admission failed for pack '{name}': its evals failed in the sandbox:")
+            for f in failures:
+                print(f"  - {f}")
+            return 1
+
     requested = mode_grants(name)
     previously = (existing or {}).get("grants_approved") or {}
     widened = {k: v for k, v in requested.items() if GRANT_LEVEL.get(v, 0) > GRANT_LEVEL.get(previously.get(k), 0)}
@@ -835,6 +902,14 @@ def cmd_pack_path(args) -> int:
     if args.name not in packs() or args.name == CORE:
         raise PmosError(f"pack '{args.name}' is not installed")
     print(packs()[args.name]["dir"])
+    return 0
+
+
+def cmd_path(args) -> int:
+    keys = sorted(config()["paths"])
+    if args.name not in keys:
+        raise PmosError(f"unknown path '{args.name}'; paths in pm-os.yaml: {', '.join(keys)}")
+    print(path_of(args.name) if args.name in ("state", "traces", "outputs") else ROOT / config()["paths"][args.name])
     return 0
 
 
@@ -954,7 +1029,10 @@ def cmd_role_show(args) -> int:
 def role_lines(role: dict) -> list[str]:
     owner, skills, principles = role["_pack"], all_skills(), all_principles()
     ctx = ROOT / config()["paths"]["context"]
-    out = [f"## Role: {owner}/{role['_name']} (agent: {role['agent']}, tier: {role['tier']})",
+    effort, _ = resolve_setting("effort", None, None, role)
+    dispatch, _ = resolve_setting("dispatch", None, None, role)
+    out = [f"## Role: {owner}/{role['_name']} (agent: {role['agent']}, tier: {role['tier']}, run: {dispatch}, "
+           f"effort: {effort})",
            f"- persona: {role['persona']}"]
     for s in role.get("skills", []):
         sid = q_skill(s, owner)
@@ -1029,7 +1107,7 @@ def trace(task: dict, event: str, **fields) -> None:
     record = {
         "ts": now(), "event": event, "task_id": env["id"], "mode": env["mode"], "pack": task.get("pack"),
         "mode_version": task.get("mode_version"), "role": task.get("role"),
-        "parent": env.get("parent"), "origin": env.get("origin"), **fields,
+        "parent": env.get("parent"), "origin": env.get("origin"), "effort": task.get("effort"), **fields,
     }
     with open(traces / f"{dt.date.today():%Y-%m}.jsonl", "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -1329,6 +1407,8 @@ def cmd_task_new(args) -> int:
     role = resolve_role(args.role or man["default_role"], pack)
     role_fq = f"{role['_pack']}/{role['_name']}"
     approval, risk, approval_from = envelope_floor(args, man, parent)
+    effort = resolve_effort(args.effort, man, role, risk)
+    dispatch, dispatch_source = resolve_setting("dispatch", args.dispatch, man, role)
 
     depth = 0
     if parent:
@@ -1397,6 +1477,10 @@ def cmd_task_new(args) -> int:
         "change_requests": 0,    # the PM's "change X" (awaiting_approval -> revise); not counted
         "approvals": [],
         "approval_from": approval_from,
+        **effort,                # effort, effort_source, effort_base, effort_risk_adjust
+        "review_effort": review_effort(risk),
+        "dispatch": dispatch,
+        "dispatch_source": dispatch_source,
         "result": None,
         "result_path": None,
         "history": [{"ts": now(), "from": None, "to": "queued", "by": args.by, "note": args.note}],
@@ -1468,7 +1552,7 @@ def cmd_task_show(args) -> int:
     # everything specific to this task (id, envelope, history, result) comes after.
     out = [
         f"# {task['mode_name']}@{task['mode_version']}",
-        f"delegate to: {delegate_target(role)}",
+        f"delegate to: {delegate_target(role)} · effort: {task.get('effort', '—')} · run: {task.get('dispatch', 'background')}",
         "",
         f"## Mode (pack: {task.get('pack')})",
         f"- skill: {rel(mode['dir'] / man.get('skill', 'SKILL.md'))}",
@@ -1484,7 +1568,7 @@ def cmd_task_show(args) -> int:
     out += [
         "",
         f"# Task {env['id']} · {env['verb']} · state: {task['state']}",
-        f"- approval: {env['approval']} · risk: {env['risk']}",
+        f"- approval: {env['approval']} · risk: {env['risk']} · review effort: {task.get('review_effort', '—')}",
         f"- outputs: {rel(path_of('outputs') / env['id'])}/",
         "",
     ]
@@ -1526,7 +1610,8 @@ def cmd_task_show(args) -> int:
             out.append(f"- action: {a['system']}.{a['op']} · {a.get('preview', a['idempotency_key'])}"
                        + (f" (from {merged[a['idempotency_key']]})" if a["idempotency_key"] in merged else ""))
     if args.for_review:
-        out += ["", "## Review checklist",
+        out += ["", f"Review effort: {task.get('review_effort', '—')} (core/reviewer's effort, scaled by the task's "
+                    f"risk {env['risk']}).", "", "## Review checklist",
                 "Give every line a verdict by its id (`task show <id> --checklist` prints them as JSON). "
                 "pmos computes the pass: every core line holds and the overall score is 4 or more.", ""]
         for line in review_checklist(task, mode, role):
@@ -1805,6 +1890,7 @@ def cmd_task_list(args) -> int:
         e = t["envelope"]
         agent = delegate_target(roles[t["role"]]) if t["role"] in roles else "?"
         print(f"{e['id']}  {t['state']:<17} {t['mode_name']:<20} {t['role']:<22} {agent:<12} "
+              f"{t.get('effort', '—'):<7} {t.get('dispatch', 'background'):<11} "
               f"{(t['history'][-1].get('note') or '')[:60]}")
     if not rows:
         print("(no tasks)")
@@ -1939,12 +2025,14 @@ def percentile(values: list[float], q: float) -> float | None:
 
 
 def compute_stats(records: list[dict]) -> dict:
-    """Per mode, from trace records: cost, latency, first-pass review rate, revise-after-approval rate."""
+    """Per mode and per effort level, from trace records: cost, latency, first-pass review rate and
+    revise-after-approval rate."""
     per_task: dict[str, dict] = {}
     for r in sorted(records, key=lambda r: r.get("ts", "")):
         t = per_task.setdefault(r["task_id"], {"mode": split_ref(r.get("mode") or "?")[0], "usd": 0.0,
                                                "created": None, "ready": None, "reviews": [],
-                                               "awaited": False, "changed": False})
+                                               "awaited": False, "changed": False, "effort": None})
+        t["effort"] = r.get("effort") or t["effort"]
         ts = dt.datetime.fromisoformat(r["ts"]) if r.get("ts") else None
         if r["event"] == "created":
             t["created"] = ts
@@ -1963,20 +2051,23 @@ def compute_stats(records: list[dict]) -> dict:
     def rate(hits: int, n: int) -> float | None:
         return round(hits / n, 3) if n else None
 
-    modes: dict[str, dict] = {}
-    for t in per_task.values():
-        modes.setdefault(t["mode"], []).append(t)
-    out = {}
-    for name, ts in sorted(modes.items()):
+    def summary(ts: list[dict]) -> dict:
         secs = [(t["ready"] - t["created"]).total_seconds() for t in ts if t["created"] and t["ready"]]
         reviewed = [t for t in ts if t["reviews"]]
         awaited = [t for t in ts if t["awaited"]]
         usd = round(sum(t["usd"] for t in ts), 4)
-        out[name] = {"tasks": len(ts), "usd_total": usd, "usd_mean": round(usd / len(ts), 4),
-                     "p50_seconds": percentile(secs, 0.5), "p90_seconds": percentile(secs, 0.9),
-                     "first_pass_rate": rate(sum(1 for t in reviewed if t["reviews"][0]), len(reviewed)),
-                     "revise_after_approval_rate": rate(sum(1 for t in awaited if t["changed"]), len(awaited))}
-    return {"modes": out}
+        return {"tasks": len(ts), "usd_total": usd, "usd_mean": round(usd / len(ts), 4),
+                "p50_seconds": percentile(secs, 0.5), "p90_seconds": percentile(secs, 0.9),
+                "first_pass_rate": rate(sum(1 for t in reviewed if t["reviews"][0]), len(reviewed)),
+                "revise_after_approval_rate": rate(sum(1 for t in awaited if t["changed"]), len(awaited))}
+
+    groups: dict[str, dict[str, list]] = {"modes": {}, "efforts": {}}
+    for t in per_task.values():
+        groups["modes"].setdefault(t["mode"], []).append(t)
+        groups["efforts"].setdefault(t["effort"] or "unknown", []).append(t)
+    order = {lvl: i for i, lvl in enumerate(EFFORT_LEVELS)}
+    return {"modes": {k: summary(v) for k, v in sorted(groups["modes"].items())},
+            "efforts": {k: summary(v) for k, v in sorted(groups["efforts"].items(), key=lambda kv: order.get(kv[0], 9))}}
 
 
 def cmd_stats(args) -> int:
@@ -1998,14 +2089,17 @@ def cmd_stats(args) -> int:
 
     def fmt(v, pct=False):
         return "—" if v is None else (f"{v:.0%}" if pct else f"{v}")
-    print("| Mode | Tasks | USD total | USD mean | p50 s | p90 s | First-pass | Revised after approval |")
-    print("| --- | --- | --- | --- | --- | --- | --- | --- |")
-    for name, m in stats["modes"].items():
-        print(f"| {name} | {m['tasks']} | {m['usd_total']} | {m['usd_mean']} | {fmt(m['p50_seconds'])} | "
-              f"{fmt(m['p90_seconds'])} | {fmt(m['first_pass_rate'], True)} | "
-              f"{fmt(m['revise_after_approval_rate'], True)} |")
     if not stats["modes"]:
         print("(no traces yet)")
+        return 0
+    for title, key in (("Mode", "modes"), ("Effort", "efforts")):
+        print(f"| {title} | Tasks | USD total | USD mean | p50 s | p90 s | First-pass | Revised after approval |")
+        print("| --- | --- | --- | --- | --- | --- | --- | --- |")
+        for name, m in stats[key].items():
+            print(f"| {name} | {m['tasks']} | {m['usd_total']} | {m['usd_mean']} | {fmt(m['p50_seconds'])} | "
+                  f"{fmt(m['p90_seconds'])} | {fmt(m['first_pass_rate'], True)} | "
+                  f"{fmt(m['revise_after_approval_rate'], True)} |")
+        print()
     return 0
 
 
@@ -2066,11 +2160,17 @@ def render_claude_code() -> int:
         if unmapped:
             warnings.append(f"agent '{name}': grants {unmapped} have no tool mapping in pm-os.yaml; it inherits "
                             f"all tools, so the permission line is NOT enforced for it yet")
+        effort, _ = resolve_setting("effort", None, None, {"agent": name})
+        dispatch, _ = resolve_setting("dispatch", None, None, {"agent": name})
         for out_name, tier, description in agent_renders(name, meta):
             model = ad["aliases"][tier] if ad.get("model_field", "alias") == "alias" else tiers[tier]
             lines = ["---", f"name: {out_name}", f"description: {description}", f"model: {model}"]
             if not unmapped:
                 lines.append(f"tools: {', '.join(dict.fromkeys(mapped))}")
+            if ad.get("supports_effort"):       # only when the harness has such a field (pm-os.yaml says so)
+                lines.append(f"effort: {effort_param(ad['provider'], effort)[1]}")
+            if ad.get("supports_background"):
+                lines.append(f"{ad.get('background_field') or 'background'}: {str(dispatch == 'background').lower()}")
             lines += ["---", f"<!-- Generated by `pmos render claude-code` from {rel(src)}. Edit the source, then re-render. -->",
                       "", body.strip(), ""]
             (agents_out / f"{out_name}.md").write_text("\n".join(lines), encoding="utf-8")
@@ -2096,6 +2196,12 @@ def render_claude_code() -> int:
         print(f"warn: {w}")
     print(f"claude-code: {count} agent(s) -> {ad['agents_dir']}, {len(names)} skill(s) -> {ad['skills_dir']}, "
           f"CLAUDE.md -> AGENTS.md")
+    if not ad.get("supports_effort"):
+        print("note: effort not written to subagent frontmatter (adapters.claude-code.supports_effort is false): "
+              "subagents run at the session default; `task show` still prints each task's effort")
+    if not ad.get("supports_background"):
+        print("note: dispatch not written to subagent frontmatter (adapters.claude-code.supports_background is "
+              "false): it is carried by `task show` (`run:`) and COS.md")
     return 0
 
 
@@ -2112,12 +2218,21 @@ def render_generic() -> int:
     models, grants = {"agents": {}, "roles": {}}, {}
     for name, (meta, body, _src, _pack) in all_agents().items():
         prompt = (ROOT / "AGENTS.md").read_text(encoding="utf-8") if name in cos_agents() else body.strip() + "\n\n" + "\n".join(skill_index)
+        effort, _ = resolve_setting("effort", None, None, {"agent": name})
+        dispatch, _ = resolve_setting("dispatch", None, None, {"agent": name})
+        param, value = effort_param(ad["provider"], effort)
         for out_name, tier, _desc in agent_renders(name, meta):
             (out / f"{out_name}.system.md").write_text(prompt + "\n", encoding="utf-8")
-            models["agents"][out_name] = {"tier": tier, "model": tiers.get(tier, "")}
+            models["agents"][out_name] = {"tier": tier, "model": tiers.get(tier, ""), "effort": effort,
+                                          "provider_param": param, "provider_value": value, "dispatch": dispatch}
             grants[out_name] = meta.get("grants", [])
     for fq, r in all_roles().items():
-        models["roles"][fq] = {"agent": delegate_target(r), "tier": r["tier"], "model": tiers.get(r["tier"], "")}
+        effort, _ = resolve_setting("effort", None, None, r)
+        dispatch, _ = resolve_setting("dispatch", None, None, r)
+        param, value = effort_param(ad["provider"], effort)
+        models["roles"][fq] = {"agent": delegate_target(r), "tier": r["tier"], "model": tiers.get(r["tier"], ""),
+                               "effort": effort, "provider_param": param, "provider_value": value,
+                               "dispatch": dispatch}
     write_json(out / "models.json", models)
     write_json(out / "grants.json", grants)
     shutil.copy2(path_of("state") / "catalog.md", out / "catalog.md")
@@ -2129,97 +2244,548 @@ def cmd_render(args) -> int:
     return {"agents-md": render_agents_md, "claude-code": render_claude_code, "generic": render_generic}[args.adapter]()
 
 
-# --------------------------------------------------------------------------- eval
-def cmd_eval(args) -> int:
-    if args.framework:  # conformance evals for the framework itself live in scripts/framework_eval.py
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        import framework_eval
-        return framework_eval.run(args.targets, case=args.case, as_json=args.json)
-    modes = discover_modes()
-    if args.targets:
-        modes = [m for m in modes if m["pack"] in args.targets or m["manifest"].get("name") in args.targets]
+# --------------------------------------------------------------------------- eval@1: cases and coverage
+CORE_CASES = ROOT / "evals" / "framework"   # core's conformance folder: one subfolder per group
+CORE_CASE_SKIP = {"fixtures", "findings"}
+
+
+def pack_view(name: str | None = None, d: Path | None = None) -> dict:
+    """What eval@1 needs to know about a pack: its dir, manifest and modes. NAME = an installed pack (or
+    core); D = a pack folder that need not be installed (e.g. a staged pack)."""
+    if name == CORE:
+        return {"name": CORE, "dir": ROOT, "manifest": {}, "modes": [], "core": True}
+    if d is None:
+        p = packs()[name]
+        d, man = p["dir"], p["manifest"]
+    else:
+        d = Path(d).resolve()
+        if not (d / "pack.yaml").exists():
+            raise PmosError(f"no pack.yaml in {d}")
+        man = load_yaml(d / "pack.yaml") or {}
+    name = man.get("name") or name
+    exported = {q_role(n, name) for n in (man.get("exports") or {}).get("modes") or []}
+    modes = []
+    for mf in sorted((d / "modes").glob("*/mode.yaml")):
+        mm = load_yaml(mf) or {}
+        modes.append({"name": mm.get("name"), "dir": mf.parent, "manifest": mm,
+                      "evals": mf.parent / str(mm.get("evals") or "evals/"), "exported": mm.get("name") in exported})
+    return {"name": name, "dir": d, "manifest": man, "modes": modes, "core": False}
+
+
+def view_scripts(v: dict) -> list[str]:
+    """Scripts a pack ships, relative to the pack: scripts/** and modes/*/scripts/** (core: scripts/*.py)."""
+    if v["core"]:
+        return [f"scripts/{p.name}" for p in sorted((ROOT / "scripts").glob("*.py"))]
+    d, out = v["dir"], []
+    for base in [d / "scripts", *sorted((d / "modes").glob("*/scripts"))]:
+        for f in sorted(base.rglob("*")) if base.is_dir() else []:
+            if f.is_file() and "__pycache__" not in f.parts and not f.name.startswith(".") and f.suffix != ".pyc":
+                out.append(f.relative_to(d).as_posix())
+    return out
+
+
+def view_features(v: dict) -> dict[str, str]:
+    """feature ref -> what covers it: exported modes need a golden and a failure-path case, scripts and
+    action handlers a conformance case, a router a workflow case."""
+    out = {f"mode:{m['name']}": "golden + failure" for m in v["modes"] if m["exported"]}
+    out.update({f"script:{s}": "conformance" for s in view_scripts(v)})
+    out.update({f"action:{k}": "conformance" for k in (v["manifest"].get("actions") or {})})
+    if v["manifest"].get("router"):
+        out[f"router:{q_role(v['manifest']['router'], v['name'])}"] = "workflow"
+    return out
+
+
+def view_refs(v: dict) -> set[str]:
+    """Every ref a case of this pack may cover: its features, any of its modes, and its principles."""
+    refs = set(view_features(v)) | {f"mode:{m['name']}" for m in v["modes"]}
+    base = (ROOT / config()["paths"]["skills"]) if v["core"] else v["dir"] / "skills"
+    refs |= {f"principle:{v['name']}:{p.parent.name}" for p in (base / "principles").glob("*/SKILL.md")}
+    return refs
+
+
+def view_case_files(v: dict) -> list[tuple[Path, str, str | None]]:
+    """(file, where, mode): where = core (evals/framework/<group>/), conformance, workflows or golden (a mode's evals/)."""
+    if v["core"]:
+        return [(f, "core", None) for f in sorted(CORE_CASES.glob("*/*.yaml")) if f.parent.name not in CORE_CASE_SKIP]
+    out = []
+    for m in v["modes"]:
+        out += [(f, "golden", m["name"]) for f in sorted(m["evals"].glob("*.json"))]
+    ev = v["dir"] / "evals"
+    out += [(f, "conformance", None) for f in sorted([*ev.glob("conformance/*.yaml"), *ev.glob("conformance/*.yml")])]
+    out += [(f, "workflows", None) for f in sorted(ev.glob("workflows/*.json"))]
+    return out
+
+
+def load_view_cases(v: dict) -> tuple[list[dict], list[str]]:
+    """The pack's eval@1 cases, each checked against contracts/eval.schema.json, its folder's kind, and
+    the pack's own features (a pack's evals are self-contained)."""
+    cases, errors, names = [], [], {}
+    refs, modes = view_refs(v), {m["name"] for m in v["modes"]}
+    for f, where, mode in view_case_files(v):
+        where_rel = rel(f)
+        try:
+            data = load_json(f) if f.suffix == ".json" else load_yaml(f)
+        except (json.JSONDecodeError, yaml.YAMLError) as e:
+            errors.append(f"{where_rel}: not valid {f.suffix[1:]}: {str(e).splitlines()[0]}")
+            continue
+        if not isinstance(data, dict):
+            errors.append(f"{where_rel}: an eval case is an object")
+            continue
+        errs = schema_errors(data, "eval", where_rel)
+        want = "conformance" if where in ("core", "conformance") else "golden"
+        if data.get("kind") in ("conformance", "golden") and data["kind"] != want:
+            folder = {"core": "evals/framework/<group>/", "conformance": "evals/conformance/",
+                      "workflows": "evals/workflows/", "golden": "a mode's evals/"}[where]
+            errs.append(f"{where_rel}: kind is {data['kind']}, but cases in {folder} are kind {want}")
+        for ref in data.get("covers") or []:
+            if isinstance(ref, str) and ref not in refs:
+                errs.append(f"{where_rel}: covers {ref}, which pack '{v['name']}' doesn't have (a pack's cases "
+                            f"cover its own modes, scripts, actions, router and principles)")
+        env_mode = split_ref(str((data.get("envelope") or {}).get("mode", "")))[0]
+        if want == "golden" and env_mode and env_mode not in modes:
+            errs.append(f"{where_rel}: envelope mode {env_mode} is not a mode of pack '{v['name']}'")
+        if want == "conformance" and data.get("name"):
+            if data["name"] in names:
+                errs.append(f"{where_rel}: case name '{data['name']}' is also used by {names[data['name']]}")
+            names[data["name"]] = where_rel
+        errors += errs
+        cases.append({**data, "_file": f, "_where": where, "_mode": mode, "_group": f.parent.name,
+                      "_valid": not errs})
+    return cases, errors
+
+
+def coverage(v: dict, cases: list[dict]) -> tuple[list[tuple[str, str, list[str]]], list[str]]:
+    """(rows, gaps): per feature, the cases covering it; and a message per missing case, naming the folder."""
+    base = rel(v["dir"]) if not v["core"] else None
+    conf_dir = "evals/framework/<group>/" if v["core"] else f"{base}/evals/conformance/"
+    rows, gaps = [], []
+    mode_evals = {f"mode:{m['name']}": rel(m["evals"]).rstrip("/") + "/" for m in v["modes"]}
+
+    def covering(ref, pick):
+        return [c.get("name") or c["_file"].name for c in cases if ref in (c.get("covers") or []) and pick(c)]
+
+    for ref, need in view_features(v).items():
+        if need == "golden + failure":
+            golden = covering(ref, lambda c: c.get("kind") == "golden" and not c.get("failure"))
+            failure = covering(ref, lambda c: bool(c.get("failure")))
+            rows.append((ref, need, golden + [f"{n} (failure)" for n in failure]))
+            if not golden:
+                gaps.append(f"coverage: {ref} has no golden case; add one to {mode_evals[ref]}")
+            if not failure:
+                gaps.append(f"coverage: {ref} has no failure-path case (`failure: true`); add a golden case to "
+                            f"{mode_evals[ref]} or a conformance case to {conf_dir}")
+        elif need == "conformance":
+            hits = covering(ref, lambda c: c.get("kind") == "conformance")
+            rows.append((ref, need, hits))
+            if not hits:
+                gaps.append(f"coverage: {ref} has no conformance case; add one to {conf_dir}")
+        else:
+            hits = covering(ref, lambda c: c["_where"] == "workflows")
+            rows.append((ref, need, hits))
+            if not hits:
+                gaps.append(f"coverage: {ref} has no workflow case; add one to {base}/evals/workflows/")
+    return rows, gaps
+
+
+def eval_errors(name: str) -> list[str]:
+    """Case errors and coverage gaps for an installed pack (or core): part of admission and `validate`."""
+    v = pack_view(name)
+    cases, errors = load_view_cases(v)
+    return errors + coverage(v, cases)[1]
+
+
+# --------------------------------------------------------------------------- eval@1: sandbox and runners
+def framework_eval_module():
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import framework_eval
+    return framework_eval
+
+
+def clean_env(**extra) -> dict:
+    """The environment for a nested pmos run: inherited PMOS_* overrides dropped (the conformance chain kept)."""
+    keep = "PMOS_CONFORMANCE_CHAIN"
+    return {**{k: v for k, v in os.environ.items() if not k.startswith("PMOS_") or k == keep}, **extra}
+
+
+def eval_sandbox(name: str, candidate: Path, man: dict) -> tuple[Path, str]:
+    """A temporary copy of the repo holding only core, the packs NAME depends on (transitively), the CoS
+    pack and NAME itself (installed from CANDIDATE), so a pack's evals can assume nothing else.
+    Returns (copy, the pack's path in it)."""
+    fe = framework_eval_module()
+    copy = Path(tempfile.mkdtemp(prefix="pmos-sandbox-")) / "repo"
+    shutil.copytree(ROOT, copy, ignore=fe.ignore_for(ROOT), symlinks=True)
+    for d in ("traces", "outputs", "state"):
+        (copy / d).mkdir(exist_ok=True)
+    entries = list(((load_yaml(packs_file()) if packs_file().exists() else {}) or {}).get("packs") or [])
+    keep, todo = {config().get("cos_pack")}, [split_ref(x)[0] for x in man.get("depends") or []]
+    while todo:
+        dep = todo.pop()
+        if dep in keep or dep not in packs():
+            continue
+        keep.add(dep)
+        todo += [split_ref(x)[0] for x in packs()[dep]["manifest"].get("depends") or []]
+    keep.discard(name)
+    existing = next((e for e in entries if e["name"] == name), None)
+    dest_rel = existing["path"] if existing and not os.path.isabs(existing["path"]) else f"packs/{name}"
+    same = bool(existing and (ROOT / dest_rel).resolve() == candidate.resolve()
+                and str(existing.get("version")) == str(man.get("version")))
+    kept = [e for e in entries if e["name"] in keep or (same and e["name"] == name)]
+    for e in entries:   # packs outside the sandbox are removed, so a case can't lean on them
+        if e not in kept and e["name"] != name and not os.path.isabs(e["path"]):
+            shutil.rmtree(copy / e["path"], ignore_errors=True)
+    (copy / config()["paths"]["packs_file"]).write_text(
+        "# Eval sandbox: core, the CoS pack, and the pack under test with its depends.\n"
+        + yaml.safe_dump({"packs": kept}, sort_keys=False), encoding="utf-8")
+    if not same:
+        dest = copy / dest_rel
+        shutil.rmtree(dest, ignore_errors=True)
+        shutil.copytree(candidate, dest, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        source = (existing or {}).get("source", "local")
+        proc = subprocess.run([sys.executable, "scripts/pmos.py", "pack", "add", dest_rel, "--approve-grants",
+                               "--source", source], cwd=copy, capture_output=True, text=True,
+                              env=clean_env(PMOS_EVAL_SANDBOX="1"))
+        if proc.returncode != 0:
+            shutil.rmtree(copy.parent, ignore_errors=True)
+            raise PmosError(f"eval sandbox: installing '{name}' failed:\n{(proc.stdout + proc.stderr).strip()}")
+    return copy, dest_rel
+
+
+def runner_cases(v: dict, cases: list[dict]) -> list[dict]:
+    """eval@1 conformance cases in the shape scripts/framework_eval.py runs."""
+    out = []
+    for c in cases:
+        case = {k: val for k, val in c.items() if not k.startswith("_")}
+        case["_file"] = rel(c["_file"])
+        case.setdefault("owner", c["_group"] if v["core"] else v["name"])
+        out.append(case)
+    return out
+
+
+def run_conformance(v: dict, cases: list[dict], candidate: Path | None = None) -> list[dict]:
+    """Run conformance cases: core's in copies of the repo, a pack's in copies of its sandbox."""
+    fe = framework_eval_module()
+    if not cases:
+        return []
+    if v["core"]:
+        return fe.run_cases(runner_cases(v, cases), ROOT, CORE_CASES, fe.CORE_CTX)
+    copy, dest_rel = eval_sandbox(v["name"], candidate or v["dir"], v["manifest"])
+    try:
+        ctx = {"pack": v["name"], "pack_rel": dest_rel, "fx_rel": f"{dest_rel}/evals/fixtures", "sync_fixtures": False}
+        return fe.run_cases(runner_cases(v, cases), copy, None, ctx)
+    finally:
+        shutil.rmtree(copy.parent, ignore_errors=True)
+
+
+def case_record(rec: dict) -> dict:
+    """framework_eval's record -> an eval-result@1 case."""
+    return {"pack": rec["pack"], "name": rec["name"] or "?", "kind": rec.get("kind", "conformance"),
+            "file": rec.get("file") or "", "covers": rec.get("covers") or [], "failure_path": bool(rec.get("failure_path")),
+            "result": rec["result"], "first_failure": rec.get("failure"), "seconds": rec.get("seconds") or 0.0,
+            "usd": None, "owner": rec.get("owner"), "finding": rec.get("finding"), "regression": bool(rec.get("regression"))}
+
+
+def golden_prompt(spec: dict, man: dict, role: dict, case_dir: Path, case_name: str) -> tuple[list[str], list[str]]:
+    env = spec["envelope"]
+    new_cmd = (f"python scripts/pmos.py task new --mode {env['mode']} --verb {env['verb']} "
+               f"--inputs '{json.dumps(env['inputs'])}' --risk {env.get('risk', 'medium')} "
+               f"--approval {env.get('approval', 'none')}"
+               + (f" --effort {env['effort']}" if env.get("effort") else "")
+               + "".join(f" --acceptance {json.dumps(a)}" for a in env.get("acceptance", [])))
+    fixtures, gates = spec.get("fixtures", {}), spec.get("gates") or []
+    prompt = [
+        f"# pm-os eval: {man['name']} · {case_name}", "",
+        "You are running a golden task in an isolated state directory; PMOS_OUTPUTS_DIR is set, so write "
+        "artifacts to the outputs folder `task show` prints, not to outputs/.",
+        "1. Create the task:", "", "```", new_cmd, "```", "",
+        f"2. Act as the `{delegate_target(role)}` agent (agents/{role['agent']}.md) on the printed task id, "
+        "end to end.",
+        "   Where a step reads Jira or calendars, use the fixtures below instead of live systems.",
+    ]
+    if gates:
+        prompt += [
+            "   Run every child task the mode creates the same way, as the worker its `task show` names; "
+            "pmos re-queues the parent when they finish (`python scripts/pmos.py task list --state queued`).",
+            "   Where a mode pauses for the PM (a gate: a `blocked` result with an open question), answer it "
+            "with the next entry under Gate answers: `python scripts/pmos.py task move <id> queued --note "
+            "\"PM: <answer>\"`, then carry on.",
+            "   Finish when the task's final result is submitted (`in_review`); don't review or approve it.", "",
+            "## Gate answers", "", *[f"{i}. {g}" for i, g in enumerate(gates, 1)], "",
+        ]
+    else:
+        prompt += ["   Where a mode pauses for the PM (a gate), stop there.", ""]
+    if fixtures:
+        prompt += ["## Fixtures", "", "```json", json.dumps(fixtures, indent=2), "```", ""]
+    grader = [f"# Grader: {man['name']} · {case_name}", "",
+              f"Score the worker's output ({rel(case_dir / 'outputs')}/<task id>/, and the run log "
+              f"output.md) against each line. Pass = all met.",
+              'Print only JSON: {"passed": true|false, "lines": [{"line": "<the line>", "pass": true|false, '
+              '"note": "<why>"}]}', ""]
+    grader += [f"- [ ] {e}" for e in spec.get("expect", [])]
+    return prompt, grader
+
+
+def run_golden(v: dict, cases: list[dict], state: dict, log) -> list[dict]:
+    """Render each golden case to build/evals/<pack>__<mode or workflows>/<case>/; with eval.command set, run
+    it in isolated state/traces/outputs folders, grade it with eval.grader_command, and sum its usd."""
     eval_cfg = config().get("eval") or {}
     command, grader_command = eval_cfg.get("command") or "", eval_cfg.get("grader_command") or ""
+    max_usd = eval_cfg.get("max_usd")
     out_root = ROOT / "build" / "evals"
-    rendered = ran = 0
-    scores = []
-    for m in modes:
-        man = m["manifest"]
-        for case in sorted((m["dir"] / man.get("evals", "evals/")).glob("*.json")):
-            spec = load_json(case)
-            case_dir = out_root / man["name"].replace("/", "__") / case.stem
-            shutil.rmtree(case_dir, ignore_errors=True)   # every run starts from empty state, traces, outputs
-            case_dir.mkdir(parents=True, exist_ok=True)
-            rendered += 1
-            env = spec["envelope"]
-            new_cmd = (f"python scripts/pmos.py task new --mode {env['mode']} --verb {env['verb']} "
-                       f"--inputs '{json.dumps(env['inputs'])}' --risk {env.get('risk', 'medium')} "
-                       f"--approval {env.get('approval', 'none')}"
-                       + "".join(f" --acceptance {json.dumps(a)}" for a in env.get("acceptance", [])))
-            fixtures, gates = spec.get("fixtures", {}), spec.get("gates") or []
-            role = resolve_role(man["default_role"], m["pack"])
-            prompt = [
-                f"# pm-os eval: {man['name']} · {spec.get('name', case.stem)}", "",
-                "You are running a golden task in an isolated state directory; PMOS_OUTPUTS_DIR is set, so write "
-                "artifacts to the outputs folder `task show` prints, not to outputs/.",
-                "1. Create the task:", "", "```", new_cmd, "```", "",
-                f"2. Act as the `{delegate_target(role)}` agent (agents/{role['agent']}.md) on the printed task id, "
-                "end to end.",
-                "   Where a step reads Jira or calendars, use the fixtures below instead of live systems.",
-            ]
-            if gates:
-                prompt += [
-                    "   Run every child task the mode creates the same way, as the worker its `task show` names; "
-                    "pmos re-queues the parent when they finish (`python scripts/pmos.py task list --state queued`).",
-                    "   Where a mode pauses for the PM (a gate: a `blocked` result with an open question), answer it "
-                    "with the next entry under Gate answers: `python scripts/pmos.py task move <id> queued --note "
-                    "\"PM: <answer>\"`, then carry on.",
-                    "   Finish when the task's final result is submitted (`in_review`); don't review or approve it.", "",
-                    "## Gate answers", "", *[f"{i}. {g}" for i, g in enumerate(gates, 1)], "",
-                ]
-            else:
-                prompt += ["   Where a mode pauses for the PM (a gate), stop there.", ""]
-            if fixtures:
-                prompt += ["## Fixtures", "", "```json", json.dumps(fixtures, indent=2), "```", ""]
-            (case_dir / "prompt.md").write_text("\n".join(prompt), encoding="utf-8")
-            grader = [f"# Grader: {man['name']} · {spec.get('name', case.stem)}", "",
-                      f"Score the worker's output ({rel(case_dir / 'outputs')}/<task id>/, and the run log "
-                      f"output.md) against each line. Pass = all met.",
-                      'Print only JSON: {"passed": true|false, "lines": [{"line": "<the line>", "pass": true|false, '
-                      '"note": "<why>"}]}', ""]
-            grader += [f"- [ ] {e}" for e in spec.get("expect", [])]
-            grader += ["", "Principles and rubric:"]
-            grader += [f"- [ ] [{g}] {pid}: {pr['meta']['check']}" for g, pid, pr in principles_for(m, role)]
-            grader += [f"- [ ] {r}" for r in man.get("rubric", [])]
-            (case_dir / "grader.md").write_text("\n".join(grader) + "\n", encoding="utf-8")
-            if not command:
-                continue
-            env_vars = {**os.environ,
-                        "PMOS_STATE_DIR": str(case_dir / "state"),
-                        "PMOS_TRACES_DIR": str(case_dir / "traces"),
-                        "PMOS_OUTPUTS_DIR": str(case_dir / "outputs"),
-                        "PMOS_TASK_SEQ_START": str(rendered * 100 + 1)}   # task ids distinct across cases
-            cmd = command.replace("{prompt_file}", str(case_dir / "prompt.md"))
-            proc = subprocess.run(cmd, shell=True, cwd=ROOT, env=env_vars,
-                                  capture_output=True, text=True, timeout=1800)
-            (case_dir / "output.md").write_text(proc.stdout + ("\n\n[stderr]\n" + proc.stderr if proc.stderr else ""),
-                                                encoding="utf-8")
-            ran += 1
-            line = f"ran {man['name']}/{case.stem}: exit {proc.returncode}"
-            if grader_command:
-                score = grade_case(grader_command, case_dir, env_vars)
-                scores.append({"case": f"{man['name']}/{case.stem}", "passed": score["passed"]})
-                line += f", graded {'pass' if score['passed'] else 'FAIL'}"
-            print(line)
-    if scores:
-        passed = sum(1 for sc in scores if sc["passed"])
-        write_json(out_root / "summary.json", {"cases": len(scores), "passed": passed,
-                                               "pass_rate": round(passed / len(scores), 3), "results": scores})
-        print(f"graded {len(scores)} case(s): {passed} passed ({passed / len(scores):.0%}) -> "
-              f"{rel(out_root / 'summary.json')}")
-    print(f"{rendered} case(s) rendered to {rel(out_root)}" + (f", {ran} run" if command else
-          " (set eval.command in pm-os.yaml to run them)"))
-    return 0
+    recs = []
+    for c in cases:
+        started = time.time()
+        spec = {k: val for k, val in c.items() if not k.startswith("_")}
+        f = c["_file"]
+        rec = {"pack": v["name"], "name": spec.get("name") or f.stem, "kind": "golden", "file": rel(f),
+               "covers": spec.get("covers") or [], "failure_path": bool(spec.get("failure")), "result": "skipped",
+               "first_failure": None, "seconds": 0.0, "usd": None, "owner": v["name"], "finding": None,
+               "regression": False}
+        try:
+            mode = resolve_mode(spec["envelope"]["mode"], check_visibility=False)
+        except PmosError as e:
+            rec.update(result="error", first_failure=str(e))
+            recs.append(rec)
+            continue
+        man = mode["manifest"]
+        folder = man["name"].replace("/", "__") if c["_where"] == "golden" else f"{v['name']}__workflows"
+        case_dir = out_root / folder / f.stem
+        shutil.rmtree(case_dir, ignore_errors=True)   # every run starts from empty state, traces, outputs
+        case_dir.mkdir(parents=True, exist_ok=True)
+        state["rendered"] += 1
+        role = resolve_role(man["default_role"], mode["pack"])
+        prompt, grader = golden_prompt(spec, man, role, case_dir, spec.get("name", f.stem))
+        grader += ["", "Principles and rubric:"]
+        grader += [f"- [ ] [{g}] {pid}: {pr['meta']['check']}" for g, pid, pr in principles_for(mode, role)]
+        grader += [f"- [ ] {r}" for r in man.get("rubric", [])]
+        (case_dir / "prompt.md").write_text("\n".join(prompt), encoding="utf-8")
+        (case_dir / "grader.md").write_text("\n".join(grader) + "\n", encoding="utf-8")
+        if not command:
+            rec["first_failure"] = "rendered only: set eval.command in pm-os.yaml to run it"
+            recs.append(rec)
+            continue
+        if max_usd is not None and state["usd"] >= float(max_usd):
+            rec["first_failure"] = f"not run: this run's golden cases already spent ${state['usd']:g} (eval.max_usd ${max_usd:g})"
+            recs.append(rec)
+            continue
+        env_vars = {**os.environ,
+                    "PMOS_STATE_DIR": str(case_dir / "state"),
+                    "PMOS_TRACES_DIR": str(case_dir / "traces"),
+                    "PMOS_OUTPUTS_DIR": str(case_dir / "outputs"),
+                    "PMOS_TASK_SEQ_START": str(state["rendered"] * 100 + 1)}   # task ids distinct across cases
+        cmd = command.replace("{prompt_file}", str(case_dir / "prompt.md"))
+        proc = subprocess.run(cmd, shell=True, cwd=ROOT, env=env_vars, capture_output=True, text=True, timeout=1800)
+        (case_dir / "output.md").write_text(proc.stdout + ("\n\n[stderr]\n" + proc.stderr if proc.stderr else ""),
+                                            encoding="utf-8")
+        usd = 0.0
+        for tf in (case_dir / "state" / "tasks").glob("T-*.json"):
+            try:
+                usd += usd_spent(load_json(tf))
+            except (json.JSONDecodeError, ValueError, TypeError):
+                pass
+        state["usd"] += usd
+        rec["usd"] = round(usd, 4)
+        line = f"ran {man['name']}/{f.stem}: exit {proc.returncode}"
+        if grader_command:
+            score = grade_case(grader_command, case_dir, env_vars)
+            state["scores"].append({"case": f"{man['name']}/{f.stem}", "passed": score["passed"]})
+            failing = [ln.get("line") for ln in score.get("lines") or [] if isinstance(ln, dict) and not ln.get("pass")]
+            rec.update(result="pass" if score["passed"] else "fail",
+                       first_failure=None if score["passed"] else (score.get("error") or (failing or ["grader: failed"])[0]))
+            line += f", graded {'pass' if score['passed'] else 'FAIL'}"
+        else:
+            rec.update(result="pass" if proc.returncode == 0 else "fail",
+                       first_failure=None if proc.returncode == 0 else f"eval.command exited {proc.returncode}")
+        rec["seconds"] = round(time.time() - started, 2)
+        log(line)
+        recs.append(rec)
+    return recs
+
+
+def counts(recs: list[dict]) -> dict:
+    out = {"cases": len(recs), "passed": sum(r["result"] == "pass" for r in recs),
+           "failed": sum(r["result"] in ("fail", "error") for r in recs),
+           "skipped": sum(r["result"] == "skipped" for r in recs),
+           "seconds": round(sum(r["seconds"] for r in recs), 2),
+           "usd": round(sum(r["usd"] or 0 for r in recs), 4)}
+    return out
+
+
+def eval_summary_line(pack: str, recs: list[dict]) -> str:
+    """`<pack>: P/N passed[, F failed][, S skipped] (conformance a/b, golden c/d)` over the cases that ran."""
+    if not recs:
+        return f"{pack}: no cases"
+    c = counts(recs)
+    ran = c["cases"] - c["skipped"]
+    kinds = []
+    for k in ("conformance", "golden"):
+        kc = counts([r for r in recs if r["kind"] == k])
+        if kc["cases"] - kc["skipped"]:
+            kinds.append(f"{k} {kc['passed']}/{kc['cases'] - kc['skipped']}")
+    if not ran:
+        return f"{pack}: {c['skipped']} golden case(s) rendered, not run (set eval.command to run them)"
+    return (f"{pack}: {c['passed']}/{ran} passed" + (f", {c['failed']} failed" if c["failed"] else "")
+            + (f", {c['skipped']} skipped" if c["skipped"] else "") + f" ({', '.join(kinds)})"
+            + (f", ${c['usd']:g}" if c["usd"] else ""))
+
+
+def eval_table(recs: list[dict]) -> str:
+    rows = [("case", "kind", "result", "covers", "first failing expectation")]
+    for r in recs:
+        res = r["result"].upper() + (" (failure path)" if r["failure_path"] and r["result"] == "pass" else "")
+        rows.append((r["name"], r["kind"], res, ", ".join(r["covers"])[:48], (r["first_failure"] or "")[:100]))
+    widths = [min(max(len(str(row[i])) for row in rows), cap) for i, cap in enumerate((40, 11, 22, 48, 100))]
+    lines = []
+    for j, row in enumerate(rows):
+        lines.append("  ".join(str(cell)[:w].ljust(w) for cell, w in zip(row, widths)).rstrip())
+        if j == 0:
+            lines.append("  ".join("-" * w for w in widths))
+    return "\n".join(lines)
+
+
+def eval_targets(args) -> list[tuple[str, str | None]]:
+    """[(pack, mode or None)] for `pmos eval`: --all or no target = core + every installed pack."""
+    if args.all or not args.targets:
+        return [(CORE, None)] + [(e["name"], None) for e in install_list() if e["name"] in packs()]
+    out = []
+    for t in args.targets:
+        if t in packs():
+            out.append((t, None))
+        elif "/" in t and t.split("/")[0] in packs() and any(m["manifest"].get("name") == t for m in discover_modes()):
+            out.append((t.split("/")[0], t))
+        else:
+            raise PmosError(f"'{t}' is not core, an installed pack or one of its modes (`pmos pack list`)")
+    return out
+
+
+def cmd_eval_coverage(args) -> int:
+    views = []
+    for t in args.targets or []:
+        if (Path(t) / "pack.yaml").exists():
+            views.append(pack_view(d=Path(t)))
+        elif t in packs():
+            views.append(pack_view(t))
+        else:
+            raise PmosError(f"'{t}' is not core, an installed pack or a pack folder")
+    if not views:
+        views = [pack_view(n) for n, _ in eval_targets(argparse.Namespace(all=True, targets=[]))]
+    total = 0
+    for v in views:
+        cases, errors = load_view_cases(v)
+        rows, gaps = coverage(v, cases)
+        print(f"## {v['name']} ({rel(v['dir'])})")
+        for ref, need, names in rows:
+            shown = ", ".join(names[:4]) + (f" (+{len(names) - 4})" if len(names) > 4 else "")
+            print(f"- {ref}  [{need}]  {shown or 'NO CASE'}")
+        problems = errors + gaps
+        total += len(problems)
+        if problems:
+            print(f"{v['name']} gaps: {len(problems)}")
+            print("\n".join(f"  - {p}" for p in problems))
+        else:
+            print(f"{v['name']}: no gaps")
+        print()
+    print("coverage: no gaps" if not total else f"coverage: {total} gap(s) or case error(s)")
+    return 1 if total else 0
+
+
+def cmd_eval(args) -> int:
+    if args.framework:  # alias of `pmos eval core --kind conformance`, with review filters and the legacy table
+        return framework_eval_module().run(args.targets, case=args.case, as_json=args.json)
+    if args.coverage:
+        return cmd_eval_coverage(args)
+    kind = args.kind or "all"
+    log = (lambda m: print(m, file=sys.stderr)) if args.json else print
+    targets = eval_targets(args)
+    plan = []   # (view, conformance cases, golden cases)
+    for pack, mode in targets:
+        v = pack_view(pack)
+        cases, errors = load_view_cases(v)
+        if errors:
+            raise PmosError(f"{pack}: fix these eval cases first:\n  - " + "\n  - ".join(errors))
+        if args.case:
+            cases = [c for c in cases if fnmatch.fnmatch(str(c.get("name") or ""), args.case)]
+        conf = [c for c in cases if c.get("kind") == "conformance"]
+        gold = [c for c in cases if c.get("kind") == "golden"]
+        if mode:
+            local = mode.split("/", 1)[1]
+            conf = [c for c in conf if any(r == f"mode:{mode}" or r.startswith(f"script:modes/{local}/")
+                                           for r in c.get("covers") or [])]
+            gold = [c for c in gold if c["_mode"] == mode]
+        plan.append((v, conf if kind in ("conformance", "all") else [], gold if kind in ("golden", "all") else []))
+    results: dict[str, list[dict]] = {v["name"]: [] for v, _, _ in plan}
+    for v, conf, _ in plan:                      # conformance first: cheap, and no model
+        results[v["name"]] += [case_record(r) for r in run_conformance(v, conf)]
+    state = {"rendered": 0, "usd": 0.0, "scores": []}
+    for v, _, gold in plan:
+        results[v["name"]] += run_golden(v, gold, state, log)
+    out_root = ROOT / "build" / "evals"
+    if state["scores"]:
+        passed = sum(1 for sc in state["scores"] if sc["passed"])
+        write_json(out_root / "summary.json", {"cases": len(state["scores"]), "passed": passed,
+                                               "pass_rate": round(passed / len(state["scores"]), 3),
+                                               "results": state["scores"]})
+    all_recs = [r for recs in results.values() for r in recs]
+
+    def with_kinds(recs):
+        c = counts(recs)
+        c["kinds"] = {k: counts([r for r in recs if r["kind"] == k]) for k in ("conformance", "golden")
+                      if any(r["kind"] == k for r in recs)}
+        return c
+    report = {"contract": "eval-result@1", "generated_at": now(), "runner": "pmos", "kind": kind,
+              "targets": [m or p for p, m in targets], "packs": {p: with_kinds(r) for p, r in results.items()},
+              "totals": with_kinds(all_recs), "cases": all_recs}
+    validate_against(report, "eval-result", "eval result")
+    write_json(out_root / "results.json", report)
+    if args.json:
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+    else:
+        for pack, recs in results.items():
+            if recs:
+                print(f"\n== {pack} ==")
+                print(eval_table(recs))
+        print()
+        for pack, recs in results.items():
+            print(eval_summary_line(pack, recs))
+        t = report["totals"]
+        print(f"total: {t['passed']} passed, {t['failed']} failed, {t['skipped']} skipped"
+              + (f", ${t['usd']:g} spent on golden runs" if t["usd"] else "") + f" -> {rel(out_root / 'results.json')}")
+        if t["skipped"] and not (config().get("eval") or {}).get("command"):
+            print(f"golden cases rendered to {rel(out_root)}; set eval.command in pm-os.yaml to run them "
+                  f"(budget: eval.max_usd ${(config().get('eval') or {}).get('max_usd', 0):g} per run)")
+    return 1 if report["totals"]["failed"] else 0
+
+
+def admission_evals(name: str, d: Path, man: dict, with_golden: bool) -> list[str]:
+    """Run a candidate pack's conformance cases (and, with --with-golden, its golden cases) in a sandbox.
+    Prints the counts; returns the failures (empty = admitted)."""
+    v = pack_view(d=d)
+    cases, _ = load_view_cases(v)
+    conf = [c for c in cases if c.get("kind") == "conformance"]
+    failures = []
+    if conf:
+        recs = run_conformance(v, conf, candidate=d)
+        bad = [r for r in recs if r["result"] not in ("pass", "skipped")]
+        held = ["core"] + ([] if name == config().get("cos_pack") else ["the CoS pack"]) + list(man.get("depends") or [])
+        print(f"conformance: {len(recs) - len(bad)}/{len(recs)} case(s) passed in a sandbox ({', '.join(held)} "
+              f"and {name})")
+        failures += [f"conformance case {r['name']} failed: {r['failure']}" for r in bad]
+    if with_golden and [c for c in cases if c.get("kind") == "golden"]:
+        copy, _rel = eval_sandbox(name, d, man)
+        try:
+            proc = subprocess.run([sys.executable, "scripts/pmos.py", "eval", name, "--kind", "golden", "--json"],
+                                  cwd=copy, capture_output=True, text=True, env=clean_env(), timeout=7200)
+            try:
+                rep = json.loads(proc.stdout)
+            except json.JSONDecodeError:
+                raise PmosError(f"golden run in the sandbox failed:\n{proc.stdout[-1500:]}{proc.stderr[-1500:]}")
+        finally:
+            shutil.rmtree(copy.parent, ignore_errors=True)
+        t = rep["totals"]
+        print(f"golden: {t['passed']}/{t['cases']} case(s) passed in the sandbox (eval.command)"
+              + (f", ${t['usd']:g}" if t.get("usd") else ""))
+        failures += [f"golden case {c['name']} {c['result']}: {c['first_failure']}" for c in rep["cases"]
+                     if c["result"] != "pass"]
+    return failures
 
 
 def grade_case(grader_command: str, case_dir: Path, env_vars: dict) -> dict:
@@ -2248,6 +2814,11 @@ def build_parser() -> argparse.ArgumentParser:
         fn=cmd_validate)
     sub.add_parser("board", help="regenerate state/status.md").set_defaults(fn=cmd_board)
 
+    pth = sub.add_parser("path", help="print a configured path (outputs, state, traces, context, ...), with the "
+                                      "PMOS_*_DIR overrides applied; for pack scripts")
+    pth.add_argument("name", help="a key of `paths` in pm-os.yaml, e.g. outputs")
+    pth.set_defaults(fn=cmd_path)
+
     c = sub.add_parser("catalog", help="write state/catalog.md and AGENTS.md")
     c.add_argument("--pack", help="print this pack's modes (with internal ones) and what each accepts")
     c.set_defaults(fn=cmd_catalog)
@@ -2257,8 +2828,8 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--by", default="cos", help="who decided (default: cos)")
     d.set_defaults(fn=cmd_decide)
 
-    st = sub.add_parser("stats", help="per-mode cost, run time, first-pass review rate and revise-after-approval "
-                                      "rate, from the traces")
+    st = sub.add_parser("stats", help="cost, run time, first-pass review rate and revise-after-approval rate, per "
+                                      "mode and per effort level, from the traces")
     st.add_argument("--mode", help="only this mode (pack/mode)")
     st.add_argument("--json", action="store_true", help="print JSON instead of a table")
     st.set_defaults(fn=cmd_stats)
@@ -2267,13 +2838,18 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("adapter", choices=["agents-md", "claude-code", "generic"], help="which harness to generate for")
     r.set_defaults(fn=cmd_render)
 
-    e = sub.add_parser("eval", help="render (and optionally run) golden tasks, or the framework evals")
-    e.add_argument("targets", nargs="*", help="pack names or pack/mode names (with --framework: review names); "
-                                              "empty = all")
+    e = sub.add_parser("eval", help="run eval@1 cases: conformance (code) then golden (model) per pack")
+    e.add_argument("targets", nargs="*", help="core, pack names or pack/mode names (with --framework: core's groups; "
+                                              "with --coverage: also pack folders); empty = --all")
+    e.add_argument("--all", action="store_true", help="core and every installed pack")
+    e.add_argument("--kind", choices=["conformance", "golden", "all"],
+                   help="which cases to run (default: all; golden cases run only when eval.command is set)")
+    e.add_argument("--json", action="store_true", help="print eval-result@1 JSON (also written to build/evals/results.json)")
+    e.add_argument("--coverage", action="store_true",
+                   help="list each pack's features and the cases covering them; exit 1 on any gap")
+    e.add_argument("--case", help="only cases whose name matches this glob")
     e.add_argument("--framework", action="store_true",
-                   help="run the framework conformance evals in evals/framework/ instead of mode golden tasks")
-    e.add_argument("--case", help="with --framework: only cases whose name matches this glob")
-    e.add_argument("--json", action="store_true", help="with --framework: print the JSON summary")
+                   help="alias for `eval core --kind conformance`: core's cases with the framework table")
     e.set_defaults(fn=cmd_eval)
 
     pk = sub.add_parser("pack", help="install, upgrade, list or remove packs").add_subparsers(
@@ -2288,6 +2864,8 @@ def build_parser() -> argparse.ArgumentParser:
     pa.add_argument("--upgrade", action="store_true",
                     help="replace an installed pack; its version must be higher than the installed one")
     pa.add_argument("--dry-run", action="store_true", help="run admission and show grants without installing")
+    pa.add_argument("--with-golden", action="store_true",
+                    help="also run the pack's golden cases in the sandbox, through eval.command (costs money)")
     pa.add_argument("--force", action="store_true",
                     help="with --upgrade: install even if packs that depend on this one would fail their checks")
     pa.set_defaults(fn=cmd_pack_add)
@@ -2314,6 +2892,10 @@ def build_parser() -> argparse.ArgumentParser:
     n.add_argument("--workflow", help="which of the mode's named workflows to run, for modes that declare "
                                          "several (recorded in the envelope for the durable runtime)")
     n.add_argument("--risk", choices=["low", "medium", "high"], help="default: the mode's risk")
+    n.add_argument("--effort", choices=EFFORT_LEVELS,
+                   help="how hard the model reasons; default: mode > role > agent > defaults.effort, risk-scaled")
+    n.add_argument("--dispatch", choices=DISPATCH_VALUES,
+                   help="how the CoS runs the subagent; default: mode > role > agent > defaults.dispatch")
     n.add_argument("--approval", choices=["none", "before_publish", "before_execute"],
                    help="when the PM must approve; default: the mode's approval")
     n.add_argument("--acceptance", action="append", help="an acceptance line the result must meet (repeatable)")

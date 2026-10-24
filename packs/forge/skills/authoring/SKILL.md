@@ -39,12 +39,36 @@ needs a `description`; `name` is optional (`pmos render` generates it, and if pr
   `pmos task move <id> waiting`; pmos re-queues the parent when they finish.
 - Every external change is an `action` (system, op, idempotency_key, payload, preview), on a system
   the mode's `grants` hold at `draft` or `write`. Never write.
-- At least one golden task in `evals/` with `envelope`, optional `fixtures`, and `expect` lines.
+- Optional `effort` (`low | medium | high | max`: how hard the model reasons; tier picks the model)
+  and `dispatch` (`background | foreground`); leave them out unless the mode really differs from its
+  role. No built-in mode sets `dispatch: foreground`.
 - Make it reachable: export it in `pack.yaml`, or list it in another mode's `calls`.
+
+## Evals (eval@1)
+
+Every case is one file in the eval@1 format (`contracts/eval.schema.json`, described in
+`evals/framework/README.md`) with `kind` and `covers: [...]`, naming the pack's own features:
+`mode:<pack>/<mode>`, `script:<path in the pack>`, `action:<system>.<op>`, `router:<pack>/<mode>`,
+optionally `principle:<pack>:<name>`. The coverage rule, enforced at admission and by `validate`:
+
+| Feature | Needs | Where |
+| --- | --- | --- |
+| an exported mode | a golden case, and a failure-path case (`failure: true`, golden or conformance) | `modes/<mode>/evals/*.json` (`kind: golden`) |
+| a script in `scripts/` or `modes/*/scripts/` | a conformance case | `evals/conformance/*.yaml` (`kind: conformance`) |
+| an `actions:` handler | a conformance case | `evals/conformance/` |
+| the router | a workflow case: a golden case that runs modes together | `evals/workflows/*.json` |
+
+Keep a pack's evals self-contained: fixtures in `evals/fixtures/`, and nothing beyond core and the
+packs in `depends` (admission runs the conformance cases in a sandbox that holds only those). In a
+conformance step, `$PACK` is the pack's folder, `$FX` its `evals/fixtures/`, and `$CORE_BIN` core's
+helpers (`mkresult.py`, `advance.py`, `yset.py`). `forge.py stage-mode` writes a golden and a failure
+case; `--script NAME` adds the script with its conformance case, and `--router` the workflow case.
+Check with `pmos eval --coverage <staged pack>` (forge.py lint runs it) and
+`pmos eval <pack> --kind conformance`.
 
 ## A pack
 
-`pack.yaml`: `name`, `version`, `contract: pack@1`, `summary`, `requires: {core: ^0.2}`,
+`pack.yaml`: `name`, `version`, `contract: pack@1`, `summary`, `requires: {core: ^0.3}`,
 `depends`, optional `router` (an exported mode for goal-level asks), and `exports` for modes, roles,
 skills and principles. Unexported items are internal to the pack. Optional: `actions` (handlers
 `pmos action run` calls for approved actions, `<system>.<op>: <script in the pack> [args]`) and

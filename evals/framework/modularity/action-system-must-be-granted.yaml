@@ -1,4 +1,6 @@
+kind: conformance
 name: action-system-must-be-granted
+covers: [script:scripts/pmos.py]
 finding: modularity#2
 owner: modularity
 severity: high

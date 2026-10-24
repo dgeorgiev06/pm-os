@@ -1,4 +1,6 @@
+kind: conformance
 name: unrunnable-actions-flagged
+covers: [script:scripts/pmos.py]
 finding: composability#6
 owner: modularity
 severity: medium

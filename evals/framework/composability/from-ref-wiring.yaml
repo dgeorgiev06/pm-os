@@ -1,4 +1,6 @@
+kind: conformance
 name: from-ref-wiring
+covers: [script:scripts/pmos.py]
 finding: composability#5
 owner: composability
 severity: high

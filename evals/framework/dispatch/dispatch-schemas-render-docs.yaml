@@ -1,0 +1,47 @@
+kind: conformance
+name: dispatch-schemas-render-docs
+covers: [script:scripts/pmos.py]
+finding: request:dispatch
+severity: medium
+failure: true
+desc: >-
+  The roles, mode and agent schemas accept `dispatch`; no built-in mode, role or agent sets
+  foreground. `render generic` writes dispatch per agent and role; `render claude-code` writes a
+  frontmatter field only when the adapter declares supports_background, and otherwise says the
+  setting travels in `task show` and COS.md. COS.md tells the CoS to follow the `run:` value and
+  never wait on a background run.
+steps:
+  - run: 'true'
+    expect:
+      files:
+        contains:
+          contracts/roles.schema.json: '"dispatch"'
+          contracts/mode.schema.json: '"dispatch"'
+          contracts/agent.schema.json: ['"dispatch"', '"foreground"']
+          pm-os.yaml: ['(?m)^\s+dispatch: background', '(?m)^\s+supports_background: false']
+  - run: '! grep -rn "dispatch: *foreground" packs/*/modes/*/mode.yaml packs/*/roles.yaml roles.yaml agents packs/*/agents'
+  - name: an unknown value is refused
+    run: $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml dispatch later --str && $PMOS validate
+    expect: {exit: nonzero, output: ['packs/pm/modes/prd/mode\.yaml', 'dispatch']}
+  - run: $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml dispatch background --str && $PMOS render generic
+    expect:
+      files:
+        contains:
+          build/generic/models.json: ['"worker-mid": \{[^}]*"dispatch": "background"', '"pm/doc-writer": \{[^}]*"dispatch": "background"']
+  - run: $PMOS render claude-code
+    expect:
+      stdout: '(?i)dispatch.*task show'
+      files: {not_contains: {.claude/agents/worker-mid.md: '(?m)^background:'}}
+  - name: written only when the adapter says the harness has such a field
+    run: |
+      $PY $FX/bin/yset.py pm-os.yaml adapters.claude-code.supports_background true &&
+      $PY $FX/bin/yset.py pm-os.yaml adapters.claude-code.background_field background --str && $PMOS render claude-code
+    expect: {files: {contains: {.claude/agents/worker-mid.md: '(?m)^background: true$'}}}
+  - name: COS.md follows the run value for every delegation
+    run: 'true'
+    expect:
+      files:
+        contains:
+          packs/cos/COS.md: ['`run:`', '--dispatch foreground', '(?i)never wait', '(?i)background', '(?i)reviewer.*operator|operator.*reviewer']
+          README.md: '(?i)dispatch'
+          docs/architecture.md: '(?i)async cos[^\n]*dispatch'

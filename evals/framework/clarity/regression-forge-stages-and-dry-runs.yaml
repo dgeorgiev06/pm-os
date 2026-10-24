@@ -1,4 +1,6 @@
+kind: conformance
 name: regression-forge-stages-and-dry-runs
+covers: [script:scripts/pmos.py]
 finding: clarity#good
 owner: clarity
 severity: medium

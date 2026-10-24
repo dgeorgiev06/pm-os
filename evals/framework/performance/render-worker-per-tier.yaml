@@ -1,4 +1,6 @@
+kind: conformance
 name: render-worker-per-tier
+covers: [script:scripts/pmos.py]
 finding: performance#1
 owner: performance
 severity: high

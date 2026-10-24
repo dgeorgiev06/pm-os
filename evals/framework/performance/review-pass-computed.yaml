@@ -1,4 +1,6 @@
+kind: conformance
 name: review-pass-computed
+covers: [script:scripts/pmos.py]
 finding: performance#5
 owner: performance
 severity: medium

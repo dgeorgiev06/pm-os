@@ -3,7 +3,7 @@
 # and after its grants were approved with --approve-grants.
 packs:
 - name: pm
-  version: 0.2.1
+  version: 0.2.2
   path: packs/pm
   source: local
   enabled: true
@@ -11,21 +11,21 @@ packs:
     docs: draft
     jira: draft
     roadmap: draft
-  installed_at: '2026-10-24T21:57:11+00:00'
+  installed_at: '2026-10-24T22:45:33+00:00'
 - name: cos
-  version: 0.2.1
+  version: 0.2.2
   path: packs/cos
   source: local
   enabled: true
   grants_approved:
     calendar: read
     todos: draft
-  installed_at: '2026-10-24T22:00:32+00:00'
+  installed_at: '2026-10-24T22:45:36+00:00'
 - name: forge
-  version: 0.2.1
+  version: 0.2.2
   path: packs/forge
   source: local
   enabled: true
   grants_approved:
     repo: draft
-  installed_at: '2026-10-24T22:00:32+00:00'
+  installed_at: '2026-10-24T22:45:41+00:00'
