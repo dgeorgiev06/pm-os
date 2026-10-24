@@ -1,0 +1,5 @@
+{"ts": "2026-10-24T21:57:11+00:00", "pack": "pm", "version": "0.2.1", "grants": {"docs": "draft", "jira": "draft", "roadmap": "draft"}}
+{"ts": "2026-10-24T21:57:12+00:00", "pack": "cos", "version": "0.2.0", "grants": {"calendar": "read", "todos": "draft"}}
+{"ts": "2026-10-24T21:57:12+00:00", "pack": "forge", "version": "0.2.0", "grants": {"repo": "draft"}}
+{"ts": "2026-10-24T22:00:32+00:00", "pack": "cos", "version": "0.2.1", "grants": {"calendar": "read", "todos": "draft"}}
+{"ts": "2026-10-24T22:00:32+00:00", "pack": "forge", "version": "0.2.1", "grants": {"repo": "draft"}}

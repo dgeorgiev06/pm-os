@@ -1,5 +1,5 @@
 name: pm/jira-tickets
-version: 0.2.0
+version: 0.2.1
 contract: task@1
 author: dima
 summary: Draft Jira tickets from a plan as dry-run actions, deduplicated against existing tickets
@@ -14,7 +14,7 @@ returns:
 skill: SKILL.md
 default_role: jira-curator
 calls: []
-grants: { jira: read }
+grants: { jira: draft }    # proposes create_issue / update_issue actions; only the Operator writes
 approval: before_execute
 risk: medium
 principles: [testable-requirements]

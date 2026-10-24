@@ -8,15 +8,18 @@ framework the same way. Later, the same functions become steps in a durable work
   pmos pack list                        installed packs
   pmos pack add PATH [--source S] [--approve-grants] [--upgrade] [--dry-run]
   pmos pack remove NAME
+  pmos pack path NAME                   an installed pack's directory (for pack scripts)
   pmos catalog [--pack NAME]            write state/catalog.md + AGENTS.md; --pack prints one pack's modes
   pmos role show PACK/ROLE              a role's persona, skills, principles, context, rubric
-  pmos task new --mode PACK/MODE --verb V --inputs JSON [--instructions TEXT] [--todo td-N] [...]
+  pmos task new --mode PACK/MODE --verb V --inputs JSON [--instructions TEXT] [--origin PACK:REF] [...]
   pmos task show ID [--for-review] [--json]
   pmos task move ID STATE [--note TEXT] [--by WHO]
   pmos task result ID RESULT.json
   pmos task review ID --passed true|false [--score N] [--note TEXT ...]
   pmos task approve ID --by WHO [--note TEXT]
   pmos task list [--state STATE] [--all]
+  pmos task state ID [--json]           a task's state (full state JSON with --json), for scripts
+  pmos action run ID [--key K]          run an approved task's actions through its pack's handlers
   pmos board                            regenerate state/status.md
   pmos decide "TEXT" [--by WHO]         append to context/decisions.log
   pmos render agents-md|claude-code|generic
@@ -35,6 +38,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -52,6 +56,8 @@ TERMINAL = {"done", "failed"}
 OPEN_STATES = ["queued", "running", "waiting", "in_review", "revise",
                "awaiting_approval", "approved", "blocked"]
 GRANT_LEVEL = {"read": 1, "draft": 2, "write": 3}
+APPROVAL_LEVEL = {"none": 0, "before_publish": 1, "before_execute": 2}   # a mode's approval is a floor
+RISK_LEVEL = {"low": 0, "medium": 1, "high": 2}                        # so is its risk
 
 # The task state machine. pmos is the only writer of task state.
 TRANSITIONS: dict[str, set[str]] = {
@@ -433,6 +439,12 @@ def check_pack(name: str, check_grants: bool = True) -> tuple[list[str], list[st
                 errors.append(f"{where_pack}: depends on {dep}@{spec}, installed is {packs()[dep]['manifest']['version']}")
         if man.get("cos") and not (p["dir"] / man["cos"]).exists():
             errors.append(f"{where_pack}: cos file {man['cos']} missing")
+        if man.get("cos_section") and not (p["dir"] / man["cos_section"]).exists():
+            errors.append(f"{where_pack}: cos_section file {man['cos_section']} missing")
+        for kind, handler in (man.get("actions") or {}).items():
+            script = (shlex.split(handler) or [""])[0]
+            if not script or not (p["dir"] / script).is_file():
+                errors.append(f"{where_pack}: actions '{kind}': handler script '{script}' not found in the pack")
         installed_version = (p.get("entry") or {}).get("version")
         if check_grants and installed_version and installed_version != man.get("version"):
             warnings.append(f"{where_pack}: version is {man.get('version')} but packs.yaml recorded "
@@ -532,6 +544,8 @@ def check_pack(name: str, check_grants: bool = True) -> tuple[list[str], list[st
                 if err:
                     errors.append(f"{where}: {err}")
         for call in mm.get("calls", []):
+            if call == "*":     # any mode visible to this pack; checked when a child is created
+                continue
             try:
                 resolve_mode(call, from_pack=name)
             except PmosError as e:
@@ -577,6 +591,8 @@ def validate_all() -> tuple[list[str], list[str]]:
     for rn, refs in names.items():
         if len(refs) > 1:
             errors.append(f"rendered skill name '{rn}' is used by {refs}")
+    errors += grant_record_errors()
+    warnings += missing_pack_references()
     cos = config().get("cos_pack")
     if cos not in packs():
         errors.append(f"pm-os.yaml: cos_pack '{cos}' is not installed")
@@ -587,6 +603,82 @@ def validate_all() -> tuple[list[str], list[str]]:
         if not agents_md.exists() or agents_md.read_text(encoding="utf-8") != build_agents_md():
             warnings.append("AGENTS.md is out of date; run `pmos catalog` (or `pmos render agents-md`)")
     return errors, warnings
+
+
+def grant_approvals_file() -> Path:
+    """Append-only record of every grant approval `pack add` wrote; packs.yaml must agree with it."""
+    return ROOT / config()["paths"]["state"] / "grant-approvals.jsonl"
+
+
+def record_grant_approval(name: str, version: str, grants: dict) -> None:
+    f = grant_approvals_file()
+    f.parent.mkdir(parents=True, exist_ok=True)
+    with open(f, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"ts": now(), "pack": name, "version": version, "grants": grants}) + "\n")
+
+
+def recorded_grants() -> dict[str, dict]:
+    """pack -> the last approval recorded for it."""
+    out = {}
+    f = grant_approvals_file()
+    if f.exists():
+        for line in f.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                rec = json.loads(line)
+                out[rec["pack"]] = rec
+    return out
+
+
+def grant_record_errors() -> list[str]:
+    errors, recorded = [], recorded_grants()
+    for e in install_list():
+        approved, rec = e.get("grants_approved") or {}, recorded.get(e["name"])
+        fix = f"re-approve with `pmos pack add {e['path']} --upgrade --approve-grants`"
+        if rec is None:
+            errors.append(f"packs.yaml: pack '{e['name']}' has grants_approved but no recorded grant approval in "
+                          f"{rel(grant_approvals_file())}; {fix}")
+        elif rec["grants"] != approved:
+            errors.append(f"packs.yaml: pack '{e['name']}' grants_approved {approved} differs from the grant "
+                          f"approval recorded in {rel(grant_approvals_file())} {rec['grants']} (edited by hand?); "
+                          f"{fix}")
+    return errors
+
+
+def pack_texts(name: str) -> list[Path]:
+    """The Markdown an installed pack ships (SKILL.md files, COS manual and sections, agents)."""
+    p = packs()[name]
+    if name == CORE:
+        paths = pack_paths(p)
+        return sorted([*paths["agents"].glob("*.md"), *paths["skills"].rglob("*.md")])
+    return sorted(p["dir"].rglob("*.md"))
+
+
+def missing_pack_references() -> list[str]:
+    """Text in installed packs that names a mode (<pack>/<mode>) or path (packs/<pack>/) of a pack that
+    isn't installed, e.g. after `pmos pack remove`. Known packs: those on disk beside the installed ones,
+    and those with a recorded grant approval."""
+    installed = set(packs())
+    absent: dict[str, set[str]] = {n: set() for n in recorded_grants() if n not in installed}
+    for root in {p["dir"].parent for n, p in packs().items() if n != CORE}:
+        for man_path in root.glob("*/pack.yaml"):
+            name = (load_yaml(man_path) or {}).get("name")
+            if name and name not in installed:
+                absent[name] = {(load_yaml(m) or {}).get("name", "") for m in man_path.parent.glob("modes/*/mode.yaml")}
+    if not absent:
+        return []
+    names = "|".join(re.escape(n) for n in sorted(absent))
+    pats = [(re.compile(rf"(?<![\w/.-])packs/({names})/"), lambda m: True),
+            (re.compile(rf"(?<![\w/.-])({names})/[a-z0-9-]+"), lambda m: m.group(0) in absent[m.group(1)])]
+    out = []
+    for name in sorted(installed):
+        for path in pack_texts(name):
+            for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                for pat, hit in pats:
+                    for m in pat.finditer(line):
+                        if hit(m):
+                            out.append(f"{rel(path)}:{i}: names {m.group(0)}, but pack '{m.group(1)}' is not "
+                                       f"installed")
+    return out
 
 
 def cmd_validate(_args) -> int:
@@ -683,9 +775,17 @@ def cmd_pack_add(args) -> int:
         return 1
     entry["grants_approved"] = requested
     save_install_list(trial)
+    record_grant_approval(name, man["version"], requested)
     write_catalog()
     print(f"{'upgraded' if existing else 'installed'} {name} {man['version']} from {stored_path} "
           f"({len([m for m in discover_modes() if m['pack'] == name])} mode(s)); catalog and AGENTS.md updated")
+    return 0
+
+
+def cmd_pack_path(args) -> int:
+    if args.name not in packs() or args.name == CORE:
+        raise PmosError(f"pack '{args.name}' is not installed")
+    print(packs()[args.name]["dir"])
     return 0
 
 
@@ -745,8 +845,11 @@ def mode_rows(pack: str, include_internal: bool) -> list[str]:
 def build_agents_md() -> str:
     cos = packs()[config()["cos_pack"]]
     manual = (cos["dir"] / cos["manifest"]["cos"]).read_text(encoding="utf-8").rstrip()
+    sections = "".join("\n\n" + (p["dir"] / p["manifest"]["cos_section"]).read_text(encoding="utf-8").strip()
+                       for n, p in packs().items() if n != CORE and p["manifest"].get("cos_section"))
     return ("<!-- Generated by `pmos` from " + rel(cos["dir"] / cos["manifest"]["cos"]) +
-            " and packs.yaml. Edit those, then run `pmos catalog`. -->\n\n" + manual +
+            ", each installed pack's cos_section and packs.yaml. Edit those, then run `pmos catalog`. -->\n\n" +
+            manual + sections +
             "\n\n## Installed packs\n\n" + "\n".join(packs_table()) +
             "\n\nUse `python scripts/pmos.py catalog --pack <pack>` for a pack's modes and what each accepts.\n")
 
@@ -827,16 +930,32 @@ def task_path(task_id: str) -> Path:
     return tasks_dir() / f"{task_id}.json"
 
 
+def task_hash_path(task_id: str) -> Path:
+    return tasks_dir() / f"{task_id}.sha256"
+
+
+def file_sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def load_task(task_id: str) -> dict:
     p = task_path(task_id)
     if not p.exists():
         raise PmosError(f"no task {task_id}")
+    hp = task_hash_path(task_id)
+    if not hp.exists() or hp.read_text(encoding="utf-8").strip() != file_sha(p):
+        raise PmosError(f"{rel(p)} was modified outside pmos (its hash doesn't match the one pmos recorded "
+                        f"in {rel(hp)}). Task state changes only through `pmos task …`; restore the file or "
+                        f"create a new task.")
     return load_json(p)
 
 
 def save_task(task: dict) -> None:
     task["updated_at"] = now()
-    write_json(task_path(task["envelope"]["id"]), task)
+    p = task_path(task["envelope"]["id"])
+    write_json(p, task)
+    hp = task_hash_path(task["envelope"]["id"])
+    hp.write_text(file_sha(p) + "\n", encoding="utf-8")
 
 
 def all_tasks() -> list[dict]:
@@ -859,7 +978,7 @@ def trace(task: dict, event: str, **fields) -> None:
     record = {
         "ts": now(), "event": event, "task_id": env["id"], "mode": env["mode"], "pack": task.get("pack"),
         "mode_version": task.get("mode_version"), "role": task.get("role"),
-        "parent": env.get("parent"), "todo": task.get("todo"), **fields,
+        "parent": env.get("parent"), "origin": env.get("origin"), **fields,
     }
     with open(traces / f"{dt.date.today():%Y-%m}.jsonl", "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -930,10 +1049,76 @@ def parse_inputs(raw: str) -> dict:
     return data
 
 
+def task_manifest(task: dict) -> dict:
+    """The mode.yaml a task runs under: the installed mode@version, else the stored mode_dir."""
+    try:
+        return resolve_mode(f"{task['mode_name']}@{task['mode_version']}", check_visibility=False)["manifest"]
+    except PmosError:
+        path = ROOT / task["mode_dir"] / "mode.yaml"
+        if not path.exists():
+            raise
+        return load_yaml(path) or {}
+
+
+def resolve_call(parent: dict, ref: str) -> dict:
+    """Resolve a child's mode through the parent mode's `calls`: the name must match an entry (or the
+    entry "*"), the entry's version pin applies, and the parent pack's visibility rules still hold."""
+    pman = task_manifest(parent)
+    calls = pman.get("calls") or []
+    name, spec = split_ref(ref)
+    for entry in calls:
+        ename, epin = split_ref(entry)
+        if entry != "*" and ename != name:
+            continue
+        try:
+            mode = resolve_mode(ref if entry == "*" else (f"{name}@{epin}" if epin else name),
+                                from_pack=parent.get("pack"))
+        except PmosError as e:
+            raise PmosError(f"{pman.get('name')} calls '{entry}': {e}")
+        if spec and not version_matches(mode["manifest"]["version"], spec):
+            raise PmosError(f"{ref} doesn't match the version {pman.get('name')} calls ('{entry}' resolves to "
+                            f"{mode['manifest']['version']})")
+        return mode
+    raise PmosError(f"{pman.get('name')} may only start the modes in its calls ({', '.join(calls) or 'none'}); "
+                    f"'{name}' is not one of them")
+
+
+def envelope_floor(args, man: dict, parent: dict | None) -> tuple[str, str, str | None]:
+    """(approval, risk, approval_from). The mode's approval and risk are a floor; a child may lower its
+    approval only when its parent's approval is at least the mode's (its actions roll up to that gate)."""
+    mode_approval, mode_risk = man.get("approval", "none"), man.get("risk", "medium")
+    approval, risk = args.approval or mode_approval, args.risk or mode_risk
+    if RISK_LEVEL[risk] < RISK_LEVEL[mode_risk]:
+        raise PmosError(f"--risk {risk} is lower than {man['name']}'s risk ({mode_risk}); a mode's risk is a floor")
+    approval_from = None
+    if APPROVAL_LEVEL[approval] < APPROVAL_LEVEL[mode_approval]:
+        if parent and APPROVAL_LEVEL[parent["envelope"]["approval"]] >= APPROVAL_LEVEL[mode_approval]:
+            approval_from = parent["envelope"]["id"]
+        else:
+            raise PmosError(f"--approval {approval} is weaker than {man['name']}'s approval ({mode_approval}). "
+                            f"Only a child whose parent's approval is at least {mode_approval} may lower it.")
+    return approval, risk, approval_from
+
+
+def parse_origin(raw: str | None) -> dict | None:
+    if not raw:
+        return None
+    pack, _, ref = raw.partition(":")
+    if not pack or not ref:
+        raise PmosError(f"--origin is PACK:REF, e.g. cos:td-12 (got '{raw}')")
+    return {"pack": pack, "ref": ref}
+
+
 def cmd_task_new(args) -> int:
     parent = load_task(args.parent) if args.parent else None
+    if parent and parent["state"] != "running":
+        raise PmosError(f"parent {args.parent} is {parent['state']}; children can only be created while their "
+                        f"parent is running")
+    if parent and args.instructions:
+        raise PmosError("--instructions is only for top-level tasks (the PM's own words, passed on by the CoS); "
+                        "a child inherits its parent's instructions")
     from_pack = parent.get("pack") if parent else None     # None = the CoS: exported modes only
-    mode = resolve_mode(args.mode, from_pack=from_pack)
+    mode = resolve_call(parent, args.mode) if parent else resolve_mode(args.mode, from_pack=from_pack)
     man, pack = mode["manifest"], mode["pack"]
     if grant_excess(mode):
         raise PmosError(grant_excess_message(mode))
@@ -943,6 +1128,7 @@ def cmd_task_new(args) -> int:
         raise PmosError(f"{man['name']} supports verbs {man['verbs']}, not '{args.verb}'")
     role = resolve_role(args.role or man["default_role"], pack)
     role_fq = f"{role['_pack']}/{role['_name']}"
+    approval, risk, approval_from = envelope_floor(args, man, parent)
 
     depth = 0
     if parent:
@@ -974,8 +1160,8 @@ def cmd_task_new(args) -> int:
         "role": role_fq,
         "inputs": inputs,
         "acceptance": args.acceptance or [],
-        "risk": args.risk or man.get("risk", "medium"),
-        "approval": args.approval or man.get("approval", "none"),
+        "risk": risk,
+        "approval": approval,
         "budget": budget,
         "depends_on": args.depends_on or [],
         "parent": args.parent,
@@ -987,8 +1173,9 @@ def cmd_task_new(args) -> int:
         envelope["workflow"] = args.workflow
     if args.instructions:
         envelope["instructions"] = args.instructions
-    if args.todo:
-        envelope["origin"] = {"todo": args.todo}
+    origin = parse_origin(args.origin)
+    if origin:
+        envelope["origin"] = origin
     validate_against(envelope, "task", "envelope")
     for dep in envelope["depends_on"]:
         load_task(dep)
@@ -997,7 +1184,6 @@ def cmd_task_new(args) -> int:
         "envelope": envelope,
         "state": "queued",
         "pack": pack,
-        "todo": args.todo,
         "mode_name": man["name"],
         "mode_version": man["version"],
         "mode_dir": rel(mode["dir"]),
@@ -1005,6 +1191,7 @@ def cmd_task_new(args) -> int:
         "children": [],
         "revisions": 0,
         "approvals": [],
+        "approval_from": approval_from,
         "result": None,
         "result_path": None,
         "history": [{"ts": now(), "from": None, "to": "queued", "by": args.by, "note": args.note}],
@@ -1042,8 +1229,8 @@ def cmd_task_show(args) -> int:
     if env.get("instructions"):
         out += ["## Instructions from the PM (follow these; they come from the PM directly)", "",
                 *[f"> {line}" for line in env["instructions"].splitlines()], ""]
-    if env.get("origin", {}).get("todo"):
-        out += [f"Delegated from todo {env['origin']['todo']}.", ""]
+    if env.get("origin"):
+        out += [f"Origin: {env['origin']['pack']}:{env['origin']['ref']}.", ""]
     out += [
         f"## Mode (pack: {task.get('pack')})",
         f"- skill: {rel(mode['dir'] / man.get('skill', 'SKILL.md'))}",
@@ -1096,8 +1283,17 @@ def cmd_task_show(args) -> int:
     return 0
 
 
+# Transitions only one command may make: `task move` can't make them.
+OWNED_BY = {"in_review": "`pmos task review` (after `pmos task result`)",
+            "awaiting_approval": "`pmos task review`", "approved": "`pmos task approve`"}
+
+
 def cmd_task_move(args) -> int:
     task = load_task(args.id)
+    if task["state"] == "in_review":
+        raise PmosError(f"{args.id} is in_review; only {OWNED_BY['in_review']} moves it on")
+    if args.state in ("awaiting_approval", "approved"):
+        raise PmosError(f"only {OWNED_BY[args.state]} moves a task to {args.state}")
     if args.state == "running":
         pending = deps_pending(task)
         if pending:
@@ -1114,6 +1310,47 @@ def cmd_task_move(args) -> int:
     return 0
 
 
+def task_tree_ids(task: dict) -> list[str]:
+    """The task, its ancestors and its descendants: the outputs folders its artifacts may live in."""
+    ids, cur = [task["envelope"]["id"]], task
+    while cur["envelope"].get("parent"):
+        cur = load_task(cur["envelope"]["parent"])
+        ids.append(cur["envelope"]["id"])
+    todo = list(task.get("children", []))
+    while todo:
+        cid = todo.pop()
+        ids.append(cid)
+        todo += load_task(cid).get("children", [])
+    return ids
+
+
+def artifacts_outside_outputs(task: dict, artifacts: list[dict]) -> list[str]:
+    """Relative artifact refs must resolve inside <outputs>/<id>/ of the task's own tree; scheme refs
+    (jira:, doc:, url: ...) point at systems of record and are allowed."""
+    refs = [a["ref"] for a in artifacts if not re.match(r"^[a-z]+:", a["ref"])]
+    if not refs:
+        return []
+    roots = [(path_of("outputs") / tid).resolve() for tid in task_tree_ids(task)]
+    return [r for r in refs if not any((ROOT / r).resolve().is_relative_to(root) for root in roots)]
+
+
+def check_actions_allowed(task: dict, actions: list[dict]) -> None:
+    """An action's system must be granted to the mode at draft or write, and the action must be able to
+    reach an approval gate: its own, or the parent's it rolls up to (approval_from)."""
+    if not actions:
+        return
+    man = task_manifest(task)
+    grants = man.get("grants") or {}
+    ungranted = [f"{a['system']}.{a['op']} ({a['system']}: {grants.get(a['system'], 'not granted')})"
+                 for a in actions if GRANT_LEVEL.get(grants.get(a["system"]), 0) < GRANT_LEVEL["draft"]]
+    if ungranted:
+        raise PmosError(f"{man.get('name')} may propose actions only on systems its grants give at draft or "
+                        f"write; refused: {', '.join(ungranted)}")
+    if task["envelope"]["approval"] == "none" and not task.get("approval_from"):
+        raise PmosError(f"{task['envelope']['id']} has approval none, so nothing would ever approve its actions "
+                        f"and they would never run. Drop the actions, or create the task with an approval rule.")
+
+
 def cmd_task_result(args) -> int:
     task = load_task(args.id)
     if task["state"] != "running":
@@ -1128,6 +1365,11 @@ def cmd_task_result(args) -> int:
         raise PmosError("results must not include 'review'; the Reviewer writes it")
     if result["status"] == "blocked" and not result.get("open_questions"):
         raise PmosError("a blocked result needs at least one open_questions entry")
+    outside = artifacts_outside_outputs(task, result.get("artifacts", []))
+    if outside:
+        raise PmosError(f"artifact(s) outside outputs/{args.id}/: {', '.join(outside)}. Write artifacts to "
+                        f"{rel(path_of('outputs') / args.id)}/ (or this task's parent's or children's folder), "
+                        f"or link a system with a scheme ref such as jira:STK-1")
     missing = [a["ref"] for a in result.get("artifacts", [])
                if not re.match(r"^[a-z]+:", a["ref"]) and not (ROOT / a["ref"]).exists()]
     if missing:
@@ -1135,6 +1377,7 @@ def cmd_task_result(args) -> int:
     keys = [a["idempotency_key"] for a in result.get("actions", [])]
     if len(keys) != len(set(keys)):
         raise PmosError("idempotency_key values must be unique within a result")
+    check_actions_allowed(task, result.get("actions", []))
 
     task["result"] = result
     task["result_path"] = rel(path.resolve())
@@ -1177,12 +1420,16 @@ def cmd_task_review(args) -> int:
     return 0
 
 
+def actions_digest(actions: list[dict]) -> str:
+    return hashlib.sha256(json.dumps(actions, sort_keys=True).encode()).hexdigest()[:16]
+
+
 def cmd_task_approve(args) -> int:
     task = load_task(args.id)
     if task["state"] != "awaiting_approval":
         raise PmosError(f"{args.id} is {task['state']}, not awaiting_approval")
     actions = task["result"].get("actions", [])
-    digest = hashlib.sha256(json.dumps(actions, sort_keys=True).encode()).hexdigest()[:16]
+    digest = actions_digest(actions)
     task["approvals"].append({"ts": now(), "by": args.by, "note": args.note, "actions_sha": digest,
                               "actions": len(actions)})
     trace(task, "approved", by=args.by, actions=len(actions), actions_sha=digest)
@@ -1207,6 +1454,69 @@ def cmd_task_list(args) -> int:
     return 0
 
 
+def cmd_task_state(args) -> int:
+    task = load_task(args.id)
+    print(json.dumps(task, indent=2, ensure_ascii=False) if args.json else task["state"])
+    return 0
+
+
+# --------------------------------------------------------------------------- actions
+def cmd_action_run(args) -> int:
+    """Run an approved task's actions through the handlers its pack declares in pack.yaml `actions:`."""
+    task = load_task(args.id)
+    tid = task["envelope"]["id"]
+    if task["state"] != "approved":
+        raise PmosError(f"{tid} is {task['state']}; actions run only on an approved task")
+    actions = (task.get("result") or {}).get("actions", [])
+    approvals = task.get("approvals") or []
+    if not approvals:
+        raise PmosError(f"{tid} has no recorded approval")
+    digest = actions_digest(actions)
+    if digest != approvals[-1].get("actions_sha"):
+        raise PmosError(f"{tid}'s actions changed since approval (sha {digest}, approved sha "
+                        f"{approvals[-1].get('actions_sha')}); nothing was run. Send it back for approval.")
+    if args.key and args.key not in {a["idempotency_key"] for a in actions}:
+        raise PmosError(f"{tid} has no action with idempotency_key '{args.key}'")
+    pack = packs().get(task["pack"])
+    handlers = (pack["manifest"].get("actions") or {}) if pack else {}
+    out_dir = path_of("outputs") / tid
+    record_path = out_dir / "applied.json"
+    record = load_json(record_path) if record_path.exists() else {}
+    done_keys = {a["key"] for a in record.get("applied", [])}
+    applied, skipped, failed, manual = list(record.get("applied", [])), [], [], []
+    for a in actions:
+        key, kind = a["idempotency_key"], f"{a['system']}.{a['op']}"
+        if args.key and key != args.key:
+            continue
+        if key in done_keys:
+            skipped.append({"key": key, "action": kind, "why": "already applied"})
+            continue
+        handler = handlers.get(kind)
+        if not handler:
+            manual.append({"key": key, "action": kind, "preview": a.get("preview", "")})
+            continue
+        if failed:
+            skipped.append({"key": key, "action": kind, "why": "an earlier action failed"})
+            continue
+        script, *fixed = shlex.split(handler)
+        action_file = out_dir / "actions" / f"{re.sub(r'[^A-Za-z0-9_.-]', '_', key)}.json"
+        write_json(action_file, {"task_id": tid, "action": a})
+        proc = subprocess.run([sys.executable, str(pack["dir"] / script), *fixed, str(action_file)], cwd=ROOT,
+                              capture_output=True, text=True, env={**os.environ, "PMOS_ROOT": str(ROOT)})
+        entry = {"key": key, "action": kind, "handler": f"{task['pack']}: {handler}",
+                 "output": (proc.stdout.strip() or proc.stderr.strip())[-2000:]}
+        (applied if proc.returncode == 0 else failed).append(entry)
+    out = {"task_id": tid, "applied": applied, "skipped": skipped, "failed": failed, "manual": manual}
+    write_json(record_path, out)
+    trace(task, "actions_run", by=args.by, applied=len(applied), failed=len(failed), manual=len(manual))
+    all_done = {a["idempotency_key"] for a in actions} <= {a["key"] for a in applied}
+    if not failed and all_done:
+        transition(task, "done", args.by, f"{len(applied)} action(s) applied by handlers")
+        write_board()
+    print(json.dumps(out, indent=2, ensure_ascii=False))
+    return 1 if failed else 0
+
+
 # --------------------------------------------------------------------------- board & decisions
 def write_board() -> None:
     tasks = all_tasks()
@@ -1229,7 +1539,7 @@ def write_board() -> None:
     if open_tasks:
         lines += ["| Task | Mode | Role | State | From | Updated |", "| --- | --- | --- | --- | --- | --- |"]
         for t in open_tasks:
-            origin = t['envelope'].get('parent') or t.get('todo') or ''
+            origin = t['envelope'].get('parent') or ":".join((t['envelope'].get('origin') or {}).values())
             lines.append(f"| {t['envelope']['id']} | {t['mode_name']} | {t['role']} | {t['state']} | "
                          f"{origin} | {t.get('updated_at', '')} |")
     else:
@@ -1271,6 +1581,11 @@ def all_skill_sources() -> list[tuple[str, Path, Path | None]]:
     return items
 
 
+def cos_agents() -> set[str]:
+    """The agents the cos_pack defines: the Chief of Staff, which runs from AGENTS.md."""
+    return {name for name, (_m, _b, _p, pack) in all_agents().items() if pack == config().get("cos_pack")}
+
+
 def render_agents_md() -> int:
     write_catalog()
     print("AGENTS.md regenerated from the cos pack")
@@ -1294,7 +1609,7 @@ def render_claude_code() -> int:
     agents_out.mkdir(parents=True, exist_ok=True)
     count = 0
     for name, (meta, body, src, _pack) in all_agents().items():
-        if name == "cos":
+        if name in cos_agents():
             continue  # the CoS is the main session; it reads AGENTS.md via CLAUDE.md
         model = ad["aliases"][meta["tier"]] if ad.get("model_field", "alias") == "alias" else tiers[meta["tier"]]
         mapped, unmapped = [], []
@@ -1347,7 +1662,7 @@ def render_generic() -> int:
         skill_index.append(f"- `{name}` ({rel(path)}): {meta.get('description', '')}")
     models, grants = {"agents": {}, "roles": {}}, {}
     for name, (meta, body, _src, _pack) in all_agents().items():
-        prompt = (ROOT / "AGENTS.md").read_text(encoding="utf-8") if name == "cos" else body.strip() + "\n\n" + "\n".join(skill_index)
+        prompt = (ROOT / "AGENTS.md").read_text(encoding="utf-8") if name in cos_agents() else body.strip() + "\n\n" + "\n".join(skill_index)
         (out / f"{name}.system.md").write_text(prompt + "\n", encoding="utf-8")
         models["agents"][name] = {"tier": meta["tier"], "model": tiers.get(meta["tier"], "")}
         grants[name] = meta.get("grants", [])
@@ -1465,6 +1780,9 @@ def build_parser() -> argparse.ArgumentParser:
     pr = pk.add_parser("remove")
     pr.add_argument("name")
     pr.set_defaults(fn=cmd_pack_remove)
+    pp = pk.add_parser("path", help="print an installed pack's directory, for pack scripts")
+    pp.add_argument("name", help="the pack's name")
+    pp.set_defaults(fn=cmd_pack_path)
 
     ro = sub.add_parser("role").add_subparsers(dest="role_cmd", required=True)
     rs_ = ro.add_parser("show")
@@ -1489,7 +1807,7 @@ def build_parser() -> argparse.ArgumentParser:
     n.add_argument("--by", default="cos")
     n.add_argument("--note")
     n.add_argument("--instructions", help="the PM's own instructions, verbatim; the Worker follows them")
-    n.add_argument("--todo", help="the todo this task was delegated from, e.g. td-12")
+    n.add_argument("--origin", help="where the task came from, as PACK:REF, e.g. cos:td-12 (a todo)")
     n.set_defaults(fn=cmd_task_new)
 
     s = t.add_parser("show")
@@ -1529,6 +1847,18 @@ def build_parser() -> argparse.ArgumentParser:
     ls.add_argument("--state", choices=sorted(TRANSITIONS))
     ls.add_argument("--all", action="store_true")
     ls.set_defaults(fn=cmd_task_list)
+
+    st = t.add_parser("state", help="print a task's state (the full task state JSON with --json), for scripts")
+    st.add_argument("id", help="the task id")
+    st.add_argument("--json", action="store_true", help="print the full task state as JSON")
+    st.set_defaults(fn=cmd_task_state)
+
+    ac = sub.add_parser("action").add_subparsers(dest="action_cmd", required=True)
+    ar = ac.add_parser("run", help="run an approved task's actions through its pack's handlers")
+    ar.add_argument("id", help="the approved task")
+    ar.add_argument("--key", help="run only the action with this idempotency_key")
+    ar.add_argument("--by", default="operator", help="who runs them (recorded in history)")
+    ar.set_defaults(fn=cmd_action_run)
     return p
 
 

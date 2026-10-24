@@ -105,14 +105,25 @@
     },
     "origin": {
       "type": "object",
+      "required": [
+        "pack",
+        "ref"
+      ],
       "additionalProperties": false,
       "properties": {
-        "todo": {
+        "pack": {
           "type": "string",
-          "pattern": "^td-[0-9]+$"
+          "pattern": "^[a-z0-9-]+$",
+          "description": "The pack whose item the task came from"
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "Free text the pack understands, e.g. a todo id"
         }
       },
-      "description": "Where the task came from, e.g. the todo it was delegated from"
+      "description": "Where the task came from, set with `task new --origin PACK:REF`"
     }
   }
 }

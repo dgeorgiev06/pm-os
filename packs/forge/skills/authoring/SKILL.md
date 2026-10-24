@@ -21,21 +21,25 @@ and need that pack in `depends` and the item in its `exports`.
 
 - `mode.yaml`: `name`, `version`, `contract: task@1`, a one-line `summary` (the CoS reads it),
   `verbs`, `accepts` (field: type, trailing `?` = optional), `returns`, `default_role`, `calls`
-  (modes it may start as children, version-pinned), `grants` (system: read | draft | write),
+  (modes it may start as children, version-pinned; pmos refuses any other child; `["*"]` lets a
+  router start any mode visible to its pack), `grants` (system: read | draft | write),
   `approval` (none | before_publish | before_execute), `risk`, `principles`, `rubric`, `evals`.
 - `SKILL.md`: numbered steps, each tagged `[model]`, `[code: <command>]` or `[candidate-code]`.
   Start with `pmos task show <id>`; end with `pmos task result <id> outputs/<id>/result.json`.
 - A gate that needs the PM mid-way: submit `status: "blocked"` with one open question, and track the
   stage in `outputs/<id>/progress.json`. Children: `pmos task new --parent <id> …`, then
   `pmos task move <id> waiting`; pmos re-queues the parent when they finish.
-- Every external change is an `action` (system, op, idempotency_key, payload, preview). Never write.
+- Every external change is an `action` (system, op, idempotency_key, payload, preview), on a system
+  the mode's `grants` hold at `draft` or `write`. Never write.
 - At least one golden task in `evals/` with `envelope`, optional `fixtures`, and `expect` lines.
 
 ## A pack
 
 `pack.yaml`: `name`, `version`, `contract: pack@1`, `summary`, `requires: {core: ^0.2}`,
 `depends`, optional `router` (an exported mode for goal-level asks), and `exports` for modes, roles,
-skills and principles. Unexported items are internal to the pack.
+skills and principles. Unexported items are internal to the pack. Optional: `actions` (handlers
+`pmos action run` calls for approved actions, `<system>.<op>: <script in the pack> [args]`) and
+`cos_section` (Markdown added to the CoS manual while the pack is installed).
 
 ## Versions and grants
 

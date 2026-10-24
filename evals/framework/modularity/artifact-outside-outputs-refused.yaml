@@ -14,6 +14,6 @@ steps:
     run: mkdir -p outputs/T-19990101-001 && echo x > outputs/T-19990101-001/x.md && $PY $FX/bin/mkresult.py --task $T --artifact outputs/T-19990101-001/x.md --submit
     expect: {exit: nonzero, output: '(?i)outputs'}
   - name: own outputs folder and a scheme ref are fine
-    run: $PY $FX/bin/mkresult.py --task $T --artifact outputs/$T/artifact.md --artifact jira:STK-1 --submit
+    run: echo x > outputs/$T/artifact.md && $PY $FX/bin/mkresult.py --task $T --artifact outputs/$T/artifact.md --artifact jira:STK-1 --submit
     expect:
       task: {id: $T, state: in_review}

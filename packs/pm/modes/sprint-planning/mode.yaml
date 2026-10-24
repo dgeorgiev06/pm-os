@@ -1,5 +1,5 @@
 name: pm/sprint-planning
-version: 0.2.0
+version: 0.2.1
 contract: task@1
 author: dima
 summary: Prioritize the next sprint, update the roadmap, plan the work and draft Jira tickets
@@ -18,7 +18,7 @@ skill: SKILL.md
 default_role: sprint-planner
 roles: [roadmap-strategist]
 calls: [pm/jira-tickets@^0.2]
-grants: { jira: read, roadmap: read }   # writes happen only via the Operator after approval
+grants: { jira: draft, roadmap: draft }   # proposes roadmap and ticket actions; writes happen only via the Operator after approval
 approval: before_execute
 risk: high
 principles: [plan-to-capacity, explicit-trade-offs]

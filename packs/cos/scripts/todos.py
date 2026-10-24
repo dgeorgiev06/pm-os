@@ -16,8 +16,9 @@ are applied by the Operator with `apply`, after the PM approves.
   plan [--days N] [--start YYYY-MM-DD] [--hours JSON] [--default-hours H] [--weekends] [--json]
                                           fit open todos into free hours, due date first
   apply DIFF.json                         apply an approved diff (Operator only)
+  apply-action ACTION.json                the `todos.apply_diff` handler `pmos action run` calls
 
-Files: PMOS_TODOS_FILE overrides context/todos.yaml; PMOS_STATE_DIR overrides state/.
+Files: PMOS_TODOS_FILE overrides context/todos.yaml. Task state comes from `pmos task state`.
 """
 from __future__ import annotations
 
@@ -25,12 +26,24 @@ import argparse
 import datetime as dt
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 import yaml
 
-ROOT = Path(__file__).resolve().parents[3]
+
+def find_root() -> Path:
+    """The pm-os repo: PMOS_ROOT, else the nearest folder above this script that holds pm-os.yaml."""
+    if os.environ.get("PMOS_ROOT"):
+        return Path(os.environ["PMOS_ROOT"]).resolve()
+    for d in Path(__file__).resolve().parents:
+        if (d / "pm-os.yaml").exists() and (d / "scripts" / "pmos.py").exists():
+            return d
+    raise SystemExit("error: can't find the pm-os repo (no pm-os.yaml above this script); set PMOS_ROOT")
+
+
+ROOT = find_root()
 OPEN = ("open", "delegated", "blocked")
 WAITING_ON_PM = {"awaiting_approval", "blocked"}
 
@@ -41,10 +54,6 @@ class TodoError(Exception):
 
 def todos_file() -> Path:
     return Path(os.environ.get("PMOS_TODOS_FILE") or ROOT / "context" / "todos.yaml")
-
-
-def tasks_dir() -> Path:
-    return Path(os.environ.get("PMOS_STATE_DIR") or ROOT / "state") / "tasks"
 
 
 def today() -> str:
@@ -101,10 +110,19 @@ def new_item(items: list[dict], title: str, due=None, estimate=None, priority=No
 
 
 def task_state(task_id: str) -> str | None:
-    p = tasks_dir() / f"{task_id}.json"
-    if not p.exists():
+    """The task's state, from `pmos task state` (pmos owns the task files and their format)."""
+    if not task_id:
         return None
-    return json.loads(p.read_text(encoding="utf-8")).get("state")
+    proc = subprocess.run([sys.executable, str(ROOT / "scripts" / "pmos.py"), "task", "state", task_id],
+                          cwd=ROOT, capture_output=True, text=True)
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip() or None
+
+
+def outputs_dir() -> Path:
+    paths = (yaml.safe_load((ROOT / "pm-os.yaml").read_text(encoding="utf-8")) or {}).get("paths") or {}
+    return Path(os.environ.get("PMOS_OUTPUTS_DIR") or ROOT / paths.get("outputs", "outputs")).resolve()
 
 
 def sort_key(t: dict):
@@ -186,7 +204,7 @@ def cmd_link(a) -> int:
     if t["status"] not in ("open", "blocked"):
         raise TodoError(f"{a.id} is {t['status']}; only open or blocked todos can be delegated")
     if task_state(a.task) is None:
-        raise TodoError(f"no pmos task {a.task}; create it with `pmos task new … --todo {a.id}` first")
+        raise TodoError(f"no pmos task {a.task}; create it with `pmos task new … --origin cos:{a.id}` first")
     t.update({"status": "delegated", "owner": "agent", "task": a.task, "mode": a.mode,
               "review_h": a.review_h, "delegated": today()})
     if a.instructions:
@@ -308,6 +326,19 @@ def cmd_apply(a) -> int:
     return 0
 
 
+def cmd_apply_action(a) -> int:
+    """Handler for an approved `todos.apply_diff` action: {"task_id": ..., "action": {"payload": {"diff": ...}}}.
+    The diff must be a file in that task's outputs folder."""
+    spec = json.loads(Path(a.action_file).read_text(encoding="utf-8"))
+    task_id, payload = spec.get("task_id", ""), (spec.get("action") or {}).get("payload") or {}
+    diff = (ROOT / str(payload.get("diff", ""))).resolve()
+    if not task_id or not diff.is_relative_to(outputs_dir() / task_id) or not diff.is_file():
+        raise TodoError(f"payload.diff must be a file under outputs/{task_id}/ (got {payload.get('diff')!r})")
+    if task_state(task_id) != "approved":
+        raise TodoError(f"task {task_id} is not approved")
+    return cmd_apply(argparse.Namespace(diff=str(diff)))
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -354,6 +385,9 @@ def main() -> int:
     ap = sub.add_parser("apply")
     ap.add_argument("diff")
     ap.set_defaults(fn=cmd_apply)
+    aa = sub.add_parser("apply-action")
+    aa.add_argument("action_file")
+    aa.set_defaults(fn=cmd_apply_action)
     a = p.parse_args()
     try:
         return a.fn(a)
