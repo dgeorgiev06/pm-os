@@ -1,0 +1,60 @@
+# pm-os framework config. Harness- and model-neutral: nothing here assumes one vendor.
+framework: pm-os
+version: 0.1.0
+contract: task@1
+
+paths:
+  modes: [modes]          # mode roots scanned by the registry; add vendored org/third-party dirs here
+  skills: skills          # shared skills (infra / domain / product)
+  roles: roles.yaml
+  agents: agents
+  context: context
+  state: state
+  traces: traces
+  outputs: outputs        # drafts and artifacts the Worker produces
+
+# Which source each mode root belongs to. Used for tie-breaking (precedence below).
+sources:
+  modes: local
+  # vendor/acme-modes: third-party
+
+precedence: [local, org, third-party]   # how the CoS breaks ties between matching modes
+
+# Model tiers are the ONLY place model ids live. Each adapter picks a provider.
+tiers:
+  anthropic: { small: claude-haiku-5-5, mid: claude-sonnet-5-5, top: claude-opus-5-5 }
+  openai:    { small: "", mid: "", top: "" }   # fill in the ids you use
+  google:    { small: "", mid: "", top: "" }
+
+defaults:
+  budget: { max_usd: 2.0, max_minutes: 30 }
+  max_revisions: 2
+  max_call_depth: 3
+
+# Adapters turn the neutral sources into one harness's native config (`pmos render <adapter>`).
+adapters:
+  claude-code:
+    provider: anthropic
+    model_field: alias              # "alias" writes small/mid/top as haiku/sonnet/opus; "id" writes full ids
+    aliases: { small: haiku, mid: sonnet, top: opus }
+    agents_dir: .claude/agents
+    skills_dir: .claude/skills
+    # Map framework grants to this harness's tool names. This is what enforces the
+    # permission line (Worker can't write to Jira). An agent whose grants map to
+    # nothing inherits every tool, and `render` warns about it.
+    # Fill the Jira/Slack entries with your MCP server's tool names.
+    grants_to_tools:
+      docs:read: [Read, Grep, Glob]
+      docs:write: [Write, Edit]
+      shell:pmos: [Bash]
+      jira:read: []          # e.g. mcp__jira__search_issues, mcp__jira__get_issue
+      jira:write: []         # e.g. mcp__jira__create_issue, mcp__jira__update_issue
+      comms:send: []         # e.g. mcp__slack__post_message
+  generic:
+    provider: anthropic
+    out_dir: build/generic   # one system prompt per agent + models.json, for any SDK or API
+
+eval:
+  # Any non-interactive command that reads a prompt file and prints the answer to stdout.
+  # {prompt_file} is replaced with the path. Leave empty to only render prompts.
+  command: ""   # e.g. "claude -p < {prompt_file}"  or  "my-runner --model mid {prompt_file}"

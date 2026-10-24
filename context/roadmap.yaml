@@ -1,0 +1,13 @@
+# Roadmap as data. The Operator applies approved diffs to this file (or syncs it to your roadmap tool).
+quarters:
+  2026-Q4:
+    - id: router-beta
+      title: Multi-operator router beta (Solana)
+      status: in_progress
+    - id: exposure-reporting
+      title: Per-operator exposure reporting
+      status: planned
+  2027-Q1:
+    - id: eth-adapters
+      title: Ethereum operator adapters
+      status: planned

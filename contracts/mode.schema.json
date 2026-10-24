@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pm-os/mode@1",
+  "title": "Mode manifest (mode.yaml)",
+  "type": "object",
+  "required": ["name", "version", "contract", "summary", "accepts", "returns", "default_role", "approval"],
+  "additionalProperties": false,
+  "properties": {
+    "name": { "type": "string", "pattern": "^[a-z0-9-]+/[a-z0-9-]+$" },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "contract": { "const": "task@1" },
+    "author": { "type": "string" },
+    "summary": { "type": "string", "maxLength": 140, "description": "One line; this is what the CoS sees in its catalog" },
+    "verbs": { "type": "array", "items": { "enum": ["plan", "draft", "analyze", "execute", "review"] } },
+    "accepts": {
+      "type": "object",
+      "description": "field -> type. A trailing ? marks optional (e.g. goals_hint: string?)",
+      "additionalProperties": { "type": "string" }
+    },
+    "returns": { "type": "object", "additionalProperties": { "type": "string" } },
+    "skill": { "type": "string", "default": "SKILL.md" },
+    "default_role": { "type": "string" },
+    "roles": { "type": "array", "items": { "type": "string" }, "description": "Other roles this mode uses" },
+    "calls": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z0-9-]+/[a-z0-9-]+(@[~^]?[0-9]+(\\.[0-9]+){0,2})?$" }
+    },
+    "grants": {
+      "type": "object",
+      "description": "system -> read | write | draft. Write grants are requested here but only the Operator executes.",
+      "additionalProperties": { "enum": ["read", "write", "draft"] }
+    },
+    "approval": { "enum": ["none", "before_publish", "before_execute"] },
+    "risk": { "enum": ["low", "medium", "high"] },
+    "rubric": { "type": "array", "items": { "type": "string" } },
+    "evals": { "type": "string", "default": "evals/" }
+  }
+}

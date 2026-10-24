@@ -1,0 +1,28 @@
+name: core/sprint-planning
+version: 0.1.0
+contract: task@1
+author: dima
+summary: Prioritize the next sprint, update the roadmap, plan the work and draft Jira tickets
+verbs: [plan]
+accepts:
+  sprint: string        # e.g. "2026-S22"
+  project: string       # Jira project key
+  goals_hint: string?
+  sprint_days: number?  # defaults to 10 working days
+returns:
+  ranking: doc_ref
+  sprint_plan: doc_ref
+  roadmap_diff: diff_ref
+  ticket_actions: list
+skill: SKILL.md
+default_role: sprint-planner
+roles: [roadmap-strategist]
+calls: [core/jira-tickets@^0]
+grants: { jira: read, roadmap: read }   # writes happen only via the Operator after approval
+approval: before_execute
+risk: high
+rubric:
+  - Priorities were approved by the PM before planning started (gate 1)
+  - Committed points do not exceed computed capacity
+  - Every roadmap change in the diff traces to a ranked item
+evals: evals/

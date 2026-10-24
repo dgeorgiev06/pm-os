@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pm-os/result@1",
+  "title": "Task result",
+  "description": "What an agent returns. The CoS reads only `summary` and links; never the full artifact.",
+  "type": "object",
+  "required": ["task_id", "status", "summary"],
+  "additionalProperties": false,
+  "properties": {
+    "task_id": { "type": "string" },
+    "status": { "enum": ["done", "needs_approval", "blocked", "failed"] },
+    "summary": { "type": "string", "maxLength": 600, "description": "<= ~80 words for the CoS digest" },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "ref"],
+        "properties": {
+          "kind": { "type": "string", "description": "doc, diff, plan, ranking, ..." },
+          "ref": { "type": "string", "description": "path under outputs/ or a system link" },
+          "title": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "actions": {
+      "type": "array",
+      "description": "Changes to external systems, proposed as a dry-run. Only the Operator executes them, after approval.",
+      "items": {
+        "type": "object",
+        "required": ["system", "op", "idempotency_key", "payload"],
+        "properties": {
+          "system": { "type": "string", "description": "jira, roadmap, docs, comms" },
+          "op": { "type": "string", "description": "create_issue, update_issue, link, apply_diff, send ..." },
+          "idempotency_key": { "type": "string" },
+          "payload": { "type": "object" },
+          "preview": { "type": "string", "description": "one human-readable line for the approval request" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "self_check": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["criterion", "met"],
+        "properties": {
+          "criterion": { "type": "string" },
+          "met": { "type": "boolean" },
+          "note": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "review": {
+      "type": "object",
+      "description": "Written by the Reviewer, never by the producer.",
+      "required": ["passed"],
+      "properties": {
+        "passed": { "type": "boolean" },
+        "score": { "type": "number", "minimum": 0, "maximum": 5 },
+        "notes": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "open_questions": { "type": "array", "items": { "type": "string" } },
+    "usage": {
+      "type": "object",
+      "properties": {
+        "tokens_in": { "type": "integer" },
+        "tokens_out": { "type": "integer" },
+        "usd": { "type": "number" },
+        "seconds": { "type": "number" },
+        "model": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}
