@@ -2,6 +2,7 @@
 
 | Doc | What's in it |
 | --- | --- |
+| [diagrams.md](diagrams.md) | Phase 0 (built today) and the final durable-runtime design, as diagrams |
 | [architecture.md](architecture.md) | The current design: diagram, principles, building blocks, agents, state ownership, packs and registration, quality loop, cost/speed/accuracy levers |
 | [decisions.md](decisions.md) | Every design decision so far and why |
 | [walkthrough-sprint-planning.md](walkthrough-sprint-planning.md) | Planning a sprint step by step: what you say, which agents run, how state moves |
