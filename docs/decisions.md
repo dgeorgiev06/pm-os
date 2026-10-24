@@ -1,0 +1,23 @@
+# Decisions
+
+Design decisions made while building pm-os, newest last. Each says what was decided and why, so a
+later change can tell what it's overturning.
+
+| # | Date | Decision | Why |
+| --- | --- | --- | --- |
+| 1 | 2026-10-24 | **A thin Chief of Staff delegates; it never does the work.** | Keeps your thread responsive and its context small; work runs in separate, reviewable tasks. |
+| 2 | 2026-10-24 | **All hand-offs are typed envelopes validated by code.** | Contracts, not prompts, are the interface, so agents and modes can be swapped. |
+| 3 | 2026-10-24 | **Every output is reviewed by a separate Reviewer in a fresh context.** | A reviewer that never sees the producer's reasoning can't inherit its mistakes. |
+| 4 | 2026-10-24 | **Few agents, many roles.** Four agents split by permissions; job-specific behavior is a role in config. | Same idea as pstack: behavior lives in workflows and role config. Roles share the Worker only because it can't write. |
+| 5 | 2026-10-24 | **Only the Operator writes to external systems, and only for approved tasks.** | The permission line is enforced by tool access, not by prompts. |
+| 6 | 2026-10-24 | **A single workflow manager owns task state.** Agents report; they never set state. | A crashed or confused agent can't corrupt state; one place to trace every transition. |
+| 7 | 2026-10-24 | **Durable runtime later: DBOS on Postgres by default; Temporal if it becomes multi-team.** | DBOS is a library on Postgres (no extra server, SQL-queryable state, easy to self-host); Temporal is the enterprise option. See `runtime-dbos.md`. |
+| 8 | 2026-10-24 | **Start with skills; replace deterministic steps with code over time (codify ladder).** | Fastest path to a working system; steps tagged `[model]` / `[candidate-code]` / `[code]` show what to promote next. |
+| 9 | 2026-10-24 | **Harness- and model-neutral.** AGENTS.md, SKILL.md, MCP, JSON Schema; `pmos render` generates harness config; model ids live in one tier map. | Not tied to Claude Code or one model vendor; swapping either is a config change. |
+| 10 | 2026-10-24 | **Packs are the unit of extension**, with exports, depends and a router; packs register with the core registry, not with the CoS. | Lets third parties extend the system safely, and makes the CoS itself swappable. |
+| 11 | 2026-10-24 | **The CoS goes straight to a mode when it can name one; routers only for goal-level asks.** | Avoids an extra model hop on most requests. |
+| 12 | 2026-10-24 | **Principles are reusable rules with a one-line check** (like pstack's principle-* skills); five core principles apply to every task. | Producer and reviewer judge against the same words; fixing one principle improves every mode that cites it. |
+| 13 | 2026-10-24 | **Installing a pack requires one-time grant approval; grants are enforced at run time.** Widening a grant needs re-approval. | Consent for what a pack may read or propose stays with you. |
+| 14 | 2026-10-24 | **The system builds itself through `forge`**, staging every new mode or pack and checking it before it lands. Installing stays your step. | New workflows get the same review and approval as any other change. |
+| 15 | 2026-10-24 | **Delegated todos become pmos tasks only after you approve the delegation** (proposed; see `proposals/todo-plan.md`). | Nothing starts without your yes; only your review time counts against your days. |
+| 16 | 2026-10-24 | **Code goes through a GitHub repo and pull requests, not email.** | A work mail filter stripped the zip; a repo is versioned, reviewable and one link to share. |
