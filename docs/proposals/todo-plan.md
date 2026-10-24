@@ -1,7 +1,9 @@
 # Proposal: `pm/todo-plan` with delegation
 
-Status: **proposed, not built.** It would be built with `forge/new-mode`, which is also the worked
-example of what forge creates.
+Status: **superseded.** Todos were built into the `cos` pack instead (`cos/todos` and
+`packs/cos/scripts/todos.py`), with delegation only when the PM directs it; see
+`../routing-and-delegation.md`. This proposal is kept as the worked example of what `forge/new-mode`
+creates. The early name-and-contract gate for forge is still open.
 
 ## The ask
 

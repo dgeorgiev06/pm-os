@@ -13,3 +13,6 @@ CLAUDE.md
 
 __pycache__/
 *.tmp
+
+# Personal: the PM's todo list (template: context/todos.example.yaml)
+context/todos.yaml

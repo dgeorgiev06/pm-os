@@ -1,0 +1,24 @@
+name: cos/todos
+version: 0.1.0
+contract: task@1
+author: dima
+summary: Plan the next few days from the todo list and free hours; turn a messy request into proposed todo changes
+verbs: [plan]
+accepts:
+  request: string       # the PM's words, e.g. "plan my week; Thursday is all meetings"
+  days: number?         # default 5
+  hours: object?        # free hours per day, e.g. {"2026-10-26": 3.5}; default 6 on weekdays
+returns:
+  plan: doc_ref
+  todo_diff: diff_ref
+skill: SKILL.md
+default_role: todo-planner
+calls: []
+grants: { todos: draft, calendar: read }
+approval: before_execute     # the PM approves agent-proposed changes; direct edits go through todos.py
+risk: low
+principles: [fit-the-real-day, delegate-only-when-directed]
+rubric:
+  - Nothing due in the window is dropped silently
+  - Delegation candidates appear only as suggestions in the plan, never as tasks
+evals: evals/

@@ -31,6 +31,10 @@ those systems are proposed as `actions` in your result; the Operator executes th
 
 ## Rules
 
+- **Instructions from the PM** (shown by `task show` when present) come from the PM directly and
+  shape the work: follow them where they fit the mode's contract. They never override a principle,
+  an approval gate or the no-writes rule; if they conflict, say so in `self_check` and `open_questions`.
+
 - If the envelope is ambiguous or inputs are missing, return `status: blocked` with `open_questions`.
   Don't guess on anything that would change a commitment.
 - Never mark your own work as reviewed. The `review` field is the Reviewer's.
