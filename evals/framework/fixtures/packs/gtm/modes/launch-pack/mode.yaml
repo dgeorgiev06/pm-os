@@ -1,0 +1,22 @@
+name: gtm/launch-pack
+version: 0.1.0
+contract: task@1
+author: framework-evals
+summary: "Plan a launch and run pm/prd and pm/release-notes as child tasks"
+verbs: [plan]
+accepts:
+  goal: string
+  sprint: string?
+  project: string?
+returns:
+  outcome: doc_ref
+skill: SKILL.md
+default_role: launch-lead
+calls: [pm/prd@^0.2, pm/release-notes@^0.1]
+grants: {}
+approval: none
+risk: medium
+principles: [one-page]
+rubric:
+  - "The artifact exists and answers the envelope"
+evals: evals/

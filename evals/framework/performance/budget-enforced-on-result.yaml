@@ -1,0 +1,19 @@
+name: budget-enforced-on-result
+finding: performance#3
+owner: performance
+severity: high
+desc: "`task result` refuses a result whose usage exceeds the envelope's max_usd or max_minutes."
+steps:
+  - run: $PMOS task new --mode pm/prd --verb draft --inputs '{"goal":"g"}' --budget-usd 0.5 --budget-minutes 1
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $T running
+  - name: over max_usd
+    run: $PY $FX/bin/mkresult.py --task $T --usage '{"usd":0.9,"seconds":20}' --submit
+    expect: {exit: nonzero, output: '(?i)budget'}
+  - name: over max_minutes
+    run: $PY $FX/bin/mkresult.py --task $T --usage '{"usd":0.1,"seconds":120}' --submit
+    expect: {exit: nonzero, output: '(?i)budget'}
+  - name: within budget
+    run: $PY $FX/bin/mkresult.py --task $T --usage '{"usd":0.1,"seconds":20}' --submit
+    expect:
+      task: {id: $T, state: in_review}

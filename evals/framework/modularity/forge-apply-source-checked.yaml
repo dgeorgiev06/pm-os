@@ -1,0 +1,22 @@
+name: forge-apply-source-checked
+finding: modularity#10
+owner: modularity
+severity: low
+desc: >-
+  `forge.py apply` copies only from outputs/<id>/staged/… of a task that is approved.
+steps:
+  - name: a stray folder
+    run: mkdir -p stray/pm && echo x > stray/pm/STRAY.md && $FORGE apply stray/pm --target packs/pm
+    expect:
+      exit: nonzero
+      output: '(?i)outputs|staged|approved'
+      files: {absent: packs/pm/STRAY.md}
+  - run: $PMOS task new --mode forge/new-mode --verb draft --inputs '{"pack":"pm","name":"evalnote","purpose":"a note"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $T running && $FORGE stage-mode --task $T --pack pm --name evalnote --summary "Eval note"
+  - name: staged by a task that is not approved
+    run: $FORGE apply outputs/$T/staged/pm --target packs/pm
+    expect:
+      exit: nonzero
+      output: '(?i)approved'
+      files: {absent: packs/pm/modes/evalnote}

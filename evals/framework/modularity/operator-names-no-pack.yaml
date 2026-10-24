@@ -1,0 +1,18 @@
+name: operator-names-no-pack
+finding: modularity#4
+owner: modularity
+severity: high
+desc: >-
+  The core doesn't name packs: agents/operator.md has no pack script paths (it runs
+  `pmos action run`), pm-os.yaml maps no todos grant, and render doesn't special-case an agent
+  called "cos".
+steps:
+  - name: operator.md names no pack scripts
+    run: '! grep -nE "packs/(forge|cos)/" agents/operator.md'
+  - name: operator uses pmos action run
+    run: grep -n "action run" agents/operator.md
+  - name: pm-os.yaml has no todos grant mapping
+    run: '! grep -nE "^\s*todos:" pm-os.yaml'
+  - name: pmos.py doesn't special-case pack or agent names
+    run: '! grep -nE "==\s*[\"''](cos|forge|pm)[\"'']|packs/(forge|cos)" scripts/pmos.py'
+  - run: $PMOS validate

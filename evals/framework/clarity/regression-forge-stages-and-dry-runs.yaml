@@ -1,0 +1,19 @@
+name: regression-forge-stages-and-dry-runs
+finding: clarity#good
+owner: clarity
+severity: medium
+regression: true
+desc: >-
+  forge/new-mode's code steps work: stage-mode stages a skeleton under outputs/<id>/staged/,
+  lint catches the TODOs, a dry-run admission passes, and nothing under packs/ changes.
+steps:
+  - run: $PMOS task new --mode forge/new-mode --verb draft --inputs '{"pack":"pm","name":"evalnote","purpose":"a note"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $T running && $FORGE stage-mode --task $T --pack pm --name evalnote --summary "Eval note"
+    expect: {stdout: 'staged_pack'}
+  - run: $FORGE lint outputs/$T/staged/pm --target packs/pm
+    expect: {exit: nonzero, stdout: 'TODO'}
+  - run: $PMOS pack add outputs/$T/staged/pm --upgrade --dry-run
+    expect:
+      stdout: '(?i)passes admission'
+      files: {absent: packs/pm/modes/evalnote}

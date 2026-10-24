@@ -1,0 +1,26 @@
+name: failure-cascades
+finding: composability#2
+owner: composability
+severity: high
+desc: >-
+  When a task fails, its queued dependents fail too ("dependency X failed") and the parent wakes,
+  instead of B staying queued and the parent waiting forever.
+setup:
+  install: [gtm]
+steps:
+  - run: $PMOS task new --mode gtm/launch-pack --verb plan --inputs '{"goal":"launch"}' --budget-usd 2
+    capture: {L: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $L running
+  - run: $PMOS task new --parent $L --mode pm/prd --verb draft --inputs '{"goal":"g"}'
+    capture: {A: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task new --parent $L --mode pm/release-notes --verb draft --inputs '{"sprint":"2026-S22","project":"STK"}' --depends-on $A
+    capture: {B: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $L waiting
+  - name: A fails
+    run: $PMOS task move $A running && $PY $FX/bin/mkresult.py --task $A --status failed --submit
+    expect:
+      task: {id: $B, state: failed}
+  - name: the parent wakes
+    run: 'true'
+    expect:
+      task: {id: $L, state: queued}

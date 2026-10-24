@@ -1,0 +1,14 @@
+name: validate-warns-unexported
+finding: clarity#5
+owner: clarity
+severity: medium
+desc: >-
+  validate warns about a mode that is neither exported nor called by any mode of its pack, instead
+  of the problem only showing up at `task new`.
+setup:
+  install: [orphan]
+steps:
+  - run: $PMOS validate
+    expect:
+      exit: any
+      output: ['(?i)warn[^\n]*orphan/stray|orphan/stray[^\n]*(export|internal|call)']

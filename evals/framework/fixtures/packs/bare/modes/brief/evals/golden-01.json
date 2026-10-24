@@ -1,0 +1,18 @@
+{
+  "name": "bare/brief fixture case",
+  "envelope": {
+    "verb": "draft",
+    "mode": "bare/brief",
+    "inputs": {
+      "goal": "x"
+    },
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "low",
+    "approval": "before_publish"
+  },
+  "expect": [
+    "result.json exists"
+  ]
+}

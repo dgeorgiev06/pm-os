@@ -1,0 +1,13 @@
+name: verb-defaults
+finding: clarity#7
+owner: clarity
+severity: low
+desc: "`--verb` defaults to the mode's only verb."
+steps:
+  - run: $PMOS task new --mode pm/prd --inputs '{"goal":"g"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+    expect:
+      task: {id: $T, fields: {envelope.verb: '^draft$'}}
+  - name: a wrong verb is still refused
+    run: $PMOS task new --mode pm/prd --verb plan --inputs '{"goal":"g"}'
+    expect: {exit: nonzero, output: '(?i)verb'}

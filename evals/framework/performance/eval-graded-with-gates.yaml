@@ -1,0 +1,25 @@
+name: eval-graded-with-gates
+finding: performance#4
+owner: performance
+severity: high
+desc: >-
+  `pmos eval` runs a grader (eval.grader_command) on each case's output and writes score.json plus
+  a pass-rate summary; multi-stage modes get scripted gate answers (`gates` in the golden task) so
+  they run to the end instead of stopping at gate 1.
+steps:
+  - run: |
+      $PY $FX/bin/yset.py pm-os.yaml eval.command "$PY $FX/bin/fake_runner.py {prompt_file}" --str &&
+      $PY $FX/bin/yset.py pm-os.yaml eval.grader_command "$PY $FX/bin/fake_grader.py {grader_file} {output_file}" --str
+  - run: $PMOS eval pm/prd
+    expect:
+      files:
+        exists: 'build/evals/**/score.json'
+        contains: {build/evals/summary.json: 'pass_rate'}
+  - name: sprint-planning's golden task scripts its gates
+    run: $PMOS eval pm/sprint-planning
+    expect:
+      files:
+        contains:
+          packs/pm/modes/sprint-planning/evals/golden-01.json: '"gates"'
+          'build/evals/*sprint-planning*/*/prompt.md': '(?i)gate answers'
+        not_contains: {'build/evals/*sprint-planning*/*/prompt.md': '(?i)stop there'}

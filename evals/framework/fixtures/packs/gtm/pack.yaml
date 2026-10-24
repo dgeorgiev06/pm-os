@@ -1,0 +1,14 @@
+name: gtm
+version: 0.1.0
+contract: pack@1
+author: framework-evals
+summary: "Go-to-market fixture: a launch pack composed from pm's PRD and release-notes modes"
+requires:
+  core: ^0.2
+depends: [pm@^0.2]
+router: gtm/launch-pack
+exports:
+  modes: [gtm/launch-pack, gtm/brief]
+  roles: [launch-lead]
+  skills: []
+  principles: [one-page]

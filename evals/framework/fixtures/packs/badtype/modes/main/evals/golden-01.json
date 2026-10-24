@@ -1,0 +1,16 @@
+{
+  "name": "badtype/main fixture case",
+  "envelope": {
+    "verb": "draft",
+    "mode": "badtype/main",
+    "inputs": {},
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "low",
+    "approval": "before_publish"
+  },
+  "expect": [
+    "result.json exists"
+  ]
+}

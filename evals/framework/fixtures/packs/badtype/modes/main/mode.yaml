@@ -1,0 +1,21 @@
+name: badtype/main
+version: 0.1.0
+contract: task@1
+author: framework-evals
+summary: "Typos in accepts types"
+verbs: [draft]
+accepts:
+  brief: dco_ref
+  extra: whatever
+returns:
+  doc: doc_ref
+skill: SKILL.md
+default_role: writer
+calls: []
+grants: { docs: draft }
+approval: before_publish
+risk: low
+principles: []
+rubric:
+  - "The artifact exists and answers the envelope"
+evals: evals/

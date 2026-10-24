@@ -1,0 +1,23 @@
+name: children-budget-summed
+finding: composability#7
+owner: composability
+severity: medium
+desc: >-
+  Children draw down the parent's budget: the sum of the children's usage.usd is checked against
+  the parent's max_usd, not just each child against its own copy of it.
+setup:
+  install: [gtm]
+steps:
+  - run: $PMOS task new --mode gtm/launch-pack --verb plan --inputs '{"goal":"launch"}' --budget-usd 1.0
+    capture: {L: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $L running
+  - run: $PMOS task new --parent $L --mode pm/prd --verb draft --inputs '{"goal":"g"}'
+    capture: {A: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task new --parent $L --mode pm/release-notes --verb draft --inputs '{"sprint":"2026-S22","project":"STK"}'
+    capture: {B: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $L waiting
+  - name: A spends 0.7 of the parent's 1.0
+    run: $PMOS task move $A running && $PY $FX/bin/mkresult.py --task $A --usage '{"usd":0.7}' --submit
+  - name: B's 0.5 would take the tree to 1.2
+    run: $PMOS task move $B running && $PY $FX/bin/mkresult.py --task $B --usage '{"usd":0.5}' --submit
+    expect: {exit: nonzero, output: '(?i)budget'}

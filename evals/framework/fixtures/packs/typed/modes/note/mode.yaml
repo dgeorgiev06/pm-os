@@ -1,0 +1,20 @@
+name: typed/note
+version: 0.1.0
+contract: task@1
+author: framework-evals
+summary: "Write a short note; no approval needed"
+verbs: [draft]
+accepts:
+  topic: string
+returns:
+  note: doc_ref
+skill: SKILL.md
+default_role: writer
+calls: []
+grants: { docs: draft }
+approval: none
+risk: low
+principles: []
+rubric:
+  - "The artifact exists and answers the envelope"
+evals: evals/

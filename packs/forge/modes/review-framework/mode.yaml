@@ -1,0 +1,26 @@
+name: forge/review-framework
+version: 0.1.0
+contract: task@1
+author: dima
+summary: "Re-run one framework review of pm-os (conformance evals plus judgment) and report it in the original reviews' shape"
+verbs: [review]
+accepts:
+  aspect: string        # clarity | performance | modularity | composability
+  ref: string?          # a git ref or a path to review; default: the working tree
+returns:
+  report: doc_ref       # outputs/<id>/report.md, shaped like evals/framework/findings/<aspect>.md
+  conformance: doc_ref  # outputs/<id>/conformance.json, from `pmos eval --framework <aspect> --json`
+skill: SKILL.md
+default_role: framework-reviewer
+roles: [core/reviewer]  # the reviewing stance is the core reviewer's, reused rather than copied
+calls: []
+grants: { repo: read }  # reads the tree under review; writes only its own outputs/<id>/
+approval: none          # a read-only report: no actions, nothing to approve
+risk: low
+principles: []          # the core principles apply to every task; the role cites the two this leans on
+rubric:
+  - "Scores use the original review's sub-scales, 1-5, each with a one-line reason"
+  - "Every issue cites file:line evidence and is marked with the conformance case that covers it, or judgment-only"
+  - "Conformance results are quoted from conformance.json, not re-judged"
+  - "Nothing outside outputs/<id>/ changed (the verify-clean step passed)"
+evals: evals/

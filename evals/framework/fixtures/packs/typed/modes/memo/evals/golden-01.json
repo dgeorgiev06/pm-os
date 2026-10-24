@@ -1,0 +1,18 @@
+{
+  "name": "typed/memo fixture case",
+  "envelope": {
+    "verb": "draft",
+    "mode": "typed/memo",
+    "inputs": {
+      "topic": "x"
+    },
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "low",
+    "approval": "before_publish"
+  },
+  "expect": [
+    "result.json exists"
+  ]
+}

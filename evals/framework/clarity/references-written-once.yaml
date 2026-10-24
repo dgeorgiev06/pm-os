@@ -1,0 +1,20 @@
+name: references-written-once
+finding: clarity#2
+owner: clarity
+severity: high
+desc: >-
+  Fewer ways to write a reference: `exports.modes` accepts bare names like roles and skills do,
+  and SKILL.md `name` frontmatter is generated (render writes it) instead of hand-typed.
+steps:
+  - name: bare exports.modes and SKILL.md files without a name are admitted
+    run: cp -r $FX/packs/bare packs/bare && $PMOS pack add packs/bare --approve-grants
+  - name: the bare-exported mode is visible to the CoS
+    run: $PMOS task new --mode bare/brief --verb draft --inputs '{"goal":"g"}'
+    expect: {output: 'T-\d{8}-\d{3,}'}
+  - name: render generates the names
+    run: $PMOS render claude-code
+    expect:
+      files:
+        contains:
+          .claude/skills/bare-brief/SKILL.md: '^name:\s*bare-brief'
+          .claude/skills/bare-principles-short/SKILL.md: '^name:\s*bare-principles-short'

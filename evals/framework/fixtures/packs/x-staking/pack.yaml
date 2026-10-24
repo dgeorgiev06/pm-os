@@ -1,0 +1,13 @@
+name: x-staking
+version: 0.1.0
+contract: pack@1
+author: framework-evals
+summary: "Fixture: role uses pm's unexported staking-prd skill"
+requires:
+  core: ^0.2
+depends: [pm@^0.2]
+exports:
+  modes: [x-staking/main]
+  roles: [writer]
+  skills: []
+  principles: []

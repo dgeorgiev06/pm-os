@@ -1,0 +1,14 @@
+name: regression-cycle-refused
+finding: composability#good
+owner: composability
+severity: high
+regression: true
+desc: A mode can't become its own ancestor, even when its calls allow it.
+setup:
+  install: [loop]
+steps:
+  - run: $PMOS task new --mode loop/again --verb plan --inputs '{"goal":"g"}'
+    capture: {A: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $A running
+  - run: $PMOS task new --parent $A --mode loop/again --verb plan --inputs '{"goal":"g"}'
+    expect: {exit: nonzero, output: '(?i)cycle'}

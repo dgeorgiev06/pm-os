@@ -1,0 +1,20 @@
+name: removed-pack-not-referenced
+finding: modularity#4
+owner: modularity
+severity: high
+desc: >-
+  After `pack remove forge`, AGENTS.md no longer tells the CoS to use forge modes (a pack's CoS
+  section comes from that pack), and validate flags text in other packs that still names it.
+steps:
+  - name: with forge installed, AGENTS.md routes to forge (guard)
+    run: grep -n "forge/new-mode" AGENTS.md
+  - run: $PMOS pack remove forge
+  - name: AGENTS.md drops forge
+    run: 'true'
+    expect:
+      files: {not_contains: {AGENTS.md: 'forge/'}}
+  - name: a remaining pack still names forge
+    run: printf '\n8. Hand structural changes to `forge/new-mode`.\n' >> packs/pm/modes/prd/SKILL.md && $PMOS validate
+    expect:
+      exit: any
+      output: ['(?i)forge', '(?i)not installed']

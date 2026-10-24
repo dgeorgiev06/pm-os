@@ -1,0 +1,18 @@
+{
+  "name": "loop/again fixture case",
+  "envelope": {
+    "verb": "plan",
+    "mode": "loop/again",
+    "inputs": {
+      "goal": "x"
+    },
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "low",
+    "approval": "none"
+  },
+  "expect": [
+    "result.json exists"
+  ]
+}

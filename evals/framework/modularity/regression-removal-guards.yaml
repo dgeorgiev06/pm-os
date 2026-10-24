@@ -1,0 +1,19 @@
+name: regression-removal-guards
+finding: modularity#good
+owner: modularity
+severity: high
+regression: true
+desc: >-
+  A pack can't be removed while another depends on it or while it has open tasks, and the CoS pack
+  can't be removed while it is cos_pack.
+setup:
+  install: [gtm]
+steps:
+  - run: $PMOS pack remove pm
+    expect: {exit: nonzero, output: 'gtm'}
+  - run: $PMOS pack remove cos
+    expect: {exit: nonzero, output: '(?i)chief of staff|cos_pack'}
+  - run: $PMOS pack remove gtm
+  - run: $PMOS task new --mode pm/prd --verb draft --inputs '{"goal":"g"}'
+  - run: $PMOS pack remove pm
+    expect: {exit: nonzero, output: '(?i)open task'}

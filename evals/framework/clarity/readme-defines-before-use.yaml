@@ -1,0 +1,16 @@
+name: readme-defines-before-use
+finding: clarity#3
+owner: clarity
+severity: medium
+desc: >-
+  The README quick start explains the `pmos` shorthand, the Building blocks table defines
+  Envelope, Grant and Action (clarity#4), and pstack (outside context) is gone.
+steps:
+  - name: pmos alias or console script in the quick start
+    run: $PY $FX/bin/section.py README.md "quick start"
+    expect: {stdout: 'alias pmos=|pip install -e|console.?script'}
+  - name: Envelope, Grant and Action are building blocks
+    run: $PY $FX/bin/section.py README.md "building blocks"
+    expect: {stdout: ['(?i)^\|\s*\**envelope', '(?i)^\|\s*\**grant', '(?i)^\|\s*\**action']}
+  - name: no pstack
+    run: '! grep -ni "pstack" README.md docs/architecture.md docs/decisions.md'

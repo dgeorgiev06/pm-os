@@ -1,0 +1,25 @@
+name: action-run-dispatches-pack-handler
+finding: modularity#4
+owner: modularity
+severity: high
+desc: >-
+  Packs declare action handlers in pack.yaml (`actions: {repo.sync_pack: …}`) and `pmos action run`
+  dispatches to them, so the Operator stays generic. End to end: a forge/new-mode task's
+  repo.sync_pack action lands the staged mode in packs/pm.
+steps:
+  - name: forge and cos declare their handlers
+    run: grep -nE '^actions:' packs/forge/pack.yaml && grep -n 'repo.sync_pack' packs/forge/pack.yaml && grep -n 'todos.apply_diff' packs/cos/pack.yaml
+  - run: $PMOS task new --mode forge/new-mode --verb draft --inputs '{"pack":"pm","name":"evalnote","purpose":"a note"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $T running && $FORGE stage-mode --task $T --pack pm --name evalnote --summary "Eval note"
+  - name: submit the sync_pack action with the file list from forge.py changes
+    run: |
+      FILES=$($FORGE changes outputs/$T/staged/pm --target packs/pm | $PY -c 'import json,sys; print(json.dumps([c["path"] for c in json.load(sys.stdin)]))')
+      $PY $FX/bin/mkresult.py --task $T --status needs_approval --submit \
+        --action "{\"system\":\"repo\",\"op\":\"sync_pack\",\"idempotency_key\":\"$T-sync\",\"payload\":{\"staged\":\"outputs/$T/staged/pm\",\"target\":\"packs/pm\",\"files\":$FILES},\"preview\":\"Add pm/evalnote\"}"
+  - run: $PY $FX/bin/advance.py --task $T --to awaiting_approval && $PMOS task approve $T --by pm
+  - name: pmos runs forge's handler
+    run: $PMOS action run $T
+    expect:
+      files: {exists: packs/pm/modes/evalnote/mode.yaml}
+      task: {id: $T, state: done}

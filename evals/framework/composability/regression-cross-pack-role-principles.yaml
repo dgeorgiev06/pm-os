@@ -1,0 +1,17 @@
+name: regression-cross-pack-role-principles
+finding: composability#good
+owner: composability
+severity: medium
+regression: true
+desc: >-
+  Reuse across packs works: gtm/brief runs under pm/doc-writer and task show lists the core
+  principles, gtm's own and pm's, with the same lines in the review checklist.
+setup:
+  install: [gtm]
+steps:
+  - run: $PMOS task new --mode gtm/brief --verb draft --inputs '{"goal":"g"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task show $T
+    expect: {stdout: ['core:grounded', 'gtm:one-page', 'pm:testable-requirements', 'pm:cite-customer-claims', 'pm/doc-writer']}
+  - run: $PMOS task show $T --for-review
+    expect: {stdout: '(?i)checklist[\s\S]*gtm:one-page'}

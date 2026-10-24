@@ -1,13 +1,13 @@
 name: forge
-version: 0.1.0
+version: 0.2.0
 contract: pack@1
 author: dima
-summary: Builds pm-os itself — new modes in a pack, or whole new packs, staged and checked before they land
+summary: Builds and reviews pm-os itself — new modes or packs, staged and checked before they land, and on-demand framework reviews
 requires:
   core: ^0.2
 depends: []
 exports:
-  modes: [forge/new-mode, forge/new-pack]
+  modes: [forge/new-mode, forge/new-pack, forge/review-framework]
   roles: [pack-architect]
   skills: [authoring]
   principles: [contract-first, smallest-unit, compose-dont-copy]

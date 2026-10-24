@@ -1,0 +1,15 @@
+name: stats-command
+finding: performance#3
+owner: performance
+severity: high
+desc: >-
+  `pmos stats --json` reports, per mode and from the traces: cost, p50/p90 run time, first-pass
+  review rate and revise-after-approval rate (the edit-rate proxy).
+steps:
+  - run: $PMOS task new --mode pm/prd --verb draft --inputs '{"goal":"g"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $T running && $PY $FX/bin/mkresult.py --task $T --usage '{"usd":0.12,"seconds":30}' --submit
+  - run: $PY $FX/bin/advance.py --task $T --to awaiting_approval
+  - run: $PMOS stats --json
+    expect:
+      stdout: ['"pm/prd"', '"usd', 'p50', 'p90', '"first_pass_rate"', '"revise_after_approval_rate"']

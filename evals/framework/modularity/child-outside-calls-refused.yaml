@@ -1,0 +1,22 @@
+name: child-outside-calls-refused
+finding: modularity#1
+owner: modularity
+severity: high
+desc: >-
+  A parent may only start children whose mode matches one of its mode's `calls`. pm/prd declares
+  `calls: []`, so it must not be able to start a pm/sprint-planning child.
+steps:
+  - run: $PMOS task new --mode pm/prd --verb draft --inputs '{"goal":"g"}'
+    capture: {P: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $P running
+  - name: child outside calls
+    run: $PMOS task new --parent $P --mode pm/sprint-planning --verb plan --inputs '{"sprint":"2026-S22","project":"STK"}'
+    expect:
+      exit: nonzero
+      output: '(?i)\bcalls?\b'
+  - name: sprint-planning may still start the pm/jira-tickets child it lists in calls
+    run: |
+      S=$($PMOS task new --mode pm/sprint-planning --verb plan --inputs '{"sprint":"2026-S22","project":"STK"}') && $PMOS task move $S running >/dev/null &&
+      $PMOS task new --parent $S --mode pm/jira-tickets --verb draft --inputs '{"plan":"outputs/plan.json","project":"STK"}'
+    expect:
+      output: 'T-\d{8}-\d{3,}'

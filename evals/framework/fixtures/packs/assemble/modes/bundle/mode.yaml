@@ -1,0 +1,21 @@
+name: assemble/bundle
+version: 0.1.0
+contract: task@1
+author: framework-evals
+summary: "Bundle parts drafted by child tasks into one approval"
+verbs: [plan]
+accepts:
+  topic: string
+returns:
+  bundle: doc_ref
+skill: SKILL.md
+default_role: assembler
+calls: [assemble/part@^0.1]
+grants: { docs: draft }
+approval: before_execute
+risk: low
+principles: []
+rubric:
+  - "The artifact exists and answers the envelope"
+evals: evals/
+merge_child_actions: true

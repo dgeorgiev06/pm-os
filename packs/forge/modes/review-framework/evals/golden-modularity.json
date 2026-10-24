@@ -1,0 +1,28 @@
+{
+  "name": "modularity review of the working tree",
+  "envelope": {
+    "verb": "review",
+    "mode": "forge/review-framework",
+    "inputs": {
+      "aspect": "modularity"
+    },
+    "acceptance": [
+      "scores every modularity sub-scale 1-5 with a reason",
+      "every issue is marked with its conformance case or judgment-only",
+      "the repo under review is unchanged"
+    ],
+    "risk": "low",
+    "approval": "none"
+  },
+  "expect": [
+    "conformance.json exists and is the output of `pmos eval --framework modularity --json` (its cases all have owner modularity)",
+    "report.md has a Verdict section answering \"Is it modular with well-defined components and boundaries?\" with a 1-5 score and a one-line reason for each of: component clarity, boundary enforcement (static and runtime), coupling and replaceability",
+    "report.md ranks its top issues by severity (High, then Medium, then Low), and every issue cites at least one path:line",
+    "every issue ends with `Coverage:` naming a case from conformance.json with its pass/fail result, or `judgment-only`; no named case is missing from conformance.json",
+    "the Conformance section's pass/fail counts match conformance.json exactly",
+    "report.md has Quick wins and What's already good sections",
+    "report.md includes boundary enforcement is scored separately for static (admission) and runtime checks, each backed by named conformance cases",
+    "git status of the repo under review is the same before and after (verify-clean passed); nothing outside outputs/<id>/ was written",
+    "the result has status done, no actions, and a summary under 80 words with the scores"
+  ]
+}

@@ -71,7 +71,7 @@ Built-in packs:
 | --- | --- |
 | `cos` | The Chief of Staff manual (`AGENTS.md` is generated from it) and your todo list: `todos.py` for exact edits, `cos/todos` for planning, delegation only when you direct it |
 | `pm` | PRDs, sprint planning, roadmap diffs, Jira tickets, release notes, and the `pm/router` |
-| `forge` | Builds pm-os itself: `forge/new-mode` adds a mode to a pack, `forge/new-pack` creates a pack |
+| `forge` | Builds pm-os itself: `forge/new-mode` adds a mode to a pack, `forge/new-pack` creates a pack, `forge/review-framework` re-runs a framework review |
 
 ### Principles
 
@@ -213,3 +213,6 @@ principles and contracts carry over unchanged.
 `build/evals/…/prompt.md` (for the agent) and `grader.md` (for the reviewer, with the principles
 and rubric). Set `eval.command` in `pm-os.yaml` to any non-interactive runner and it runs each case
 against an isolated state directory.
+
+`python scripts/pmos.py eval --framework [clarity | performance | modularity | composability]`
+runs the framework's own conformance evals (no model); see `evals/framework/README.md`.

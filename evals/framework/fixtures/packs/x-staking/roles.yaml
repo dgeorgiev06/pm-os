@@ -1,0 +1,9 @@
+roles:
+  writer:
+    agent: worker
+    tier: mid
+    persona: "Fixture role for the framework evals."
+    skills: [core:infra/envelope-io, pm:product/staking-prd]
+    context: []
+    principles: []
+    rubric: []

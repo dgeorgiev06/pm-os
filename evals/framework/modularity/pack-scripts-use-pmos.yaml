@@ -1,0 +1,20 @@
+name: pack-scripts-use-pmos
+finding: modularity#8
+owner: modularity
+severity: medium
+desc: >-
+  pmos exposes `task state <id> --json` and `pack path <name>`; todos.py and forge.py use them
+  instead of reading state/tasks or packs.yaml, and neither finds the repo root with parents[3].
+steps:
+  - run: $PMOS task new --mode pm/prd --verb draft --inputs '{"goal":"g"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task state $T --json
+    expect: {stdout: '"state":\s*"queued"'}
+  - run: $PMOS pack path pm
+    expect: {stdout: 'packs/pm'}
+  - name: no parents[3]
+    run: '! grep -n "parents\[3\]" packs/cos/scripts/todos.py packs/forge/scripts/forge.py'
+  - name: todos.py doesn't read task files
+    run: '! grep -nE "[\"'']tasks[\"'']|state/tasks|\.json[\"'']" packs/cos/scripts/todos.py'
+  - name: forge.py doesn't read packs.yaml
+    run: '! grep -nE "[\"'']packs\.yaml[\"'']" packs/forge/scripts/forge.py'

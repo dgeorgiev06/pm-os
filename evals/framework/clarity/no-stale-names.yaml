@@ -1,0 +1,19 @@
+name: no-stale-names
+finding: clarity#1
+owner: clarity
+severity: high
+desc: >-
+  Old names are gone from the files a newcomer reads: pm/todo-plan (outside the proposal and
+  history docs), core/prd in the task contract, core/* modes in the DBOS example, and the
+  "baseline" rubric in agents/reviewer.md.
+steps:
+  - name: pm/todo-plan
+    run: |
+      ! grep -rn "pm/todo-plan" . --exclude-dir=.git --exclude-dir=proposals --exclude-dir=history --exclude-dir=framework \
+        | grep -viE "superseded|proposal"
+  - name: core/prd in contracts
+    run: '! grep -rn "core/prd" contracts scripts'
+  - name: core/* modes in the DBOS example
+    run: '! grep -nE "core/(sprint|roadmap|jira|prd)|modes/core/" examples/dbos/sprint_workflows.py'
+  - name: baseline rubric in the reviewer agent
+    run: '! grep -ni "baseline" agents/reviewer.md'

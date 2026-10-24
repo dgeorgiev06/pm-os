@@ -1,0 +1,18 @@
+{
+  "name": "gtm/launch-pack fixture case",
+  "envelope": {
+    "verb": "plan",
+    "mode": "gtm/launch-pack",
+    "inputs": {
+      "goal": "x"
+    },
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "medium",
+    "approval": "none"
+  },
+  "expect": [
+    "result.json exists"
+  ]
+}

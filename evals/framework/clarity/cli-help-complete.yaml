@@ -1,0 +1,7 @@
+name: cli-help-complete
+finding: clarity#8
+owner: clarity
+severity: low
+desc: Every pmos option has help text, including `task new --workflow`.
+steps:
+  - run: $PY $FX/bin/cli_help_check.py

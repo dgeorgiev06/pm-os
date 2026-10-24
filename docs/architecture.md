@@ -25,7 +25,7 @@ flowchart TB
     direction LR
     COSP["cos<br/>todos"]
     PMP["pm<br/>prd · sprint-planning · jira-tickets<br/>release-notes · router"]
-    FORGE["forge<br/>new-mode · new-pack"]
+    FORGE["forge<br/>new-mode · new-pack · review-framework"]
     OTHER["third-party packs"]
   end
   PMOS -->|resolves mode · role · principles| PACKS

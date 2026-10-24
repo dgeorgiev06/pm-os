@@ -1,0 +1,25 @@
+name: child-actions-merged
+finding: performance#7
+owner: performance
+severity: medium
+desc: >-
+  Stage C in code: a mode with `merge_child_actions: true` gets its gated children's actions
+  appended to its own result by pmos, instead of a model run copying them.
+steps:
+  - run: cp -r $FX/packs/assemble packs/assemble && $PMOS pack add packs/assemble --approve-grants
+  - run: $PMOS task new --mode assemble/bundle --verb plan --inputs '{"topic":"t"}'
+    capture: {B: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $B running
+  - run: $PMOS task new --parent $B --mode assemble/part --verb draft --approval none --inputs '{"topic":"p"}'
+    capture: {P: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $B waiting
+  - run: >-
+      $PMOS task move $P running && $PY $FX/bin/mkresult.py --task $P --submit
+      --action '{"system":"docs","op":"publish","idempotency_key":"part-publish","payload":{"path":"outputs/p.md"},"preview":"publish part"}'
+  - run: $PY $FX/bin/advance.py --task $P --to done
+    expect:
+      task: {id: $B, state: queued}
+  - name: the parent submits no actions of its own
+    run: $PMOS task move $B running && $PY $FX/bin/mkresult.py --task $B --status needs_approval --submit
+    expect:
+      task: {id: $B, fields: {result.actions: 'part-publish'}}

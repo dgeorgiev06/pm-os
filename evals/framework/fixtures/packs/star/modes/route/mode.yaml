@@ -1,0 +1,20 @@
+name: star/route
+version: 0.1.0
+contract: task@1
+author: framework-evals
+summary: "Route a goal to any visible mode"
+verbs: [plan]
+accepts:
+  goal: string
+returns:
+  plan: doc_ref
+skill: SKILL.md
+default_role: router
+calls: ["*"]
+grants: {}
+approval: none
+risk: medium
+principles: []
+rubric:
+  - "The artifact exists and answers the envelope"
+evals: evals/

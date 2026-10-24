@@ -1,0 +1,28 @@
+name: review-cannot-be-bypassed
+finding: modularity#3
+owner: modularity
+severity: high
+desc: >-
+  Each command owns its transitions: only `task review` leaves in_review and only `task approve`
+  enters approved. `task move` can't skip either.
+steps:
+  - run: $PMOS task new --mode pm/prd --verb draft --inputs '{"goal":"g"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $T running && $PY $FX/bin/mkresult.py --task $T --submit
+  - name: move in_review -> done
+    run: $PMOS task move $T done --by worker
+    expect: {exit: nonzero, output: '(?i)review'}
+  - name: move in_review -> awaiting_approval
+    run: $PMOS task move $T awaiting_approval --by worker
+    expect: {exit: nonzero}
+  - run: $PY $FX/bin/advance.py --task $T --to awaiting_approval
+  - name: move awaiting_approval -> approved
+    run: $PMOS task move $T approved --by worker
+    expect:
+      exit: nonzero
+      output: '(?i)approve'
+      task: {id: $T, state: awaiting_approval}
+  - name: the PM's "change X" (awaiting_approval -> revise) still works
+    run: $PMOS task move $T revise --note "PM - shorter please"
+    expect:
+      task: {id: $T, state: revise}

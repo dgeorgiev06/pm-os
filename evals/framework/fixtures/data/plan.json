@@ -1,0 +1,9 @@
+{
+  "sprint": "2026-S22",
+  "committed": [
+    { "summary": "Operator health score feeds routing decisions", "points": 8 },
+    { "summary": "Exposure report per operator for compliance teams", "points": 5 },
+    { "summary": "Router API rate limiting", "points": 3 }
+  ],
+  "stretch": [ { "summary": "Ethereum operator adapter spike", "points": 3 } ]
+}

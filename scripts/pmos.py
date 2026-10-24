@@ -21,6 +21,7 @@ framework the same way. Later, the same functions become steps in a durable work
   pmos decide "TEXT" [--by WHO]         append to context/decisions.log
   pmos render agents-md|claude-code|generic
   pmos eval [PACK | PACK/MODE ...]      render (and optionally run) golden tasks
+  pmos eval --framework [REVIEW ...] [--case GLOB] [--json]   framework conformance evals
 
 Naming: modes are <pack>/<mode>; roles <pack>/<role>; skills and principles <pack>:<path>.
 Inside a pack, a bare name means "this pack". Core resources belong to the pack "core".
@@ -1365,6 +1366,10 @@ def cmd_render(args) -> int:
 
 # --------------------------------------------------------------------------- eval
 def cmd_eval(args) -> int:
+    if args.framework:  # conformance evals for the framework itself live in scripts/framework_eval.py
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import framework_eval
+        return framework_eval.run(args.targets, case=args.case, as_json=args.json)
     modes = discover_modes()
     if args.targets:
         modes = [m for m in modes if m["pack"] in args.targets or m["manifest"].get("name") in args.targets]
@@ -1440,7 +1445,12 @@ def build_parser() -> argparse.ArgumentParser:
     r.set_defaults(fn=cmd_render)
 
     e = sub.add_parser("eval")
-    e.add_argument("targets", nargs="*", help="pack names or pack/mode names; empty = all")
+    e.add_argument("targets", nargs="*", help="pack names or pack/mode names (with --framework: review names); "
+                                              "empty = all")
+    e.add_argument("--framework", action="store_true",
+                   help="run the framework conformance evals in evals/framework/ instead of mode golden tasks")
+    e.add_argument("--case", help="with --framework: only cases whose name matches this glob")
+    e.add_argument("--json", action="store_true", help="with --framework: print the JSON summary")
     e.set_defaults(fn=cmd_eval)
 
     pk = sub.add_parser("pack").add_subparsers(dest="pack_cmd", required=True)

@@ -1,0 +1,11 @@
+name: task-show-stable-first
+finding: performance#9
+owner: performance
+severity: low
+desc: >-
+  For prompt caching, `task show` prints the stable parts (mode, role, principles) before anything
+  specific to this task (its id, envelope, history).
+steps:
+  - run: $PMOS task new --mode pm/prd --verb draft --inputs '{"goal":"g"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task show $T | $PY $FX/bin/before.py core:grounded $T

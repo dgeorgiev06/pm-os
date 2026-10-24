@@ -1,0 +1,28 @@
+{
+  "name": "performance review of the working tree",
+  "envelope": {
+    "verb": "review",
+    "mode": "forge/review-framework",
+    "inputs": {
+      "aspect": "performance"
+    },
+    "acceptance": [
+      "scores every performance sub-scale 1-5 with a reason",
+      "every issue is marked with its conformance case or judgment-only",
+      "the repo under review is unchanged"
+    ],
+    "risk": "low",
+    "approval": "none"
+  },
+  "expect": [
+    "conformance.json exists and is the output of `pmos eval --framework performance --json` (its cases all have owner performance)",
+    "report.md has a Verdict section answering \"Is it optimized for speed, cost and quality of output?\" with a 1-5 score and a one-line reason for each of: speed, cost and quality",
+    "report.md ranks its top issues by severity (High, then Medium, then Low), and every issue cites at least one path:line",
+    "every issue ends with `Coverage:` naming a case from conformance.json with its pass/fail result, or `judgment-only`; no named case is missing from conformance.json",
+    "the Conformance section's pass/fail counts match conformance.json exactly",
+    "report.md has Quick wins and What's already good sections",
+    "report.md includes a hop count and the model tier per agent run for at least one multi-step workflow (e.g. sprint planning), traced to the mode's SKILL.md and roles.yaml",
+    "git status of the repo under review is the same before and after (verify-clean passed); nothing outside outputs/<id>/ was written",
+    "the result has status done, no actions, and a summary under 80 words with the scores"
+  ]
+}

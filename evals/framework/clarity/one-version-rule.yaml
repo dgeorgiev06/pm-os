@@ -1,0 +1,16 @@
+name: one-version-rule
+finding: clarity#5
+owner: clarity
+severity: medium
+desc: >-
+  One version rule, enforced by pmos: an upgrade must raise the pack's version (so widening grants
+  without a bump is refused, as the README says).
+steps:
+  - name: same version
+    run: $PMOS pack add packs/pm --upgrade --approve-grants
+    expect: {exit: nonzero, output: '(?i)version'}
+  - name: wider grants, same version
+    run: $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml grants.slack read && $PMOS pack add packs/pm --upgrade --approve-grants
+    expect: {exit: nonzero, output: '(?i)version'}
+  - name: after a bump it installs
+    run: $PY $FX/bin/yset.py packs/pm/pack.yaml version 0.3.0 && $PMOS pack add packs/pm --upgrade --approve-grants

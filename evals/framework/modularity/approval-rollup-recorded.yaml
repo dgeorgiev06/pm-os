@@ -1,0 +1,15 @@
+name: approval-rollup-recorded
+finding: modularity#6
+owner: modularity
+severity: medium
+desc: >-
+  The one allowed exception: a child may lower its approval when the parent's approval is at least
+  as strict (its actions roll up to the parent's gate). pmos records it as `approval_from`.
+steps:
+  - run: $PMOS task new --mode pm/sprint-planning --verb plan --inputs '{"sprint":"2026-S22","project":"STK"}'
+    capture: {S: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $S running
+  - run: $PMOS task new --parent $S --mode pm/jira-tickets --verb draft --approval none --inputs '{"plan":"outputs/plan.json","project":"STK"}'
+    capture: {J: '(T-\d{8}-\d{3,})'}
+    expect:
+      task: {id: $J, fields: {approval_from: $S}}

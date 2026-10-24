@@ -1,0 +1,15 @@
+name: approval-floor
+finding: modularity#6
+owner: modularity
+severity: medium
+desc: >-
+  A mode's approval and risk are a floor. pm/sprint-planning is before_execute / high, so the
+  envelope can't lower them (also composability#6).
+steps:
+  - run: $PMOS task new --mode pm/sprint-planning --verb plan --inputs '{"sprint":"2026-S22","project":"STK"}' --approval none
+    expect: {exit: nonzero, output: '(?i)approval'}
+  - run: $PMOS task new --mode pm/sprint-planning --verb plan --inputs '{"sprint":"2026-S22","project":"STK"}' --risk low
+    expect: {exit: nonzero, output: '(?i)risk'}
+  - name: the same or a stricter rule is fine
+    run: $PMOS task new --mode pm/prd --verb draft --inputs '{"goal":"g"}' --approval before_execute --risk high
+    expect: {output: 'T-\d{8}-\d{3,}'}

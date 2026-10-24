@@ -1,0 +1,21 @@
+name: regression-admission-installs-gtm
+finding: composability#good
+owner: composability
+severity: high
+regression: true
+desc: >-
+  A three-pack workflow installs on the first try: gtm (depends pm@^0.2) passes admission, asks for
+  grant approval, then shows up in the catalog and AGENTS.md as one line.
+setup:
+  copy: {packs/gtm: packs/gtm}
+steps:
+  - run: $PMOS pack add packs/gtm
+    expect: {exit: nonzero, output: 'approve-grants'}
+  - run: $PMOS pack add packs/gtm --approve-grants
+    expect: {stdout: '(?i)installed gtm'}
+  - run: $PMOS validate
+  - run: $PMOS catalog --pack gtm
+    expect: {stdout: 'gtm/launch-pack'}
+  - run: 'true'
+    expect:
+      files: {contains: {AGENTS.md: '`gtm`.*gtm/launch-pack'}}

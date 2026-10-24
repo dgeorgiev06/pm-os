@@ -1,0 +1,16 @@
+name: task-show-delegate-line
+finding: performance#1
+owner: performance
+severity: high
+desc: "`task show` prints `delegate to: worker-<tier>` from the task's role, so the CoS picks the right worker."
+steps:
+  - run: $PMOS task new --mode pm/jira-tickets --verb draft --inputs '{"plan":"outputs/plan.json","project":"STK"}'
+    capture: {J: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task show $J
+    expect: {stdout: '(?i)delegate to:?\s*`?worker-small'}
+  - run: $PMOS task new --mode pm/sprint-planning --verb plan --inputs '{"sprint":"2026-S22","project":"STK"}' --role pm/roadmap-strategist
+    capture: {S: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task show $S
+    expect: {stdout: '(?i)delegate to:?\s*`?worker-top'}
+  - name: the CoS manual tells the CoS to use that line
+    run: grep -n "delegate to" packs/cos/COS.md

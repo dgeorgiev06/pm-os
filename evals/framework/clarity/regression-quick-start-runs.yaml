@@ -1,0 +1,12 @@
+name: regression-quick-start-runs
+finding: clarity#good
+owner: clarity
+severity: high
+regression: true
+desc: The quick start runs without errors on a clean checkout (validate, catalog, catalog --pack).
+steps:
+  - run: $PMOS validate
+    expect: {stdout: '^OK'}
+  - run: $PMOS catalog
+  - run: $PMOS catalog --pack pm
+    expect: {stdout: 'pm/prd'}
