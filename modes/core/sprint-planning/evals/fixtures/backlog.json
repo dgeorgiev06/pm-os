@@ -1,0 +1,8 @@
+[
+  { "key": "STK-401", "summary": "Operator health scoring for routing", "points": 8, "epic": "STK-400", "labels": ["router"] },
+  { "key": "STK-402", "summary": "Per-operator exposure report for compliance", "points": 5, "epic": "STK-400", "labels": ["reporting"] },
+  { "key": "STK-403", "summary": "Unstake flow through router API", "points": 8, "epic": "STK-400", "labels": ["router", "api"] },
+  { "key": "STK-404", "summary": "Rewards aggregation across operators", "points": 5, "epic": "STK-400", "labels": ["rewards"] },
+  { "key": "STK-405", "summary": "Ethereum operator adapter spike", "points": 3, "epic": "STK-410", "labels": ["eth", "spike"] },
+  { "key": "STK-406", "summary": "Router API rate limiting", "points": 3, "epic": "STK-400", "labels": ["api"] }
+]
