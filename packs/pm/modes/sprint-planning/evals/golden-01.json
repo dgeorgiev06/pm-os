@@ -1,0 +1,25 @@
+{
+  "name": "plan a sprint with reduced availability",
+  "envelope": {
+    "verb": "plan",
+    "mode": "pm/sprint-planning",
+    "inputs": { "sprint": "2026-S22", "project": "STK", "goals_hint": "Solana router beta readiness" },
+    "acceptance": [
+      "ranking approved before planning",
+      "committed points within capacity",
+      "tickets drafted as dry-run actions"
+    ],
+    "risk": "high",
+    "approval": "before_execute"
+  },
+  "fixtures": {
+    "velocity.json": { "velocities": [31, 28, 34], "availability": 0.8 },
+    "backlog.json": "packs/pm/modes/sprint-planning/evals/fixtures/backlog.json"
+  },
+  "expect": [
+    "stage A stops at gate 1 with status blocked and ranking.md",
+    "committed points <= capacity.py committed_points (21 for this fixture)",
+    "roadmap diff lists only changed entries",
+    "final result has status needs_approval with roadmap + ticket actions"
+  ]
+}

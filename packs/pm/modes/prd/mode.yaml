@@ -1,0 +1,23 @@
+name: pm/prd
+version: 0.2.0
+contract: task@1
+author: dima
+summary: Draft a PRD from a goal and references, written for institutional staking customers
+verbs: [draft]
+accepts:
+  goal: string
+  refs: list?          # jira:STK-412, doc:path/to/brief.md, url:...
+  audience: string?    # defaults to custodians, banks, financial institutions
+returns:
+  prd: doc_ref
+skill: SKILL.md
+default_role: doc-writer
+calls: []
+grants: { docs: draft, jira: read }
+approval: before_publish
+risk: medium
+principles: [testable-requirements, cite-customer-claims]
+rubric:
+  - Success metrics have a baseline or an explicit "to measure" note
+  - Open questions list owners
+evals: evals/

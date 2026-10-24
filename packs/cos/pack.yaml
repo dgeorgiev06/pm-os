@@ -1,0 +1,14 @@
+name: cos
+version: 0.1.0
+contract: pack@1
+author: dima
+summary: Chief of Staff — talks to the PM, routes to packs and modes, batches approvals, posts digests
+requires:
+  core: ^0.2
+depends: []
+cos: COS.md                # this pack supplies the Chief of Staff; AGENTS.md is generated from it
+exports:
+  modes: []
+  roles: []
+  skills: []
+  principles: []

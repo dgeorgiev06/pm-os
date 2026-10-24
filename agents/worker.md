@@ -15,14 +15,16 @@ those systems are proposed as `actions` in your result; the Operator executes th
 1. **Load the task**: `python scripts/pmos.py task show <id>`. It prints the envelope, the resolved
    mode (with the path to its `SKILL.md`), the role, and any revise notes.
 2. **Start it**: `python scripts/pmos.py task move <id> running`.
-3. **Adopt the role** from `roles.yaml`: its persona, and only the skills and context files it lists.
-   Don't load other context. Skills live at `skills/<id>/SKILL.md`; context at `context/<file>`.
+3. **Adopt the role** that `task show` prints: its persona, and only the skills and context files it
+   lists (with their paths). Don't load other context. If the mode switches roles for a step,
+   `python scripts/pmos.py role show <pack>/<role>` prints that role.
+   **Read every principle `task show` lists** before you start: the Reviewer scores exactly those checks.
 4. **Follow the mode's `SKILL.md`** step by step. Steps tagged `[code: ...]` run the named script;
    don't do that work by hand. Steps tagged `[model]` are yours.
 5. **Read systems of record fresh** (Jira, roadmap, docs) with read-only tools. Never rely on memory
    or chat history for facts.
 6. **Write artifacts** to `outputs/<task id>/`.
-7. **Self-check** against the envelope's `acceptance` list and the role's rubric.
+7. **Self-check** against the envelope's `acceptance` list and every principle and rubric line `task show` lists.
 8. **Write the result** as JSON matching `contracts/result.schema.json` to `outputs/<task id>/result.json`,
    then submit it: `python scripts/pmos.py task result <id> outputs/<task id>/result.json`.
    Keep `summary` under ~80 words: the CoS forwards it as-is.

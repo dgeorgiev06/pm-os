@@ -4,9 +4,13 @@
 Every state change goes through this CLI, so any agent harness (or a human) can drive the
 framework the same way. Later, the same functions become steps in a durable workflow engine.
 
-  pmos validate                         check modes, roles, skills, agents, contracts
-  pmos catalog                          discover modes, write state/catalog.md (the CoS's menu)
-  pmos task new --mode M --verb V --inputs JSON [...]
+  pmos validate                         check core, every installed pack, and their references
+  pmos pack list                        installed packs
+  pmos pack add PATH [--source S] [--approve-grants] [--upgrade]
+  pmos pack remove NAME
+  pmos catalog [--pack NAME]            write state/catalog.md + AGENTS.md; --pack prints one pack's modes
+  pmos role show PACK/ROLE              a role's persona, skills, principles, context, rubric
+  pmos task new --mode PACK/MODE --verb V --inputs JSON [...]
   pmos task show ID [--for-review] [--json]
   pmos task move ID STATE [--note TEXT] [--by WHO]
   pmos task result ID RESULT.json
@@ -15,9 +19,11 @@ framework the same way. Later, the same functions become steps in a durable work
   pmos task list [--state STATE] [--all]
   pmos board                            regenerate state/status.md
   pmos decide "TEXT" [--by WHO]         append to context/decisions.log
-  pmos render claude-code|generic       generate one harness's native config
-  pmos eval [MODE ...]                  render (and optionally run) golden tasks
+  pmos render agents-md|claude-code|generic
+  pmos eval [PACK | PACK/MODE ...]      render (and optionally run) golden tasks
 
+Naming: modes are <pack>/<mode>; roles <pack>/<role>; skills and principles <pack>:<path>.
+Inside a pack, a bare name means "this pack". Core resources belong to the pack "core".
 Requires: Python 3.10+, PyYAML, jsonschema (pip install -r requirements.txt).
 """
 from __future__ import annotations
@@ -40,9 +46,11 @@ except ImportError:  # pragma: no cover
     sys.exit("pmos needs PyYAML and jsonschema: pip install -r requirements.txt")
 
 ROOT = Path(__file__).resolve().parent.parent
+CORE = "core"
 TERMINAL = {"done", "failed"}
 OPEN_STATES = ["queued", "running", "waiting", "in_review", "revise",
                "awaiting_approval", "approved", "blocked"]
+GRANT_LEVEL = {"read": 1, "draft": 2, "write": 3}
 
 # The task state machine. pmos is the only writer of task state.
 TRANSITIONS: dict[str, set[str]] = {
@@ -97,20 +105,28 @@ def frontmatter(path: Path) -> tuple[dict, str]:
 
 def rel(path: Path) -> str:
     try:
-        return str(path.relative_to(ROOT))
+        return str(Path(path).resolve().relative_to(ROOT))
     except ValueError:
         return str(path)
 
 
+def render_name(ref: str) -> str:
+    """pm:domain/prd-structure -> pm-domain-prd-structure; pm/prd -> pm-prd."""
+    return re.sub(r"[:/]", "-", ref)
+
+
 # --------------------------------------------------------------------------- config
-_CONFIG: dict | None = None
+_CACHE: dict = {}
+
+
+def clear_cache() -> None:
+    _CACHE.clear()
 
 
 def config() -> dict:
-    global _CONFIG
-    if _CONFIG is None:
-        _CONFIG = load_yaml(ROOT / "pm-os.yaml")
-    return _CONFIG
+    if "config" not in _CACHE:
+        _CACHE["config"] = load_yaml(ROOT / "pm-os.yaml")
+    return _CACHE["config"]
 
 
 def path_of(key: str) -> Path:
@@ -125,51 +141,22 @@ def schema(name: str) -> dict:
     return load_json(ROOT / "contracts" / f"{name}.schema.json")
 
 
-def validate_against(data, schema_name: str, what: str) -> None:
+def schema_errors(data, schema_name: str, what: str) -> list[str]:
     validator = jsonschema.Draft202012Validator(schema(schema_name))
-    errors = sorted(validator.iter_errors(data), key=lambda e: list(e.path))
-    if errors:
-        lines = [f"{what} does not match contracts/{schema_name}.schema.json:"]
-        for e in errors[:10]:
-            where = "/".join(str(p) for p in e.path) or "(root)"
-            lines.append(f"  - {where}: {e.message}")
-        raise PmosError("\n".join(lines))
+    out = []
+    for e in sorted(validator.iter_errors(data), key=lambda e: list(e.path))[:10]:
+        where = "/".join(str(p) for p in e.path) or "(root)"
+        out.append(f"{what}: {where}: {e.message}")
+    return out
 
 
-# --------------------------------------------------------------------------- registry
-def roles() -> dict:
-    return load_yaml(ROOT / config()["paths"]["roles"])["roles"]
+def validate_against(data, schema_name: str, what: str) -> None:
+    errs = schema_errors(data, schema_name, what)
+    if errs:
+        raise PmosError(f"does not match contracts/{schema_name}.schema.json:\n  - " + "\n  - ".join(errs))
 
 
-def discover_skills() -> dict[str, Path]:
-    """Shared skills: id (infra/envelope-io) -> SKILL.md path."""
-    base = ROOT / config()["paths"]["skills"]
-    found = {}
-    for skill_md in sorted(base.rglob("SKILL.md")):
-        found[skill_md.parent.relative_to(base).as_posix()] = skill_md
-    return found
-
-
-def discover_modes() -> list[dict]:
-    """All mode.yaml files under every configured mode root, with their source label."""
-    cfg = config()
-    sources = cfg.get("sources", {})
-    modes = []
-    for root_name in cfg["paths"]["modes"]:
-        root = ROOT / root_name
-        if not root.exists():
-            continue
-        for manifest in sorted(root.rglob("mode.yaml")):
-            data = load_yaml(manifest) or {}
-            modes.append({
-                "manifest": data,
-                "dir": manifest.parent,
-                "path": manifest,
-                "source": sources.get(root_name, "local"),
-            })
-    return modes
-
-
+# --------------------------------------------------------------------------- versions
 def version_tuple(v: str) -> tuple[int, ...]:
     return tuple(int(x) for x in v.split("."))
 
@@ -181,9 +168,10 @@ def version_matches(version: str, spec: str | None) -> bool:
     have = version_tuple(version)
     if spec.startswith("^"):
         want = version_tuple(spec[1:])
+        floor = want + (0,) * (3 - len(want))
         if want[0] == 0 and len(want) > 1:
-            return have[:2] == want[:2] and have >= want + (0,) * (3 - len(want))
-        return have[0] == want[0] and have >= want + (0,) * (3 - len(want))
+            return have[:2] == want[:2] and have >= floor
+        return have[0] == want[0] and have >= floor
     if spec.startswith("~"):
         want = version_tuple(spec[1:])
         return have[:2] == (want + (0,))[:2] and have >= want + (0,) * (3 - len(want))
@@ -191,101 +179,385 @@ def version_matches(version: str, spec: str | None) -> bool:
     return have[:len(want)] == want
 
 
-def resolve_mode(ref: str) -> dict:
+def split_ref(ref: str) -> tuple[str, str | None]:
     name, _, spec = ref.partition("@")
+    return name, (spec or None)
+
+
+# --------------------------------------------------------------------------- packs
+def packs_file() -> Path:
+    return ROOT / config()["paths"]["packs_file"]
+
+
+def install_list() -> list[dict]:
+    if "install" not in _CACHE:
+        data = load_yaml(packs_file()) if packs_file().exists() else {}
+        _CACHE["install"] = list((data or {}).get("packs", []))
+    return _CACHE["install"]
+
+
+def save_install_list(entries: list[dict]) -> None:
+    header = ("# Installed packs. Managed by `pmos pack add` / `pmos pack remove`; read by the registry.\n"
+              "# A pack appears here only after admission (valid manifests, evals present, exports respected)\n"
+              "# and after its grants were approved with --approve-grants.\n")
+    packs_file().write_text(header + yaml.safe_dump({"packs": entries}, sort_keys=False), encoding="utf-8")
+    clear_cache()
+
+
+def packs() -> dict[str, dict]:
+    """name -> {name, dir, manifest, source, entry}. Always includes the core pack."""
+    if "packs" not in _CACHE:
+        out = {CORE: {"name": CORE, "dir": ROOT, "source": CORE, "entry": None,
+                      "manifest": {"name": CORE, "version": config()["version"], "exports": None,
+                                   "depends": []}}}
+        for e in install_list():
+            if not e.get("enabled", True):
+                continue
+            d = (ROOT / e["path"]).resolve() if not os.path.isabs(e["path"]) else Path(e["path"])
+            man_path = d / "pack.yaml"
+            if not man_path.exists():
+                raise PmosError(f"packs.yaml lists '{e.get('name')}' at {e['path']}, but {rel(man_path)} is missing")
+            man = load_yaml(man_path) or {}
+            out[man.get("name", e.get("name"))] = {"name": man.get("name"), "dir": d, "manifest": man,
+                                                  "source": e.get("source", "local"), "entry": e}
+        _CACHE["packs"] = out
+    return _CACHE["packs"]
+
+
+def pack_paths(p: dict) -> dict[str, Path | None]:
+    if p["name"] == CORE:
+        c = config()["paths"]
+        return {"skills": ROOT / c["skills"], "roles": ROOT / c["roles"],
+                "agents": ROOT / c["agents"], "modes": None}
+    d = p["dir"]
+    return {"skills": d / "skills", "roles": d / "roles.yaml", "agents": d / "agents", "modes": d / "modes"}
+
+
+def depends_on(pack: str) -> dict[str, str | None]:
+    out = {}
+    for dep in packs()[pack]["manifest"].get("depends", []) or []:
+        name, spec = split_ref(dep)
+        out[name] = spec
+    return out
+
+
+def is_exported(pack: str, kind: str, local: str) -> bool:
+    if pack == CORE:
+        return True
+    exports = packs()[pack]["manifest"].get("exports") or {}
+    return local in (exports.get(kind) or [])
+
+
+def visibility_error(owner: str | None, target: str, kind: str, local: str) -> str | None:
+    """owner None = the CoS (top level): it may use anything a pack exports."""
+    if target == CORE or owner == target:
+        return None
+    if target not in packs():
+        return f"pack '{target}' is not installed"
+    if owner not in (None, CORE) and target not in depends_on(owner):
+        return f"pack '{owner}' uses {kind[:-1]} '{local}' from '{target}' without listing '{target}' in depends"
+    if not is_exported(target, kind, local):
+        return f"{kind[:-1]} '{local}' is internal to pack '{target}' (not in its exports)"
+    return None
+
+
+# --------------------------------------------------------------------------- registry
+def all_skills() -> dict[str, Path]:
+    """'<pack>:<path>' -> SKILL.md, for skills and principles of every installed pack."""
+    if "skills" not in _CACHE:
+        out = {}
+        for name, p in packs().items():
+            base = pack_paths(p)["skills"]
+            if base and base.exists():
+                for skill_md in sorted(base.rglob("SKILL.md")):
+                    out[f"{name}:{skill_md.parent.relative_to(base).as_posix()}"] = skill_md
+        _CACHE["skills"] = out
+    return _CACHE["skills"]
+
+
+def all_principles() -> dict[str, dict]:
+    """'<pack>:<name>' -> {path, meta, pack}. A principle is a skill under principles/."""
+    out = {}
+    for sid, path in all_skills().items():
+        pack, _, local = sid.partition(":")
+        if local.startswith("principles/") and local.count("/") == 1:
+            meta, _ = frontmatter(path)
+            out[f"{pack}:{local.split('/', 1)[1]}"] = {"path": path, "meta": meta, "pack": pack}
+    return out
+
+
+def all_roles() -> dict[str, dict]:
+    """'<pack>/<role>' -> role dict (+ _pack, _name)."""
+    if "roles" not in _CACHE:
+        out = {}
+        for name, p in packs().items():
+            f = pack_paths(p)["roles"]
+            if f and f.exists():
+                for rname, r in ((load_yaml(f) or {}).get("roles") or {}).items():
+                    out[f"{name}/{rname}"] = {**r, "_pack": name, "_name": rname}
+        _CACHE["roles"] = out
+    return _CACHE["roles"]
+
+
+def all_agents() -> dict[str, tuple[dict, str, Path, str]]:
+    """agent name -> (frontmatter, body, path, pack)."""
+    out = {}
+    for name, p in packs().items():
+        d = pack_paths(p)["agents"]
+        if d and d.exists():
+            for agent_md in sorted(d.glob("*.md")):
+                meta, body = frontmatter(agent_md)
+                out[meta.get("name", agent_md.stem)] = (meta, body, agent_md, name)
+    return out
+
+
+def discover_modes() -> list[dict]:
+    if "modes" not in _CACHE:
+        out = []
+        for name, p in packs().items():
+            d = pack_paths(p)["modes"]
+            if not d or not d.exists():
+                continue
+            for manifest in sorted(d.glob("*/mode.yaml")):
+                out.append({"manifest": load_yaml(manifest) or {}, "dir": manifest.parent, "path": manifest,
+                            "pack": name, "source": p["source"]})
+        _CACHE["modes"] = out
+    return _CACHE["modes"]
+
+
+def q_role(ref: str, owner: str) -> str:
+    return ref if "/" in ref else f"{owner}/{ref}"
+
+
+def q_skill(ref: str, owner: str) -> str:
+    return ref if ":" in ref else f"{owner}:{ref}"
+
+
+def resolve_mode(ref: str, from_pack: str | None = None, check_visibility: bool = True) -> dict:
+    name, spec = split_ref(ref)
     precedence = config().get("precedence", ["local", "org", "third-party"])
     candidates = [m for m in discover_modes()
                   if m["manifest"].get("name") == name
-                  and version_matches(m["manifest"].get("version", "0.0.0"), spec or None)]
+                  and version_matches(m["manifest"].get("version", "0.0.0"), spec)]
     if not candidates:
-        raise PmosError(f"no registered mode matches '{ref}'. Run `pmos catalog` to see what's available.")
+        raise PmosError(f"no installed mode matches '{ref}'. `pmos catalog` lists what's available.")
 
     def rank(m):
         src = precedence.index(m["source"]) if m["source"] in precedence else len(precedence)
         return (src, tuple(-x for x in version_tuple(m["manifest"]["version"])))
 
-    return sorted(candidates, key=rank)[0]
+    mode = sorted(candidates, key=rank)[0]
+    if check_visibility:
+        err = visibility_error(from_pack, mode["pack"], "modes", name)
+        if err:
+            raise PmosError(err)
+    return mode
 
 
-def mode_skill_name(mode_name: str) -> str:
-    return mode_name.replace("/", "-")
+def resolve_role(ref: str, owner: str) -> dict:
+    fq = q_role(ref, owner)
+    role = all_roles().get(fq)
+    if not role:
+        raise PmosError(f"role '{fq}' not found")
+    err = visibility_error(owner, role["_pack"], "roles", role["_name"])
+    if err:
+        raise PmosError(err)
+    return role
+
+
+def principles_for(mode: dict, role: dict) -> list[tuple[str, str, dict]]:
+    """(group, id, principle) for core 'always' principles, then the mode's, then the role's."""
+    principles = all_principles()
+    out, seen = [], set()
+    for pid, pr in sorted(principles.items()):
+        if pr["pack"] == CORE and pr["meta"].get("always"):
+            out.append(("core", pid, pr))
+            seen.add(pid)
+    for group, refs, owner in (("mode", mode["manifest"].get("principles", []), mode["pack"]),
+                               ("role", role.get("principles", []), role["_pack"])):
+        for ref in refs or []:
+            pid = q_skill(ref, owner)
+            if pid in seen or pid not in principles:
+                continue
+            out.append((group, pid, principles[pid]))
+            seen.add(pid)
+    return out
 
 
 # --------------------------------------------------------------------------- validate
-def cmd_validate(_args) -> int:
+def check_pack(name: str) -> tuple[list[str], list[str]]:
+    """Errors and warnings for one installed pack (including core)."""
     errors, warnings = [], []
-    role_sheet = {}
-    try:
-        raw = load_yaml(ROOT / config()["paths"]["roles"])
-        validate_against(raw, "roles", "roles.yaml")
-        role_sheet = raw["roles"]
-    except PmosError as e:
-        errors.append(str(e))
+    p = packs()[name]
+    man = p["manifest"]
+    paths = pack_paths(p)
+    where_pack = "core" if name == CORE else rel(p["dir"] / "pack.yaml")
+    skills, principles, roles = all_skills(), all_principles(), all_roles()
 
-    skills = discover_skills()
+    if name != CORE:
+        errors += schema_errors(man, "pack", where_pack)
+        req = (man.get("requires") or {}).get("core")
+        if req and not version_matches(config()["version"], req):
+            errors.append(f"{where_pack}: requires core {req}, but this is core {config()['version']}")
+        for dep, spec in depends_on(name).items():
+            if dep not in packs():
+                errors.append(f"{where_pack}: depends on '{dep}', which is not installed")
+            elif not version_matches(packs()[dep]["manifest"]["version"], spec):
+                errors.append(f"{where_pack}: depends on {dep}@{spec}, installed is {packs()[dep]['manifest']['version']}")
+        if man.get("cos") and not (p["dir"] / man["cos"]).exists():
+            errors.append(f"{where_pack}: cos file {man['cos']} missing")
+
+    # skills and principles
     for sid, path in skills.items():
+        if not sid.startswith(f"{name}:"):
+            continue
         meta, _ = frontmatter(path)
-        expected = sid.replace("/", "-")
+        expected = render_name(sid)
         if meta.get("name") != expected:
             errors.append(f"{rel(path)}: frontmatter name should be '{expected}' (got {meta.get('name')!r})")
         if not meta.get("description"):
             errors.append(f"{rel(path)}: missing description")
+    for pid, pr in principles.items():
+        if pr["pack"] != name:
+            continue
+        if pr["meta"].get("kind") != "principle":
+            errors.append(f"{rel(pr['path'])}: principles need 'kind: principle'")
+        if not pr["meta"].get("check"):
+            errors.append(f"{rel(pr['path'])}: principles need a one-line 'check' the Reviewer can score")
+        if pr["meta"].get("always") and name != CORE:
+            errors.append(f"{rel(pr['path'])}: only core principles may set 'always: true'")
 
-    agents_dir = ROOT / config()["paths"]["agents"]
-    agent_names = set()
-    for agent_md in sorted(agents_dir.glob("*.md")):
-        meta, _ = frontmatter(agent_md)
-        for key in ("name", "description", "tier", "grants"):
-            if key not in meta:
-                errors.append(f"{rel(agent_md)}: frontmatter missing '{key}'")
-        if meta.get("tier") not in ("small", "mid", "top"):
-            errors.append(f"{rel(agent_md)}: tier must be small, mid or top")
-        agent_names.add(meta.get("name"))
-
+    # roles
+    if paths["roles"] and paths["roles"].exists():
+        errors += schema_errors(load_yaml(paths["roles"]), "roles", rel(paths["roles"]))
+    agents = all_agents()
     context_dir = ROOT / config()["paths"]["context"]
-    for rname, r in role_sheet.items():
-        if r.get("agent") not in agent_names:
-            errors.append(f"roles.yaml/{rname}: agent '{r.get('agent')}' has no file in agents/")
+    for fq, r in roles.items():
+        if r["_pack"] != name:
+            continue
+        if r.get("agent") not in agents:
+            errors.append(f"role {fq}: agent '{r.get('agent')}' not found")
         for s in r.get("skills", []):
-            if s not in skills:
-                errors.append(f"roles.yaml/{rname}: skill '{s}' not found under skills/")
+            sid = q_skill(s, name)
+            if sid not in skills:
+                errors.append(f"role {fq}: skill '{sid}' not found")
+            else:
+                err = visibility_error(name, sid.split(":")[0], "skills", sid.split(":", 1)[1])
+                if err:
+                    errors.append(f"role {fq}: {err}")
+        for pr in r.get("principles", []):
+            pid = q_skill(pr, name)
+            if pid not in principles:
+                errors.append(f"role {fq}: principle '{pid}' not found")
+            else:
+                err = visibility_error(name, pid.split(":")[0], "principles", pid.split(":", 1)[1])
+                if err:
+                    errors.append(f"role {fq}: {err}")
         for c in r.get("context", []):
             if not (context_dir / c).exists():
-                warnings.append(f"roles.yaml/{rname}: context file '{c}' not found in context/")
+                warnings.append(f"role {fq}: context file '{c}' not found in context/")
 
-    seen = {}
-    for m in discover_modes():
-        man, where = m["manifest"], rel(m["path"])
-        try:
-            validate_against(man, "mode", where)
-        except PmosError as e:
-            errors.append(str(e))
+    # agents
+    for aname, (meta, _b, path, apack) in agents.items():
+        if apack != name:
             continue
-        key = (man["name"], man["version"], m["source"])
-        if key in seen:
-            errors.append(f"{where}: duplicate of {seen[key]}")
-        seen[key] = where
-        skill_path = m["dir"] / man.get("skill", "SKILL.md")
+        for key in ("name", "description", "tier", "grants"):
+            if key not in meta:
+                errors.append(f"{rel(path)}: frontmatter missing '{key}'")
+        if meta.get("tier") not in ("small", "mid", "top"):
+            errors.append(f"{rel(path)}: tier must be small, mid or top")
+
+    # modes
+    mode_names = set()
+    for m in [m for m in discover_modes() if m["pack"] == name]:
+        mm, where = m["manifest"], rel(m["path"])
+        errs = schema_errors(mm, "mode", where)
+        if errs:
+            errors += errs
+            continue
+        mode_names.add(mm["name"])
+        if mm["name"].split("/")[0] != name:
+            errors.append(f"{where}: mode name must start with '{name}/' (got {mm['name']})")
+        skill_path = m["dir"] / mm.get("skill", "SKILL.md")
         if not skill_path.exists():
             errors.append(f"{where}: skill file {rel(skill_path)} missing")
         else:
             meta, _ = frontmatter(skill_path)
-            if meta.get("name") != mode_skill_name(man["name"]):
-                errors.append(f"{rel(skill_path)}: frontmatter name should be '{mode_skill_name(man['name'])}'")
+            if meta.get("name") != render_name(mm["name"]):
+                errors.append(f"{rel(skill_path)}: frontmatter name should be '{render_name(mm['name'])}'")
             if not meta.get("description"):
                 errors.append(f"{rel(skill_path)}: missing description")
-        for rname in [man["default_role"], *man.get("roles", [])]:
-            if rname not in role_sheet:
-                errors.append(f"{where}: role '{rname}' not in roles.yaml")
-        for call in man.get("calls", []):
+        for rref in [mm["default_role"], *mm.get("roles", [])]:
             try:
-                resolve_mode(call)
-            except PmosError:
-                errors.append(f"{where}: calls '{call}', which is not registered")
-        evals_dir = m["dir"] / man.get("evals", "evals/")
+                resolve_role(rref, name)
+            except PmosError as e:
+                errors.append(f"{where}: {e}")
+        for pr in mm.get("principles", []):
+            pid = q_skill(pr, name)
+            if pid not in principles:
+                errors.append(f"{where}: principle '{pid}' not found")
+            else:
+                err = visibility_error(name, pid.split(":")[0], "principles", pid.split(":", 1)[1])
+                if err:
+                    errors.append(f"{where}: {err}")
+        for call in mm.get("calls", []):
+            try:
+                resolve_mode(call, from_pack=name)
+            except PmosError as e:
+                errors.append(f"{where}: calls '{call}': {e}")
+        evals_dir = m["dir"] / mm.get("evals", "evals/")
         if not list(evals_dir.glob("*.json")):
             errors.append(f"{where}: no golden tasks in {rel(evals_dir)} (no evals, no registration)")
 
+    # exports must exist
+    if name != CORE:
+        exports = man.get("exports") or {}
+        for mname in exports.get("modes", []) or []:
+            if mname not in mode_names:
+                errors.append(f"{where_pack}: exports mode '{mname}', which the pack doesn't contain")
+        for rname in exports.get("roles", []) or []:
+            if f"{name}/{rname}" not in roles:
+                errors.append(f"{where_pack}: exports role '{rname}', which the pack doesn't define")
+        for sname in exports.get("skills", []) or []:
+            if f"{name}:{sname}" not in skills:
+                errors.append(f"{where_pack}: exports skill '{sname}', which the pack doesn't contain")
+        for pname in exports.get("principles", []) or []:
+            if f"{name}:{pname}" not in principles:
+                errors.append(f"{where_pack}: exports principle '{pname}', which the pack doesn't contain")
+        router = man.get("router")
+        if router and router not in (exports.get("modes") or []):
+            errors.append(f"{where_pack}: router '{router}' must be an exported mode")
+    return errors, warnings
+
+
+def validate_all() -> tuple[list[str], list[str]]:
+    errors, warnings = [], []
+    for name in packs():
+        e, w = check_pack(name)
+        errors += e
+        warnings += w
+    names = {}
+    for sid in all_skills():
+        names.setdefault(render_name(sid), []).append(sid)
+    for m in discover_modes():
+        names.setdefault(render_name(m["manifest"].get("name", "")), []).append(m["manifest"].get("name"))
+    for rn, refs in names.items():
+        if len(refs) > 1:
+            errors.append(f"rendered skill name '{rn}' is used by {refs}")
+    cos = config().get("cos_pack")
+    if cos not in packs():
+        errors.append(f"pm-os.yaml: cos_pack '{cos}' is not installed")
+    elif not packs()[cos]["manifest"].get("cos"):
+        errors.append(f"pm-os.yaml: cos_pack '{cos}' doesn't supply a Chief of Staff (no 'cos' in pack.yaml)")
+    else:
+        agents_md = ROOT / "AGENTS.md"
+        if not agents_md.exists() or agents_md.read_text(encoding="utf-8") != build_agents_md():
+            warnings.append("AGENTS.md is out of date; run `pmos catalog` (or `pmos render agents-md`)")
+    return errors, warnings
+
+
+def cmd_validate(_args) -> int:
+    errors, warnings = validate_all()
     for w in warnings:
         print(f"warn: {w}")
     for e in errors:
@@ -293,49 +565,219 @@ def cmd_validate(_args) -> int:
     if errors:
         print(f"\n{len(errors)} error(s).")
         return 1
-    print(f"OK: {len(seen)} mode(s), {len(role_sheet)} role(s), {len(skills)} shared skill(s), "
-          f"{len(agent_names)} agent(s).")
+    non_core = [n for n in packs() if n != CORE]
+    print(f"OK: {len(non_core)} pack(s) ({', '.join(non_core)}), {len(discover_modes())} mode(s), "
+          f"{len(all_roles())} role(s), {len(all_skills()) - len(all_principles())} skill(s), "
+          f"{len(all_principles())} principle(s), {len(all_agents())} agent(s).")
     return 0
 
 
-# --------------------------------------------------------------------------- catalog
-def build_catalog() -> list[dict]:
+# --------------------------------------------------------------------------- packs CLI
+def mode_grants(pack: str) -> dict[str, str]:
+    union: dict[str, str] = {}
+    for m in discover_modes():
+        if m["pack"] != pack:
+            continue
+        for system, level in (m["manifest"].get("grants") or {}).items():
+            if GRANT_LEVEL.get(level, 0) > GRANT_LEVEL.get(union.get(system), 0):
+                union[system] = level
+    return dict(sorted(union.items()))
+
+
+def cmd_pack_list(_args) -> int:
+    entries = install_list()
+    if not entries:
+        print("(no packs installed)")
+    for e in entries:
+        p = packs().get(e["name"])
+        summary = p["manifest"].get("summary", "") if p else "(missing)"
+        grants = ", ".join(f"{k}:{v}" for k, v in (e.get("grants_approved") or {}).items()) or "none"
+        flag = "" if e.get("enabled", True) else " (disabled)"
+        print(f"{e['name']:<10} {e.get('version', ''):<8} {e.get('source', ''):<12} grants: {grants}{flag}\n"
+              f"{'':<10} {summary}")
+    return 0
+
+
+def cmd_pack_add(args) -> int:
+    d = Path(args.path).resolve()
+    man_path = d / "pack.yaml"
+    if not man_path.exists():
+        raise PmosError(f"no pack.yaml in {args.path}")
+    man = load_yaml(man_path) or {}
+    validate_against(man, "pack", rel(man_path))
+    name = man["name"]
+    entries = install_list()
+    existing = next((e for e in entries if e["name"] == name), None)
+    if existing and not args.upgrade:
+        raise PmosError(f"pack '{name}' is already installed ({existing.get('version')}); use --upgrade")
+
+    stored_path = rel(d) if str(d).startswith(str(ROOT)) else str(d)
+    entry = {"name": name, "version": man["version"], "path": stored_path, "source": args.source,
+             "enabled": True, "grants_approved": {}, "installed_at": now()}
+    trial = [e for e in entries if e["name"] != name] + [entry]
+    _CACHE["install"] = trial
+    _CACHE.pop("packs", None)
+    for k in ("skills", "roles", "modes"):
+        _CACHE.pop(k, None)
+    try:
+        errors, warnings = check_pack(name)
+    finally:
+        pass
+    for w in warnings:
+        print(f"warn: {w}")
+    if errors:
+        clear_cache()
+        print(f"Admission failed for pack '{name}':")
+        for e in errors:
+            print(f"  - {e}")
+        return 1
+
+    requested = mode_grants(name)
+    previously = (existing or {}).get("grants_approved") or {}
+    widened = {k: v for k, v in requested.items() if GRANT_LEVEL.get(v, 0) > GRANT_LEVEL.get(previously.get(k), 0)}
+    if widened and not args.approve_grants:
+        clear_cache()
+        print(f"Pack '{name}' {man['version']} passed admission and requests these grants:")
+        for k, v in requested.items():
+            print(f"  - {k}: {v}" + ("  (new)" if k in widened else ""))
+        print("Writes are always executed by the Operator after approval; these grants define what the pack's "
+              "modes may read or propose.\nRe-run with --approve-grants to install.")
+        return 1
+    entry["grants_approved"] = requested
+    save_install_list(trial)
+    write_catalog()
+    print(f"{'upgraded' if existing else 'installed'} {name} {man['version']} from {stored_path} "
+          f"({len([m for m in discover_modes() if m['pack'] == name])} mode(s)); catalog and AGENTS.md updated")
+    return 0
+
+
+def cmd_pack_remove(args) -> int:
+    entries = install_list()
+    if not any(e["name"] == args.name for e in entries):
+        raise PmosError(f"pack '{args.name}' is not installed")
+    if args.name == config().get("cos_pack"):
+        raise PmosError(f"'{args.name}' supplies the Chief of Staff; set cos_pack in pm-os.yaml to another pack first")
+    dependents = [n for n in packs() if n not in (CORE, args.name) and args.name in depends_on(n)]
+    if dependents:
+        raise PmosError(f"can't remove '{args.name}': {', '.join(dependents)} depend(s) on it")
+    open_tasks = [t["envelope"]["id"] for t in all_tasks()
+                  if t.get("pack") == args.name and t["state"] not in TERMINAL]
+    if open_tasks:
+        raise PmosError(f"can't remove '{args.name}' while it has open tasks: {', '.join(open_tasks)}")
+    save_install_list([e for e in entries if e["name"] != args.name])
+    write_catalog()
+    print(f"removed {args.name}; catalog and AGENTS.md updated")
+    return 0
+
+
+# --------------------------------------------------------------------------- catalog & AGENTS.md
+def exported_modes(pack: str) -> list[dict]:
+    return [m for m in discover_modes() if m["pack"] == pack and is_exported(pack, "modes", m["manifest"]["name"])]
+
+
+def packs_table() -> list[str]:
+    lines = ["| Pack | Version | What it covers | Router | Modes | Source |",
+             "| --- | --- | --- | --- | --- | --- |"]
+    for name, p in packs().items():
+        if name == CORE:
+            continue
+        man = p["manifest"]
+        modes = ", ".join(f"`{m['manifest']['name']}`" for m in exported_modes(name)) or "—"
+        lines.append(f"| `{name}` | {man['version']} | {man.get('summary', '')} | "
+                     f"{('`' + man['router'] + '`') if man.get('router') else '—'} | {modes} | {p['source']} |")
+    return lines
+
+
+def mode_rows(pack: str, include_internal: bool) -> list[str]:
+    lines = ["| Mode | Version | Verbs | What it does | Accepts | Approval |",
+             "| --- | --- | --- | --- | --- | --- |"]
+    for m in sorted(discover_modes(), key=lambda m: m["manifest"]["name"]):
+        if m["pack"] != pack:
+            continue
+        mm = m["manifest"]
+        internal = not is_exported(pack, "modes", mm["name"])
+        if internal and not include_internal:
+            continue
+        accepts = ", ".join(f"{k}: {v}" for k, v in mm.get("accepts", {}).items())
+        lines.append(f"| `{mm['name']}`{' (internal)' if internal else ''} | {mm['version']} | "
+                     f"{', '.join(mm.get('verbs', []))} | {mm.get('summary', '')} | {accepts} | {mm.get('approval')} |")
+    return lines
+
+
+def build_agents_md() -> str:
+    cos = packs()[config()["cos_pack"]]
+    manual = (cos["dir"] / cos["manifest"]["cos"]).read_text(encoding="utf-8").rstrip()
+    return ("<!-- Generated by `pmos` from " + rel(cos["dir"] / cos["manifest"]["cos"]) +
+            " and packs.yaml. Edit those, then run `pmos catalog`. -->\n\n" + manual +
+            "\n\n## Installed packs\n\n" + "\n".join(packs_table()) +
+            "\n\nUse `python scripts/pmos.py catalog --pack <pack>` for a pack's modes and what each accepts.\n")
+
+
+def write_catalog() -> None:
+    clear_cache()
+    state = path_of("state")
     rows = []
     for m in discover_modes():
-        man = m["manifest"]
-        if not man.get("name"):
+        mm = m["manifest"]
+        rows.append({"name": mm["name"], "version": mm.get("version"), "pack": m["pack"],
+                     "exported": is_exported(m["pack"], "modes", mm["name"]), "summary": mm.get("summary", ""),
+                     "accepts": mm.get("accepts", {}), "verbs": mm.get("verbs", []),
+                     "approval": mm.get("approval"), "source": m["source"]})
+    write_json(state / "catalog.json", sorted(rows, key=lambda r: r["name"]))
+    lines = ["# Catalog", "", f"Generated by `pmos catalog` at {now()}. The CoS routes from this.", "",
+             "## Packs", "", *packs_table(), ""]
+    for name in packs():
+        if name == CORE or not exported_modes(name):
             continue
-        rows.append({
-            "name": man["name"],
-            "version": man.get("version"),
-            "summary": man.get("summary", ""),
-            "accepts": man.get("accepts", {}),
-            "verbs": man.get("verbs", []),
-            "approval": man.get("approval"),
-            "source": m["source"],
-        })
-    return sorted(rows, key=lambda r: r["name"])
+        lines += [f"## `{name}` modes", "", *mode_rows(name, include_internal=False), ""]
+    state.mkdir(parents=True, exist_ok=True)
+    (state / "catalog.md").write_text("\n".join(lines), encoding="utf-8")
+    (ROOT / "AGENTS.md").write_text(build_agents_md(), encoding="utf-8")
 
 
-def cmd_catalog(_args) -> int:
-    rows = build_catalog()
-    state = path_of("state")
-    write_json(state / "catalog.json", rows)
-    lines = [
-        "# Mode catalog",
-        "",
-        f"Generated by `pmos catalog` at {now()}. The CoS picks modes from this list.",
-        "",
-        "| Mode | Version | Verbs | What it does | Accepts | Approval | Source |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
-    ]
-    for r in rows:
-        accepts = ", ".join(f"{k}: {v}" for k, v in r["accepts"].items())
-        lines.append(f"| `{r['name']}` | {r['version']} | {', '.join(r['verbs'])} | {r['summary']} "
-                     f"| {accepts} | {r['approval']} | {r['source']} |")
-    (state / "catalog.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"{len(rows)} mode(s) -> {rel(state / 'catalog.md')}")
+def cmd_catalog(args) -> int:
+    if args.pack:
+        if args.pack not in packs() or args.pack == CORE:
+            raise PmosError(f"pack '{args.pack}' is not installed")
+        man = packs()[args.pack]["manifest"]
+        print(f"# {args.pack} {man['version']} — {man.get('summary', '')}\n")
+        if man.get("router"):
+            print(f"Router (for goal-level asks): `{man['router']}`\n")
+        print("\n".join(mode_rows(args.pack, include_internal=True)))
+        return 0
+    write_catalog()
+    print(f"{len([n for n in packs() if n != CORE])} pack(s), {len(discover_modes())} mode(s) -> "
+          f"{rel(path_of('state') / 'catalog.md')}; AGENTS.md regenerated")
     return 0
+
+
+def cmd_role_show(args) -> int:
+    if "/" not in args.role:
+        raise PmosError("give a qualified role: <pack>/<role>, e.g. pm/doc-writer")
+    role = all_roles().get(args.role)
+    if not role:
+        raise PmosError(f"role '{args.role}' not found")
+    print("\n".join(role_lines(role)))
+    return 0
+
+
+def role_lines(role: dict) -> list[str]:
+    owner, skills, principles = role["_pack"], all_skills(), all_principles()
+    ctx = ROOT / config()["paths"]["context"]
+    out = [f"## Role: {owner}/{role['_name']} (agent: {role['agent']}, tier: {role['tier']})",
+           f"- persona: {role['persona']}"]
+    for s in role.get("skills", []):
+        sid = q_skill(s, owner)
+        out.append(f"- skill: {rel(skills[sid]) if sid in skills else sid + ' (missing)'}")
+    for pr in role.get("principles", []):
+        pid = q_skill(pr, owner)
+        if pid in principles:
+            out.append(f"- principle {pid}: {principles[pid]['meta']['check']} ({rel(principles[pid]['path'])})")
+    for c in role.get("context", []):
+        out.append(f"- context: {rel(ctx / c)}")
+    for r in role.get("rubric", []):
+        out.append(f"- rubric: {r}")
+    return out
 
 
 # --------------------------------------------------------------------------- tasks
@@ -377,7 +819,7 @@ def trace(task: dict, event: str, **fields) -> None:
     traces.mkdir(parents=True, exist_ok=True)
     env = task["envelope"]
     record = {
-        "ts": now(), "event": event, "task_id": env["id"], "mode": env["mode"],
+        "ts": now(), "event": event, "task_id": env["id"], "mode": env["mode"], "pack": task.get("pack"),
         "mode_version": task.get("mode_version"), "role": task.get("role"),
         "parent": env.get("parent"), **fields,
     }
@@ -451,29 +893,29 @@ def parse_inputs(raw: str) -> dict:
 
 
 def cmd_task_new(args) -> int:
-    mode = resolve_mode(args.mode)
-    man = mode["manifest"]
+    parent = load_task(args.parent) if args.parent else None
+    from_pack = parent.get("pack") if parent else None     # None = the CoS: exported modes only
+    mode = resolve_mode(args.mode, from_pack=from_pack)
+    man, pack = mode["manifest"], mode["pack"]
     inputs = parse_inputs(args.inputs)
     check_inputs(inputs, man.get("accepts", {}), man["name"])
     if man.get("verbs") and args.verb not in man["verbs"]:
         raise PmosError(f"{man['name']} supports verbs {man['verbs']}, not '{args.verb}'")
-    role_name = args.role or man["default_role"]
-    if role_name not in roles():
-        raise PmosError(f"role '{role_name}' is not in roles.yaml")
+    role = resolve_role(args.role or man["default_role"], pack)
+    role_fq = f"{role['_pack']}/{role['_name']}"
 
     depth = 0
-    parent = None
-    if args.parent:
-        parent = load_task(args.parent)
+    if parent:
         depth = parent["envelope"].get("depth", 0) + 1
         max_depth = config()["defaults"].get("max_call_depth", 3)
         if depth > max_depth:
             raise PmosError(f"call depth {depth} exceeds max_call_depth {max_depth}")
         chain, cur = {man["name"]}, parent
         while cur:
-            if cur["envelope"]["mode"].split("@")[0] in chain:
+            ancestor = split_ref(cur["envelope"]["mode"])[0]
+            if ancestor in chain:
                 raise PmosError(f"cycle: {man['name']} is already an ancestor of this task")
-            chain.add(cur["envelope"]["mode"].split("@")[0])
+            chain.add(ancestor)
             pid = cur["envelope"].get("parent")
             cur = load_task(pid) if pid else None
 
@@ -489,7 +931,7 @@ def cmd_task_new(args) -> int:
         "id": next_task_id(),
         "verb": args.verb,
         "mode": args.mode if "@" in args.mode else f"{man['name']}@{man['version']}",
-        "role": role_name,
+        "role": role_fq,
         "inputs": inputs,
         "acceptance": args.acceptance or [],
         "risk": args.risk or man.get("risk", "medium"),
@@ -510,10 +952,11 @@ def cmd_task_new(args) -> int:
     task = {
         "envelope": envelope,
         "state": "queued",
+        "pack": pack,
         "mode_name": man["name"],
         "mode_version": man["version"],
         "mode_dir": rel(mode["dir"]),
-        "role": role_name,
+        "role": role_fq,
         "children": [],
         "revisions": 0,
         "approvals": [],
@@ -531,7 +974,7 @@ def cmd_task_new(args) -> int:
     return 0
 
 
-def deps_ready(task: dict) -> list[str]:
+def deps_pending(task: dict) -> list[str]:
     return [d for d in task["envelope"].get("depends_on", []) if load_task(d)["state"] != "done"]
 
 
@@ -541,33 +984,30 @@ def cmd_task_show(args) -> int:
         print(json.dumps(task, indent=2, ensure_ascii=False))
         return 0
     env = task["envelope"]
-    mode = resolve_mode(f"{task['mode_name']}@{task['mode_version']}")
+    mode = resolve_mode(f"{task['mode_name']}@{task['mode_version']}", check_visibility=False)
     man = mode["manifest"]
-    role = roles()[task["role"]]
-    skills = discover_skills()
+    role = all_roles()[task["role"]]
     out = [
         f"# {env['id']} · {task['mode_name']}@{task['mode_version']} · {env['verb']} · state: {task['state']}",
         "",
         "## Envelope",
         "```json", json.dumps(env, indent=2, ensure_ascii=False), "```",
         "",
-        "## Mode",
+        f"## Mode (pack: {task.get('pack')})",
         f"- skill: {rel(mode['dir'] / man.get('skill', 'SKILL.md'))}",
         f"- approval: {env['approval']} · risk: {env['risk']}",
     ]
     if man.get("calls"):
         out.append(f"- may call: {', '.join(man['calls'])}")
-    out += ["", f"## Role: {task['role']} (agent: {role['agent']}, tier: {role['tier']})",
-            f"- persona: {role['persona']}"]
-    for s in role.get("skills", []):
-        out.append(f"- skill: {rel(skills[s]) if s in skills else s + ' (missing)'}")
-    for c in role.get("context", []):
-        out.append(f"- context: {rel(ROOT / config()['paths']['context'] / c)}")
     for extra in man.get("roles", []):
-        out.append(f"- also uses role: {extra}")
-    blocked_by = deps_ready(task)
-    if blocked_by:
-        out += ["", f"**Waiting on dependencies:** {', '.join(blocked_by)}"]
+        out.append(f"- also uses role: {q_role(extra, mode['pack'])} (`pmos role show {q_role(extra, mode['pack'])}`)")
+    out += ["", *role_lines(role)]
+    out += ["", "## Principles (read each before you start; the Reviewer scores these checks)"]
+    for group, pid, pr in principles_for(mode, role):
+        out.append(f"- [{group}] {pid}: {pr['meta']['check']} ({rel(pr['path'])})")
+    pending = deps_pending(task)
+    if pending:
+        out += ["", f"**Waiting on dependencies:** {', '.join(pending)}"]
     if task["children"]:
         out += ["", "## Children"]
         for cid in task["children"]:
@@ -585,11 +1025,14 @@ def cmd_task_show(args) -> int:
         for a in task["result"].get("actions", []):
             out.append(f"- action: {a['system']}.{a['op']} · {a.get('preview', a['idempotency_key'])}")
     if args.for_review:
-        baseline = (ROOT / "quality" / "baseline_rubric.md").read_text(encoding="utf-8")
-        out += ["", "## Baseline rubric", baseline.strip(), "", "## Mode rubric"]
-        out += [f"- {r}" for r in man.get("rubric", [])] or ["- (none)"]
-        out += ["", "## Role rubric"]
-        out += [f"- {r}" for r in role.get("rubric", [])] or ["- (none)"]
+        out += ["", "## Review checklist",
+                "Pass = every core principle holds and the overall score is 4 or more.", ""]
+        for group, pid, pr in principles_for(mode, role):
+            out.append(f"- [ ] [{group}] {pid}: {pr['meta']['check']}")
+        for r in man.get("rubric", []):
+            out.append(f"- [ ] [mode rubric] {r}")
+        for r in role.get("rubric", []):
+            out.append(f"- [ ] [role rubric] {r}")
         if task.get("result"):
             out += ["", "## Producer self-check"]
             out += [f"- {'met' if s['met'] else 'NOT met'}: {s['criterion']}" + (f" · {s['note']}" if s.get("note") else "")
@@ -601,7 +1044,7 @@ def cmd_task_show(args) -> int:
 def cmd_task_move(args) -> int:
     task = load_task(args.id)
     if args.state == "running":
-        pending = deps_ready(task)
+        pending = deps_pending(task)
         if pending:
             raise PmosError(f"{args.id} depends on unfinished task(s): {', '.join(pending)}")
     if args.state == "waiting":
@@ -702,7 +1145,7 @@ def cmd_task_list(args) -> int:
         rows = [t for t in rows if t["state"] not in TERMINAL]
     for t in rows:
         e = t["envelope"]
-        print(f"{e['id']}  {t['state']:<17} {t['mode_name']:<24} {t['role']:<20} "
+        print(f"{e['id']}  {t['state']:<17} {t['mode_name']:<20} {t['role']:<22} "
               f"{(t['history'][-1].get('note') or '')[:60]}")
     if not rows:
         print("(no tasks)")
@@ -763,38 +1206,38 @@ def cmd_decide(args) -> int:
 
 
 # --------------------------------------------------------------------------- render
-def agent_defs() -> dict[str, tuple[dict, str, Path]]:
-    out = {}
-    for agent_md in sorted((ROOT / config()["paths"]["agents"]).glob("*.md")):
-        meta, body = frontmatter(agent_md)
-        out[meta["name"]] = (meta, body, agent_md)
-    return out
-
-
 def all_skill_sources() -> list[tuple[str, Path, Path | None]]:
-    """(rendered skill name, SKILL.md path, mode dir or None)."""
-    items = [(sid.replace("/", "-"), path, None) for sid, path in discover_skills().items()]
+    """(rendered skill name, SKILL.md path, mode dir or None) for every installed pack."""
+    items = [(render_name(sid), path, None) for sid, path in all_skills().items()]
     for m in discover_modes():
         man = m["manifest"]
-        items.append((mode_skill_name(man["name"]), m["dir"] / man.get("skill", "SKILL.md"), m["dir"]))
+        items.append((render_name(man["name"]), m["dir"] / man.get("skill", "SKILL.md"), m["dir"]))
     return items
+
+
+def render_agents_md() -> int:
+    write_catalog()
+    print("AGENTS.md regenerated from the cos pack")
+    return 0
 
 
 def render_claude_code() -> int:
     ad = config()["adapters"]["claude-code"]
     tiers = config()["tiers"][ad["provider"]]
     warnings = []
+    write_catalog()
 
     claude_md = ROOT / "CLAUDE.md"
     if not claude_md.exists():
         claude_md.write_text("@AGENTS.md\n\n<!-- Generated by `pmos render claude-code`. "
-                             "Edit AGENTS.md, not this file. -->\n", encoding="utf-8")
+                             "Edit packs/<cos pack>/COS.md, not this file. -->\n", encoding="utf-8")
     elif "@AGENTS.md" not in claude_md.read_text(encoding="utf-8"):
         warnings.append("CLAUDE.md exists but doesn't import @AGENTS.md; add that line")
 
     agents_out = ROOT / ad["agents_dir"]
     agents_out.mkdir(parents=True, exist_ok=True)
-    for name, (meta, body, _src) in agent_defs().items():
+    count = 0
+    for name, (meta, body, src, _pack) in all_agents().items():
         if name == "cos":
             continue  # the CoS is the main session; it reads AGENTS.md via CLAUDE.md
         model = ad["aliases"][meta["tier"]] if ad.get("model_field", "alias") == "alias" else tiers[meta["tier"]]
@@ -808,9 +1251,10 @@ def render_claude_code() -> int:
                             f"all tools, so the permission line is NOT enforced for it yet")
         else:
             lines.append(f"tools: {', '.join(dict.fromkeys(mapped))}")
-        lines += ["---", "<!-- Generated by `pmos render claude-code` from "
-                  f"{rel(_src)}. Edit the source, then re-render. -->", "", body.strip(), ""]
+        lines += ["---", f"<!-- Generated by `pmos render claude-code` from {rel(src)}. Edit the source, then re-render. -->",
+                  "", body.strip(), ""]
         (agents_out / f"{name}.md").write_text("\n".join(lines), encoding="utf-8")
+        count += 1
 
     skills_out = ROOT / ad["skills_dir"]
     marker = skills_out / ".pmos-generated"
@@ -830,8 +1274,8 @@ def render_claude_code() -> int:
 
     for w in warnings:
         print(f"warn: {w}")
-    print(f"claude-code: {len(agent_defs()) - 1} agent(s) -> {ad['agents_dir']}, "
-          f"{len(names)} skill(s) -> {ad['skills_dir']}, CLAUDE.md -> AGENTS.md")
+    print(f"claude-code: {count} agent(s) -> {ad['agents_dir']}, {len(names)} skill(s) -> {ad['skills_dir']}, "
+          f"CLAUDE.md -> AGENTS.md")
     return 0
 
 
@@ -840,38 +1284,35 @@ def render_generic() -> int:
     tiers = config()["tiers"][ad["provider"]]
     out = ROOT / ad["out_dir"]
     out.mkdir(parents=True, exist_ok=True)
-    skills = all_skill_sources()
+    write_catalog()
     skill_index = ["## Skills available", "", "Load a skill by reading its SKILL.md when a step needs it.", ""]
-    for name, path, _ in skills:
+    for name, path, _ in all_skill_sources():
         meta, _ = frontmatter(path)
         skill_index.append(f"- `{name}` ({rel(path)}): {meta.get('description', '')}")
-    models, tools = {"agents": {}, "roles": {}}, {}
-    for name, (meta, body, _src) in agent_defs().items():
-        if name == "cos":
-            prompt = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        else:
-            prompt = body.strip() + "\n\n" + "\n".join(skill_index)
+    models, grants = {"agents": {}, "roles": {}}, {}
+    for name, (meta, body, _src, _pack) in all_agents().items():
+        prompt = (ROOT / "AGENTS.md").read_text(encoding="utf-8") if name == "cos" else body.strip() + "\n\n" + "\n".join(skill_index)
         (out / f"{name}.system.md").write_text(prompt + "\n", encoding="utf-8")
         models["agents"][name] = {"tier": meta["tier"], "model": tiers.get(meta["tier"], "")}
-        tools[name] = meta.get("grants", [])
-    for rname, r in roles().items():
-        models["roles"][rname] = {"agent": r["agent"], "tier": r["tier"], "model": tiers.get(r["tier"], "")}
+        grants[name] = meta.get("grants", [])
+    for fq, r in all_roles().items():
+        models["roles"][fq] = {"agent": r["agent"], "tier": r["tier"], "model": tiers.get(r["tier"], "")}
     write_json(out / "models.json", models)
-    write_json(out / "grants.json", tools)
-    shutil.copy2(path_of("state") / "catalog.md", out / "catalog.md") if (path_of("state") / "catalog.md").exists() else None
-    print(f"generic: {len(agent_defs())} system prompt(s), models.json, grants.json -> {ad['out_dir']}")
+    write_json(out / "grants.json", grants)
+    shutil.copy2(path_of("state") / "catalog.md", out / "catalog.md")
+    print(f"generic: {len(all_agents())} system prompt(s), models.json, grants.json -> {ad['out_dir']}")
     return 0
 
 
 def cmd_render(args) -> int:
-    return {"claude-code": render_claude_code, "generic": render_generic}[args.adapter]()
+    return {"agents-md": render_agents_md, "claude-code": render_claude_code, "generic": render_generic}[args.adapter]()
 
 
 # --------------------------------------------------------------------------- eval
 def cmd_eval(args) -> int:
     modes = discover_modes()
-    if args.modes:
-        modes = [m for m in modes if m["manifest"].get("name") in args.modes]
+    if args.targets:
+        modes = [m for m in modes if m["pack"] in args.targets or m["manifest"].get("name") in args.targets]
     command = (config().get("eval") or {}).get("command") or ""
     out_root = ROOT / "build" / "evals"
     rendered = ran = 0
@@ -901,7 +1342,10 @@ def cmd_eval(args) -> int:
             grader = [f"# Grader: {man['name']} · {spec.get('name', case.stem)}", "",
                       "Score the worker's output (outputs/<task id>/) against each line. Pass = all met.", ""]
             grader += [f"- [ ] {e}" for e in spec.get("expect", [])]
-            grader += ["", "Mode rubric:"] + [f"- [ ] {r}" for r in man.get("rubric", [])]
+            role = resolve_role(man["default_role"], m["pack"])
+            grader += ["", "Principles and rubric:"]
+            grader += [f"- [ ] [{g}] {pid}: {pr['meta']['check']}" for g, pid, pr in principles_for(m, role)]
+            grader += [f"- [ ] {r}" for r in man.get("rubric", [])]
             (case_dir / "grader.md").write_text("\n".join(grader) + "\n", encoding="utf-8")
             rendered += 1
             if command:
@@ -925,8 +1369,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="pmos", description=__doc__.split("\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("validate").set_defaults(fn=cmd_validate)
-    sub.add_parser("catalog").set_defaults(fn=cmd_catalog)
     sub.add_parser("board").set_defaults(fn=cmd_board)
+
+    c = sub.add_parser("catalog")
+    c.add_argument("--pack")
+    c.set_defaults(fn=cmd_catalog)
 
     d = sub.add_parser("decide")
     d.add_argument("text")
@@ -934,12 +1381,29 @@ def build_parser() -> argparse.ArgumentParser:
     d.set_defaults(fn=cmd_decide)
 
     r = sub.add_parser("render")
-    r.add_argument("adapter", choices=["claude-code", "generic"])
+    r.add_argument("adapter", choices=["agents-md", "claude-code", "generic"])
     r.set_defaults(fn=cmd_render)
 
     e = sub.add_parser("eval")
-    e.add_argument("modes", nargs="*")
+    e.add_argument("targets", nargs="*", help="pack names or pack/mode names; empty = all")
     e.set_defaults(fn=cmd_eval)
+
+    pk = sub.add_parser("pack").add_subparsers(dest="pack_cmd", required=True)
+    pk.add_parser("list").set_defaults(fn=cmd_pack_list)
+    pa = pk.add_parser("add")
+    pa.add_argument("path")
+    pa.add_argument("--source", default="local", choices=["local", "org", "third-party"])
+    pa.add_argument("--approve-grants", action="store_true")
+    pa.add_argument("--upgrade", action="store_true")
+    pa.set_defaults(fn=cmd_pack_add)
+    pr = pk.add_parser("remove")
+    pr.add_argument("name")
+    pr.set_defaults(fn=cmd_pack_remove)
+
+    ro = sub.add_parser("role").add_subparsers(dest="role_cmd", required=True)
+    rs_ = ro.add_parser("show")
+    rs_.add_argument("role")
+    rs_.set_defaults(fn=cmd_role_show)
 
     t = sub.add_parser("task").add_subparsers(dest="task_cmd", required=True)
     n = t.add_parser("new")

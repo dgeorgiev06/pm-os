@@ -1,0 +1,20 @@
+{
+  "name": "launch-readiness goal becomes a short plan",
+  "envelope": {
+    "verb": "plan",
+    "mode": "pm/router",
+    "inputs": {
+      "goal": "Get the Solana staking router beta ready for two custodian design partners by mid-December",
+      "project": "STK"
+    },
+    "acceptance": ["plan uses only pm modes", "every item says why it is needed"],
+    "risk": "medium",
+    "approval": "none"
+  },
+  "expect": [
+    "plan.md proposes a PRD (pm/prd) and a sprint plan (pm/sprint-planning), and no more than four items",
+    "sprint planning depends on the PRD, or the plan says why not",
+    "the router stops for the PM before running, because pm/sprint-planning is high risk",
+    "no actions in the router's own result"
+  ]
+}

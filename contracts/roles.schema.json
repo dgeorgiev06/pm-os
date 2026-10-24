@@ -3,23 +3,66 @@
   "$id": "pm-os/roles@1",
   "title": "Role sheet (roles.yaml)",
   "type": "object",
-  "required": ["roles"],
+  "required": [
+    "roles"
+  ],
   "additionalProperties": false,
   "properties": {
     "roles": {
       "type": "object",
-      "propertyNames": { "pattern": "^[a-z0-9-]+$" },
+      "propertyNames": {
+        "pattern": "^[a-z0-9-]+$"
+      },
       "additionalProperties": {
         "type": "object",
-        "required": ["agent", "tier", "persona", "skills"],
+        "required": [
+          "agent",
+          "tier",
+          "persona",
+          "skills"
+        ],
         "additionalProperties": false,
         "properties": {
-          "agent": { "enum": ["worker", "reviewer"] },
-          "tier": { "enum": ["small", "mid", "top"] },
-          "persona": { "type": "string" },
-          "skills": { "type": "array", "items": { "type": "string" } },
-          "context": { "type": "array", "items": { "type": "string" } },
-          "rubric": { "type": "array", "items": { "type": "string" } }
+          "agent": {
+            "enum": [
+              "worker",
+              "reviewer"
+            ]
+          },
+          "tier": {
+            "enum": [
+              "small",
+              "mid",
+              "top"
+            ]
+          },
+          "persona": {
+            "type": "string"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "context": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rubric": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "principles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       }
     }

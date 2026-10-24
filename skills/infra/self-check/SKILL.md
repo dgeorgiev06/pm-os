@@ -1,5 +1,5 @@
 ---
-name: infra-self-check
+name: core-infra-self-check
 description: Check a pm-os work product against its acceptance criteria and rubrics before submitting. Use as the last step before submitting any pm-os result.
 ---
 # Self-check

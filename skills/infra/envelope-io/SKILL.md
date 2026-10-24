@@ -1,5 +1,5 @@
 ---
-name: infra-envelope-io
+name: core-infra-envelope-io
 description: How to read a pm-os task envelope and submit a result through scripts/pmos.py. Use in every pm-os task, whatever the mode.
 ---
 # Envelope I/O
