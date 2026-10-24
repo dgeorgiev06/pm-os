@@ -67,20 +67,12 @@ do it unasked.
 2. **Fill the inputs** from the todo and the PM's words. If the mode needs an input you don't have,
    ask; don't guess.
 3. **Create the task** with the PM's instructions word for word:
-   `python scripts/pmos.py task new --mode <pack>/<mode> --verb <verb> --inputs '<json>' --todo <td-id> --instructions "<the PM's words>"`
+   `python scripts/pmos.py task new --mode <pack>/<mode> --verb <verb> --inputs '<json>' --origin cos:<td-id> --instructions "<the PM's words>"`
 4. **Link it**: `python packs/cos/scripts/todos.py link <td-id> <task-id> --mode <pack>/<mode> --instructions "<the PM's words>"`
 5. **Delegate** the task to the Worker as usual, and reply: "td-12 → pm/release-notes (T-131). I'll
    bring the draft back for review."
 6. **When the task finishes** (or fails), run `todos.py sync`: a done task closes its todo; a failed
    one puts the todo back with the PM.
-
-## Building the system itself
-
-- "Add a mode for X to pm" → `forge/new-mode`. "Create a pack for Y" → `forge/new-pack`.
-- Both stage everything under `outputs/<id>/staged/`, check it, and come back for approval like any
-  other change; the Operator then copies the files into `packs/`.
-- Then tell the PM the exact install command from the result's summary
-  (`python scripts/pmos.py pack add packs/<name> [--upgrade] [--approve-grants]`). Don't run it.
 
 ## What you own
 

@@ -14,21 +14,37 @@ Operator runs `apply` for an approved task.
   changes STAGED --target packs/NAME
       JSON list of files added or modified relative to the target.
   apply STAGED --target packs/NAME [--files PATH ...]
-      Copy staged files into packs/ (Operator only, after approval).
+      Copy staged files into packs/. STAGED must be outputs/<id>/staged/<pack> of an approved task.
+  sync-action ACTION.json
+      The `repo.sync_pack` handler `pmos action run` calls: `apply` with the action's payload.
 """
 from __future__ import annotations
 
 import argparse
 import filecmp
 import json
+import os
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 import yaml
 
-ROOT = Path(__file__).resolve().parents[3]
+
+def find_root() -> Path:
+    """The pm-os repo: PMOS_ROOT, else the nearest folder above this script that holds pm-os.yaml."""
+    if os.environ.get("PMOS_ROOT"):
+        return Path(os.environ["PMOS_ROOT"]).resolve()
+    for d in Path(__file__).resolve().parents:
+        if (d / "pm-os.yaml").exists() and (d / "scripts" / "pmos.py").exists():
+            return d
+    raise SystemExit("error: can't find the pm-os repo (no pm-os.yaml above this script); set PMOS_ROOT")
+
+
+ROOT = find_root()
+PACKS_ROOT = Path(__file__).resolve().parents[1].parent   # new packs are created beside this one
 
 MODE_YAML = """name: {pack}/{name}
 version: 0.1.0
@@ -108,16 +124,43 @@ def fail(msg: str) -> int:
     return 1
 
 
-def installed_pack_dir(pack: str) -> Path:
-    data = yaml.safe_load((ROOT / "packs.yaml").read_text(encoding="utf-8")) or {}
-    for e in data.get("packs", []):
-        if e["name"] == pack:
-            return (ROOT / e["path"]).resolve()
-    raise SystemExit(f"error: pack '{pack}' is not installed")
+def pmos(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, str(ROOT / "scripts" / "pmos.py"), *args], cwd=ROOT,
+                          capture_output=True, text=True)
+
+
+def installed_pack_dir(pack: str, required: bool = True) -> Path | None:
+    proc = pmos("pack", "path", pack)
+    if proc.returncode != 0:
+        if required:
+            raise SystemExit(f"error: pack '{pack}' is not installed")
+        return None
+    return Path(proc.stdout.strip()).resolve()
+
+
+def outputs_dir() -> Path:
+    paths = (yaml.safe_load((ROOT / "pm-os.yaml").read_text(encoding="utf-8")) or {}).get("paths") or {}
+    return Path(os.environ.get("PMOS_OUTPUTS_DIR") or ROOT / paths.get("outputs", "outputs")).resolve()
 
 
 def staging(task: str) -> Path:
-    return ROOT / "outputs" / task / "staged"
+    return outputs_dir() / task / "staged"
+
+
+def check_staged(staged: Path, task_id: str | None = None) -> None:
+    """STAGED must be outputs/<id>/staged/<pack> of a task that is approved (and, when given, task_id)."""
+    try:
+        parts = staged.relative_to(outputs_dir()).parts
+    except ValueError:
+        parts = ()
+    if len(parts) < 3 or parts[1] != "staged" or (task_id and parts[0] != task_id):
+        raise SystemExit(f"error: {staged} is not under outputs/<task id>/staged/"
+                         + (f" of task {task_id}" if task_id else "") + "; apply copies only staged work")
+    proc = pmos("task", "state", parts[0])
+    state = proc.stdout.strip() if proc.returncode == 0 else None
+    if state != "approved":
+        raise SystemExit(f"error: task {parts[0]} is {state or 'unknown'}, not approved; "
+                         f"staged work is applied only after the PM approves it")
 
 
 def bump_minor(pack_yaml: Path) -> str:
@@ -178,8 +221,8 @@ def cmd_stage_mode(a) -> int:
 def cmd_stage_pack(a) -> int:
     if not re.fullmatch(r"[a-z0-9-]+", a.name) or a.name == "core":
         return fail("pack name: lowercase letters, digits and hyphens, and not 'core'")
-    if (ROOT / "packs" / a.name).exists():
-        return fail(f"packs/{a.name} already exists; use stage-mode to extend it")
+    if (PACKS_ROOT / a.name).exists():
+        return fail(f"{PACKS_ROOT.name}/{a.name} already exists; use stage-mode to extend it")
     pack_dir = staging(a.task) / a.name
     if pack_dir.exists():
         return fail(f"{pack_dir} already exists")
@@ -238,9 +281,11 @@ def changed_files(staged: Path, target: Path) -> list[dict]:
 
 
 def check_target(target: str) -> Path:
+    """An installed pack's directory, or a new pack's beside the installed ones."""
     t = (ROOT / target).resolve()
-    if t.parent != (ROOT / "packs").resolve():
-        raise SystemExit("error: --target must be packs/<name>")
+    installed = installed_pack_dir(t.name, required=False)
+    if (installed and t != installed) or (not installed and t.parent != PACKS_ROOT):
+        raise SystemExit(f"error: --target must be an installed pack's directory or {PACKS_ROOT.name}/<new pack>")
     return t
 
 
@@ -249,8 +294,10 @@ def cmd_changes(a) -> int:
     return 0
 
 
-def cmd_apply(a) -> int:
-    staged, target = Path(a.staged).resolve(), check_target(a.target)
+def cmd_apply(a, task_id: str | None = None) -> int:
+    staged = Path(a.staged).resolve()
+    check_staged(staged, task_id)
+    target = check_target(a.target)
     wanted = set(a.files) if a.files else None
     applied = []
     for item in changed_files(staged, target):
@@ -262,6 +309,16 @@ def cmd_apply(a) -> int:
         applied.append(item)
     print(json.dumps({"applied": applied, "target": a.target}, indent=2))
     return 0
+
+
+def cmd_sync_action(a) -> int:
+    spec = json.loads(Path(a.action_file).read_text(encoding="utf-8"))
+    payload = (spec.get("action") or {}).get("payload") or {}
+    if not payload.get("staged") or not payload.get("target"):
+        return fail("a repo.sync_pack payload needs 'staged' and 'target'")
+    args = argparse.Namespace(staged=str(ROOT / payload["staged"]), target=payload["target"],
+                              files=payload.get("files"))
+    return cmd_apply(args, task_id=spec.get("task_id") or "?")
 
 
 def main() -> int:
@@ -291,6 +348,9 @@ def main() -> int:
     ap.add_argument("--target", required=True)
     ap.add_argument("--files", nargs="*")
     ap.set_defaults(fn=cmd_apply)
+    sa = sub.add_parser("sync-action")
+    sa.add_argument("action_file")
+    sa.set_defaults(fn=cmd_sync_action)
     a = p.parse_args()
     return a.fn(a)
 

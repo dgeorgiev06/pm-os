@@ -25,6 +25,13 @@
     },
     "router": { "type": "string", "description": "The pack's entry mode for goal-level asks" },
     "cos": { "type": "string", "description": "Path to a Chief of Staff manual this pack supplies" },
+    "cos_section": { "type": "string", "description": "Path to Markdown that pmos appends to AGENTS.md (the CoS manual) while this pack is installed" },
+    "actions": {
+      "type": "object",
+      "description": "Handlers for the actions this pack's modes propose: \"<system>.<op>\" -> \"<script path relative to the pack> [fixed args...]\". `pmos action run` calls `python <pack>/<script> [args...] <action file>` for an approved task.",
+      "propertyNames": { "pattern": "^[a-z0-9_-]+\\.[a-z0-9_-]+$" },
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
     "exports": {
       "type": "object",
       "description": "What other packs and the CoS may use. Anything not exported is internal to the pack.",

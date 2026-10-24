@@ -54,7 +54,7 @@ date first, then priority, and lists what doesn't fit instead of dropping it.
 
 1. The CoS uses the mode you named, or picks one from the catalog and asks if more than one fits.
 2. It fills the mode's inputs from the todo and your words, and asks if a required input is missing.
-3. `pmos task new … --todo td-12 --instructions "<your words, verbatim>"` creates the task;
+3. `pmos task new … --origin cos:td-12 --instructions "<your words, verbatim>"` creates the task;
    `todos.py link` marks the todo delegated.
 4. The Worker sees your instructions at the top of `task show` and follows them; the Reviewer's
    checklist gains a line checking them. They never override a principle or an approval gate.
