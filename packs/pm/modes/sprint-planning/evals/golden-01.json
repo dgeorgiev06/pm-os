@@ -16,6 +16,7 @@
     "velocity.json": { "velocities": [31, 28, 34], "availability": 0.8 },
     "backlog.json": "packs/pm/modes/sprint-planning/evals/fixtures/backlog.json"
   },
+  "gates": ["Approve the ranking as it is."],
   "expect": [
     "stage A stops at gate 1 with status blocked and ranking.md",
     "committed points <= capacity.py committed_points (21 for this fixture)",

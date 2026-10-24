@@ -164,4 +164,5 @@ every mode and role that cites it.
 | Per-task budgets; children draw down the parent's | cost |
 
 Measure from day one: cost per task type, p50/p90 latency, first-pass review rate, and your edit
-rate. These drive tier and routing changes.
+rate. These drive tier and routing changes. `pmos stats` reports them per mode from the traces, with
+the PM's "change X" after review (revise after approval) as the edit-rate proxy.

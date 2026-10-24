@@ -56,3 +56,7 @@ eval:
   # Any non-interactive command that reads a prompt file and prints the answer to stdout.
   # {prompt_file} is replaced with the path. Leave empty to only render prompts.
   command: ""   # e.g. "claude -p < {prompt_file}"  or  "my-runner --model mid {prompt_file}"
+  # Grades each run: {grader_file} (grader.md) and {output_file} (the run's output.md) are replaced with
+  # paths. It must print JSON {"passed": bool, "lines": [{"line": ..., "pass": bool}]}, saved as score.json;
+  # build/evals/summary.json gets the pass rate. Run it on the reviewer's tier. Empty = no grading.
+  grader_command: ""   # e.g. "claude -p --model sonnet \"$(cat {grader_file})\" < {output_file}"

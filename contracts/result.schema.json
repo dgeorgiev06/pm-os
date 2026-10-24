@@ -9,7 +9,7 @@
   "properties": {
     "task_id": { "type": "string" },
     "status": { "enum": ["done", "needs_approval", "blocked", "failed"] },
-    "summary": { "type": "string", "maxLength": 600, "description": "<= ~80 words for the CoS digest" },
+    "summary": { "type": "string", "maxLength": 600, "description": "At most 80 words (pmos refuses longer); the CoS forwards it as-is" },
     "artifacts": {
       "type": "array",
       "items": {
@@ -63,7 +63,22 @@
       "properties": {
         "passed": { "type": "boolean" },
         "score": { "type": "number", "minimum": 0, "maximum": 5 },
-        "notes": { "type": "array", "items": { "type": "string" } }
+        "notes": { "type": "array", "items": { "type": "string" } },
+        "lines": {
+          "type": "array",
+          "description": "Per-line verdicts; pmos computes passed from them (every core line holds, score >= 4)",
+          "items": {
+            "type": "object",
+            "required": ["id", "pass"],
+            "properties": {
+              "id": { "type": "string" },
+              "group": { "type": "string" },
+              "pass": { "type": "boolean" },
+              "note": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
       },
       "additionalProperties": false
     },

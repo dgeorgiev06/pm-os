@@ -21,4 +21,7 @@ principles: [fit-the-real-day, delegate-only-when-directed]
 rubric:
   - Nothing due in the window is dropped silently
   - Delegation candidates appear only as suggestions in the plan, never as tasks
+acceptance:             # the envelope's default when the CoS passes no --acceptance
+  - "Everything due in the window is scheduled or listed as overflow"
+  - "Proposed changes are a todo diff for approval, not direct edits"
 evals: evals/

@@ -21,4 +21,7 @@ rubric:
   - Every item links its ticket key
   - Customer notes leave out internal-only work (spikes, refactors, tooling)
   - Leads with what changed for the reader, not with ticket titles
+acceptance:             # the envelope's default when the CoS passes no --acceptance
+  - "Only customer-facing changes for the chosen audience"
+  - "Every line ends with its ticket key"
 evals: evals/

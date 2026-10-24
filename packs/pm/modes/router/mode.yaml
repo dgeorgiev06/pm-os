@@ -21,4 +21,7 @@ principles: [explicit-trade-offs]
 rubric:
   - Uses the fewest modes that achieve the goal; no mode runs without a reason in the plan
   - Every child task's inputs validate against that mode's accepts
+acceptance:             # the envelope's default when the CoS passes no --acceptance
+  - "The plan uses the fewest modes that reach the goal"
+  - "Every plan item says why it is needed"
 evals: evals/

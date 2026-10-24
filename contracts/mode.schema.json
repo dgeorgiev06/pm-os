@@ -131,6 +131,17 @@
         "type": "string"
       },
       "description": "Principles this mode cites: bare = this pack, <pack>:<name> otherwise"
+    },
+    "acceptance": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Default acceptance lines for the envelope when `task new` gets no --acceptance"
+    },
+    "merge_child_actions": {
+      "type": "boolean",
+      "description": "At this mode's result, pmos appends the actions of its done children whose approval rolled up to it"
     }
   }
 }

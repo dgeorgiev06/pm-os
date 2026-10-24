@@ -28,6 +28,8 @@ Step tags: `[model]` = your judgment · `[code: …]` = run the command. Track y
 
 6. For each first mode, create a child:
    `[code: python scripts/pmos.py task new --parent <id> --mode forge/new-mode --verb draft --approval none --inputs '{"pack": "<name>", "name": "<mode>", "purpose": "<purpose>", "into": "outputs/<id>/staged/<name>"}']`
+   Each child's approval rolls up to this task, so it skips its own review and goes straight to
+   `done` when it submits; its mode is reviewed with the whole pack, in this task's review.
 7. Set stage to `"check"`, then `[code: python scripts/pmos.py task move <id> waiting]`.
 
 ## Stage: check

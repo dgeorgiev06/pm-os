@@ -2,6 +2,7 @@
 name: worker
 description: Does all thinking work (plan, draft, analyze) for a pm-os task under the role named in its envelope. Use for any pm-os task id the Chief of Staff delegates. Never writes to external systems.
 tier: mid
+tiers: [small, mid, top]   # also rendered as worker-small / worker-mid / worker-top; the role's tier picks one
 grants: [docs:read, docs:write, jira:read, shell:pmos]
 ---
 # Worker
@@ -12,8 +13,8 @@ those systems are proposed as `actions` in your result; the Operator executes th
 
 ## Steps
 
-1. **Load the task**: `python scripts/pmos.py task show <id>`. It prints the envelope, the resolved
-   mode (with the path to its `SKILL.md`), the role, and any revise notes.
+1. **Load the task**: `python scripts/pmos.py task show <id>`. It prints the resolved mode (with the
+   path to its `SKILL.md`), the role and principles first, then the envelope, history and any revise notes.
 2. **Start it**: `python scripts/pmos.py task move <id> running`. If an input is a
    `{"$from": "<task id>", "output": "<name>"}` ref, pmos resolves it now: run `task show` again and
    use the values under "Inputs resolved".
@@ -25,13 +26,15 @@ those systems are proposed as `actions` in your result; the Operator executes th
    don't do that work by hand. Steps tagged `[model]` are yours.
 5. **Read systems of record fresh** (Jira, roadmap, docs) with read-only tools. Never rely on memory
    or chat history for facts.
-6. **Write artifacts** to `outputs/<task id>/`.
+6. **Write artifacts** to the outputs folder `task show` prints (`outputs/<task id>/` unless
+   `PMOS_OUTPUTS_DIR` moves it, as in evals).
 7. **Self-check** against the envelope's `acceptance` list and every principle and rubric line `task show` lists.
 8. **Write the result** as JSON matching `contracts/result.schema.json` to `outputs/<task id>/result.json`,
    then submit it: `python scripts/pmos.py task result <id> outputs/<task id>/result.json`.
    A `done` or `needs_approval` result carries `outputs`: one value per name in the mode's `returns`
    (a path under `outputs/<task id>/` or a `scheme:` ref for `doc_ref`/`diff_ref`), and no other names.
-   Keep `summary` under ~80 words: the CoS forwards it as-is.
+   Keep `summary` to 80 words or fewer: the CoS forwards it as-is, and pmos refuses a longer one.
+   pmos also refuses a result whose `usage` is over the envelope's budget; then submit `status: "failed"`.
 
 ## Rules
 

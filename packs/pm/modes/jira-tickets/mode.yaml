@@ -21,4 +21,8 @@ principles: [testable-requirements]
 rubric:
   - Every action is a create_issue or update_issue with a full payload
   - Duplicates flagged by dedupe.py are dropped or turned into updates
+acceptance:             # the envelope's default when the CoS passes no --acceptance
+  - "Every ticket has acceptance criteria and an estimate"
+  - "No ticket duplicates an existing one"
+  - "Tickets are proposed as dry-run actions, never written"
 evals: evals/

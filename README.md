@@ -212,7 +212,10 @@ principles and contracts carry over unchanged.
 `python scripts/pmos.py eval [pack | pack/mode …]` renders each golden task to
 `build/evals/…/prompt.md` (for the agent) and `grader.md` (for the reviewer, with the principles
 and rubric). Set `eval.command` in `pm-os.yaml` to any non-interactive runner and it runs each case
-against an isolated state directory.
+with its own state, traces and outputs folders (`PMOS_OUTPUTS_DIR`) and distinct task ids; a golden
+task's `gates` list answers the mode's gates so multi-stage modes run to the end. Set
+`eval.grader_command` too and each run is graded into `score.json`, with the pass rate in
+`build/evals/summary.json`.
 
 `python scripts/pmos.py eval --framework [clarity | performance | modularity | composability]`
 runs the framework's own conformance evals (no model); see `evals/framework/README.md`.

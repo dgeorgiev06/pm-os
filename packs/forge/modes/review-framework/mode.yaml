@@ -23,4 +23,8 @@ rubric:
   - "Every issue cites file:line evidence and is marked with the conformance case that covers it, or judgment-only"
   - "Conformance results are quoted from conformance.json, not re-judged"
   - "Nothing outside outputs/<id>/ changed (the verify-clean step passed)"
+acceptance:             # the envelope's default when the CoS passes no --acceptance
+  - "Every sub-scale of the aspect is scored 1-5 with a reason"
+  - "Every issue is marked with its conformance case or judgment-only"
+  - "The repo under review is unchanged"
 evals: evals/

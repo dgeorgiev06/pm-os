@@ -64,6 +64,8 @@ risk: medium
 principles: []                    # cite existing principles before writing new ones
 rubric:
   - "TODO: one line a reviewer can check for this mode"
+acceptance:                       # the envelope's default acceptance when the CoS passes none
+  - "TODO: one outcome the Worker self-checks before submitting"
 evals: evals/
 """
 

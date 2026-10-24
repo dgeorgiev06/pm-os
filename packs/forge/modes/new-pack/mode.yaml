@@ -21,4 +21,8 @@ principles: [contract-first, smallest-unit, compose-dont-copy]
 rubric:
   - The pack's scope doesn't overlap an installed pack; overlaps are reused through depends
   - Every first mode was built by a forge/new-mode child task
+acceptance:             # the envelope's default when the CoS passes no --acceptance
+  - "The staged pack passes forge lint and a dry-run admission"
+  - "Each first mode was built by its own forge/new-mode child task"
+  - "The pack depends on installed packs instead of copying them"
 evals: evals/
