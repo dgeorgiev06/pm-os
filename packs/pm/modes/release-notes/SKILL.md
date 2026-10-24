@@ -4,9 +4,6 @@ description: Draft release notes from the Jira tickets closed in a sprint, for c
 ---
 # pm/release-notes — release notes from a closed sprint
 
-Step tags: `[model]` = your judgment · `[code: …]` = run the script, don't do it by hand ·
-`[candidate-code]` = done by you for now, on the list to become a script.
-
 ## Inputs (from the envelope)
 
 `sprint` and `project` (required) · `audience`: `customers` (default) or `internal`.

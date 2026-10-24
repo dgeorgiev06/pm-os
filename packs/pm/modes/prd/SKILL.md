@@ -4,9 +4,6 @@ description: Draft a product requirements document (PRD) for a pm-os task whose 
 ---
 # pm/prd — draft a PRD
 
-Step tags: `[model]` = your judgment · `[code: …]` = run the script, don't do it by hand ·
-`[candidate-code]` = done by you for now, on the list to become a script.
-
 ## Inputs (from the envelope)
 
 `goal` (required) · `refs` (optional list) · `audience` (optional).

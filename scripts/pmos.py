@@ -10,7 +10,7 @@ framework the same way. Later, the same functions become steps in a durable work
   pmos pack remove NAME
   pmos catalog [--pack NAME]            write state/catalog.md + AGENTS.md; --pack prints one pack's modes
   pmos role show PACK/ROLE              a role's persona, skills, principles, context, rubric
-  pmos task new --mode PACK/MODE --verb V --inputs JSON [--instructions TEXT] [--todo td-N] [...]
+  pmos task new --mode PACK/MODE [--verb V] --inputs JSON [--instructions TEXT] [--todo td-N] [...]
   pmos task show ID [--for-review] [--json]
   pmos task move ID STATE [--note TEXT] [--by WHO]
   pmos task result ID RESULT.json
@@ -114,6 +114,17 @@ def rel(path: Path) -> str:
 def render_name(ref: str) -> str:
     """pm:domain/prd-structure -> pm-domain-prd-structure; pm/prd -> pm-prd."""
     return re.sub(r"[:/]", "-", ref)
+
+
+def with_skill_name(path: Path, name: str) -> str:
+    """SKILL.md text with `name: <name>` in its frontmatter (authors may leave it out)."""
+    text = path.read_text(encoding="utf-8")
+    if not re.match(r"^---\s*\n", text):
+        return f"---\nname: {name}\n---\n{text}"
+    meta, _ = frontmatter(path)
+    if "name" in meta:
+        return text
+    return re.sub(r"^---\s*\n", f"---\nname: {name}\n", text, count=1)
 
 
 # --------------------------------------------------------------------------- config
@@ -246,7 +257,10 @@ def is_exported(pack: str, kind: str, local: str) -> bool:
     if pack == CORE:
         return True
     exports = packs()[pack]["manifest"].get("exports") or {}
-    return local in (exports.get(kind) or [])
+    names = exports.get(kind) or []
+    if kind == "modes":  # exports.modes may be bare ("prd") or prefixed ("pm/prd")
+        names = [q_role(n, pack) for n in names]
+    return local in names
 
 
 def visibility_error(owner: str | None, target: str, kind: str, local: str) -> str | None:
@@ -444,8 +458,8 @@ def check_pack(name: str, check_grants: bool = True) -> tuple[list[str], list[st
             continue
         meta, _ = frontmatter(path)
         expected = render_name(sid)
-        if meta.get("name") != expected:
-            errors.append(f"{rel(path)}: frontmatter name should be '{expected}' (got {meta.get('name')!r})")
+        if "name" in meta and meta["name"] != expected:  # optional; `render` writes it
+            errors.append(f"{rel(path)}: frontmatter name should be '{expected}' or left out (got {meta.get('name')!r})")
         if not meta.get("description"):
             errors.append(f"{rel(path)}: missing description")
     for pid, pr in principles.items():
@@ -514,8 +528,8 @@ def check_pack(name: str, check_grants: bool = True) -> tuple[list[str], list[st
             errors.append(f"{where}: skill file {rel(skill_path)} missing")
         else:
             meta, _ = frontmatter(skill_path)
-            if meta.get("name") != render_name(mm["name"]):
-                errors.append(f"{rel(skill_path)}: frontmatter name should be '{render_name(mm['name'])}'")
+            if "name" in meta and meta["name"] != render_name(mm["name"]):  # optional; `render` writes it
+                errors.append(f"{rel(skill_path)}: frontmatter name should be '{render_name(mm['name'])}' or left out")
             if not meta.get("description"):
                 errors.append(f"{rel(skill_path)}: missing description")
         for rref in [mm["default_role"], *mm.get("roles", [])]:
@@ -545,7 +559,8 @@ def check_pack(name: str, check_grants: bool = True) -> tuple[list[str], list[st
     # exports must exist
     if name != CORE:
         exports = man.get("exports") or {}
-        for mname in exports.get("modes", []) or []:
+        exported = [q_role(n, name) for n in exports.get("modes", []) or []]
+        for mname in exported:
             if mname not in mode_names:
                 errors.append(f"{where_pack}: exports mode '{mname}', which the pack doesn't contain")
         for rname in exports.get("roles", []) or []:
@@ -558,8 +573,17 @@ def check_pack(name: str, check_grants: bool = True) -> tuple[list[str], list[st
             if f"{name}:{pname}" not in principles:
                 errors.append(f"{where_pack}: exports principle '{pname}', which the pack doesn't contain")
         router = man.get("router")
-        if router and router not in (exports.get("modes") or []):
+        if router and q_role(router, name) not in exported:
             errors.append(f"{where_pack}: router '{router}' must be an exported mode")
+        called, star = set(), False
+        for m in [m for m in discover_modes() if m["pack"] == name]:
+            for call in m["manifest"].get("calls", []) or []:
+                star = star or call == "*"
+                called.add(split_ref(call)[0])
+        if not star:
+            for mname in sorted(mode_names - set(exported) - called):
+                warnings.append(f"mode {mname} is internal (not in exports.modes) and no mode of pack '{name}' "
+                                f"calls it, so nothing can start it; export it or add it to a mode's calls")
     return errors, warnings
 
 
@@ -643,6 +667,9 @@ def cmd_pack_add(args) -> int:
     existing = next((e for e in entries if e["name"] == name), None)
     if existing and not args.upgrade:
         raise PmosError(f"pack '{name}' is already installed ({existing.get('version')}); use --upgrade")
+    if existing and version_tuple(man["version"]) <= version_tuple(str(existing.get("version", "0"))):
+        raise PmosError(f"pack '{name}' {man['version']} is not newer than the installed {existing.get('version')}: "
+                        f"an upgrade must raise the pack's version (bump `version` in {rel(man_path)})")
 
     stored_path = rel(d) if str(d).startswith(str(ROOT)) else str(d)
     entry = {"name": name, "version": man["version"], "path": stored_path, "source": args.source,
@@ -939,6 +966,10 @@ def cmd_task_new(args) -> int:
         raise PmosError(grant_excess_message(mode))
     inputs = parse_inputs(args.inputs)
     check_inputs(inputs, man.get("accepts", {}), man["name"])
+    if args.verb is None:  # optional when the mode declares exactly one verb
+        if len(man.get("verbs") or []) != 1:
+            raise PmosError(f"{man['name']} supports verbs {man.get('verbs')}; pass --verb")
+        args.verb = man["verbs"][0]
     if man.get("verbs") and args.verb not in man["verbs"]:
         raise PmosError(f"{man['name']} supports verbs {man['verbs']}, not '{args.verb}'")
     role = resolve_role(args.role or man["default_role"], pack)
@@ -1322,7 +1353,7 @@ def render_claude_code() -> int:
     for name, skill_md, mode_dir in all_skill_sources():
         target = skills_out / name
         target.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(skill_md, target / "SKILL.md")
+        (target / "SKILL.md").write_text(with_skill_name(skill_md, name), encoding="utf-8")
         if mode_dir is not None:
             shutil.copy2(mode_dir / "mode.yaml", target / "mode.yaml")
         names.append(name)
@@ -1428,23 +1459,24 @@ def cmd_eval(args) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="pmos", description=__doc__.split("\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("validate").set_defaults(fn=cmd_validate)
-    sub.add_parser("board").set_defaults(fn=cmd_board)
+    sub.add_parser("validate", help="check core, every installed pack and their references").set_defaults(
+        fn=cmd_validate)
+    sub.add_parser("board", help="regenerate state/status.md").set_defaults(fn=cmd_board)
 
-    c = sub.add_parser("catalog")
-    c.add_argument("--pack")
+    c = sub.add_parser("catalog", help="write state/catalog.md and AGENTS.md")
+    c.add_argument("--pack", help="print this pack's modes (with internal ones) and what each accepts")
     c.set_defaults(fn=cmd_catalog)
 
-    d = sub.add_parser("decide")
-    d.add_argument("text")
-    d.add_argument("--by", default="cos")
+    d = sub.add_parser("decide", help="append a decision to context/decisions.log")
+    d.add_argument("text", help="what was decided, and why")
+    d.add_argument("--by", default="cos", help="who decided (default: cos)")
     d.set_defaults(fn=cmd_decide)
 
-    r = sub.add_parser("render")
-    r.add_argument("adapter", choices=["agents-md", "claude-code", "generic"])
+    r = sub.add_parser("render", help="generate harness config from the installed packs")
+    r.add_argument("adapter", choices=["agents-md", "claude-code", "generic"], help="which harness to generate for")
     r.set_defaults(fn=cmd_render)
 
-    e = sub.add_parser("eval")
+    e = sub.add_parser("eval", help="render (and optionally run) golden tasks, or the framework evals")
     e.add_argument("targets", nargs="*", help="pack names or pack/mode names (with --framework: review names); "
                                               "empty = all")
     e.add_argument("--framework", action="store_true",
@@ -1453,81 +1485,89 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--json", action="store_true", help="with --framework: print the JSON summary")
     e.set_defaults(fn=cmd_eval)
 
-    pk = sub.add_parser("pack").add_subparsers(dest="pack_cmd", required=True)
-    pk.add_parser("list").set_defaults(fn=cmd_pack_list)
-    pa = pk.add_parser("add")
-    pa.add_argument("path")
-    pa.add_argument("--source", default="local", choices=["local", "org", "third-party"])
-    pa.add_argument("--approve-grants", action="store_true")
-    pa.add_argument("--upgrade", action="store_true")
+    pk = sub.add_parser("pack", help="install, upgrade, list or remove packs").add_subparsers(
+        dest="pack_cmd", required=True)
+    pk.add_parser("list", help="installed packs and their approved grants").set_defaults(fn=cmd_pack_list)
+    pa = pk.add_parser("add", help="admit and install (or upgrade) a pack")
+    pa.add_argument("path", help="the pack folder (contains pack.yaml)")
+    pa.add_argument("--source", default="local", choices=["local", "org", "third-party"],
+                    help="where the pack comes from; breaks ties between packs (local first)")
+    pa.add_argument("--approve-grants", action="store_true",
+                    help="approve the grants the pack requests (needed for new or wider grants)")
+    pa.add_argument("--upgrade", action="store_true",
+                    help="replace an installed pack; its version must be higher than the installed one")
     pa.add_argument("--dry-run", action="store_true", help="run admission and show grants without installing")
     pa.set_defaults(fn=cmd_pack_add)
-    pr = pk.add_parser("remove")
-    pr.add_argument("name")
+    pr = pk.add_parser("remove", help="uninstall a pack (refused while others depend on it or it has open tasks)")
+    pr.add_argument("name", help="the pack name")
     pr.set_defaults(fn=cmd_pack_remove)
 
-    ro = sub.add_parser("role").add_subparsers(dest="role_cmd", required=True)
-    rs_ = ro.add_parser("show")
-    rs_.add_argument("role")
+    ro = sub.add_parser("role", help="inspect roles").add_subparsers(dest="role_cmd", required=True)
+    rs_ = ro.add_parser("show", help="print a role's persona, skills, principles, context and rubric")
+    rs_.add_argument("role", help="PACK/ROLE, e.g. pm/doc-writer")
     rs_.set_defaults(fn=cmd_role_show)
 
-    t = sub.add_parser("task").add_subparsers(dest="task_cmd", required=True)
-    n = t.add_parser("new")
-    n.add_argument("--mode", required=True)
-    n.add_argument("--verb", required=True, choices=["plan", "draft", "analyze", "execute", "review"])
+    t = sub.add_parser("task", help="create tasks and move them through their states").add_subparsers(
+        dest="task_cmd", required=True)
+    n = t.add_parser("new", help="create a task envelope (queued)")
+    n.add_argument("--mode", required=True, help="PACK/MODE, optionally pinned: pm/prd or pm/prd@^0.2")
+    n.add_argument("--verb", choices=["plan", "draft", "analyze", "execute", "review"],
+                   help="one of the mode's verbs; optional when the mode declares only one")
     n.add_argument("--inputs", required=True, help="JSON object, or @path/to/inputs.json")
-    n.add_argument("--role")
-    n.add_argument("--workflow")
-    n.add_argument("--risk", choices=["low", "medium", "high"])
-    n.add_argument("--approval", choices=["none", "before_publish", "before_execute"])
-    n.add_argument("--acceptance", action="append")
-    n.add_argument("--depends-on", action="append", dest="depends_on")
-    n.add_argument("--parent")
-    n.add_argument("--budget-usd", type=float)
-    n.add_argument("--budget-minutes", type=float)
-    n.add_argument("--reply-to", default="cos")
-    n.add_argument("--by", default="cos")
-    n.add_argument("--note")
+    n.add_argument("--role", help="run under this role instead of the mode's default_role")
+    n.add_argument("--workflow", help="which of the mode's named workflows to run, for modes that declare "
+                                         "several (recorded in the envelope for the durable runtime)")
+    n.add_argument("--risk", choices=["low", "medium", "high"], help="default: the mode's risk")
+    n.add_argument("--approval", choices=["none", "before_publish", "before_execute"],
+                   help="when the PM must approve; default: the mode's approval")
+    n.add_argument("--acceptance", action="append", help="an acceptance line the result must meet (repeatable)")
+    n.add_argument("--depends-on", action="append", dest="depends_on", help="a task id that must finish first (repeatable)")
+    n.add_argument("--parent", help="the task creating this one as its child")
+    n.add_argument("--budget-usd", type=float, help="spending cap in USD; default from pm-os.yaml")
+    n.add_argument("--budget-minutes", type=float, help="time cap in minutes; default from pm-os.yaml")
+    n.add_argument("--reply-to", default="cos", help="who gets the result (default: cos)")
+    n.add_argument("--by", default="cos", help="who creates the task, for the trace (default: cos)")
+    n.add_argument("--note", help="a note for the task history")
     n.add_argument("--instructions", help="the PM's own instructions, verbatim; the Worker follows them")
     n.add_argument("--todo", help="the todo this task was delegated from, e.g. td-12")
     n.set_defaults(fn=cmd_task_new)
 
-    s = t.add_parser("show")
-    s.add_argument("id")
-    s.add_argument("--for-review", action="store_true")
-    s.add_argument("--json", action="store_true")
+    s = t.add_parser("show", help="print a task's brief: envelope, mode, role, principles, history")
+    s.add_argument("id", help="task id")
+    s.add_argument("--for-review", action="store_true", help="add the result and the review checklist")
+    s.add_argument("--json", action="store_true", help="print the task state as JSON")
     s.set_defaults(fn=cmd_task_show)
 
-    mv = t.add_parser("move")
-    mv.add_argument("id")
-    mv.add_argument("state", choices=sorted(TRANSITIONS))
-    mv.add_argument("--note")
-    mv.add_argument("--by", default="agent")
+    mv = t.add_parser("move", help="change a task's state (legal transitions only)")
+    mv.add_argument("id", help="task id")
+    mv.add_argument("state", choices=sorted(TRANSITIONS), help="the new state")
+    mv.add_argument("--note", help="why, for the task history (e.g. the PM's answer)")
+    mv.add_argument("--by", default="agent", help="who moves it, for the trace (default: agent)")
     mv.set_defaults(fn=cmd_task_move)
 
-    rs = t.add_parser("result")
-    rs.add_argument("id")
-    rs.add_argument("file")
-    rs.add_argument("--by", default="worker")
+    rs = t.add_parser("result", help="submit a Worker result (validated against contracts/result.schema.json)")
+    rs.add_argument("id", help="task id")
+    rs.add_argument("file", help="the result JSON, usually outputs/<id>/result.json")
+    rs.add_argument("--by", default="worker", help="who submits it, for the trace (default: worker)")
     rs.set_defaults(fn=cmd_task_result)
 
-    rv = t.add_parser("review")
-    rv.add_argument("id")
-    rv.add_argument("--passed", required=True)
-    rv.add_argument("--score", type=float)
-    rv.add_argument("--note", action="append")
-    rv.add_argument("--by", default="reviewer")
+    rv = t.add_parser("review", help="record the Reviewer's verdict")
+    rv.add_argument("id", help="task id")
+    rv.add_argument("--passed", required=True, help="true or false")
+    rv.add_argument("--score", type=float, help="overall score, 0-5")
+    rv.add_argument("--note", action="append", help="a review note: what is missing and where (repeatable)")
+    rv.add_argument("--by", default="reviewer", help="who reviewed, for the trace (default: reviewer)")
     rv.set_defaults(fn=cmd_task_review)
 
-    ap = t.add_parser("approve")
-    ap.add_argument("id")
-    ap.add_argument("--by", required=True)
-    ap.add_argument("--note")
+    ap = t.add_parser("approve", help="record the PM's approval of an awaiting_approval task")
+    ap.add_argument("id", help="task id")
+    ap.add_argument("--by", required=True, help="who approved (the PM)")
+    ap.add_argument("--note", help="a note for the task history")
     ap.set_defaults(fn=cmd_task_approve)
 
-    ls = t.add_parser("list")
-    ls.add_argument("--state", choices=sorted(TRANSITIONS))
-    ls.add_argument("--all", action="store_true")
+    ls = t.add_parser("list", help="list open tasks")
+    ls.add_argument("--state", choices=sorted(TRANSITIONS), help="only tasks in this state")
+    ls.add_argument("--all", action="store_true", help="include done and failed tasks")
     ls.set_defaults(fn=cmd_task_list)
     return p
 

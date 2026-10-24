@@ -7,8 +7,7 @@ description: Design a new pm-os pack with its roles, principles and first modes,
 You build in the staging area only. Each first mode is built by its own `forge/new-mode` child task,
 so every mode gets its own design, review and checks. Follow the `forge:authoring` skill.
 
-Step tags: `[model]` = your judgment · `[code: …]` = run the command. Track your stage in
-`outputs/<id>/progress.json` (`{"stage": "design" | "modes" | "check"}`).
+Track your stage in `outputs/<id>/progress.json` (`{"stage": "design" | "modes" | "check"}`).
 
 ## Stage: design
 

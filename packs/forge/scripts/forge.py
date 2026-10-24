@@ -9,7 +9,7 @@ Operator runs `apply` for an approved task.
   stage-pack --task ID --name NAME --summary TEXT [--role ROLE]
       Create a skeleton pack in the staging area.
   lint DIR [--target packs/NAME]
-      Fail on TODO markers and on skill names that don't match their mode. With --target, only the
+      Fail on TODO markers and on skill names that don't match their mode (a name is optional). With --target, only the
       files this task added or changed are checked (a new pack's files are all new).
   changes STAGED --target packs/NAME
       JSON list of files added or modified relative to the target.
@@ -52,13 +52,9 @@ evals: evals/
 """
 
 SKILL_MD = """---
-name: {pack}-{name}
 description: "{summary}. Use when a Worker has been given a pm-os task whose envelope mode is {pack}/{name}."
 ---
 # {pack}/{name}
-
-Step tags: `[model]` = your judgment · `[code: …]` = run the script, don't do it by hand ·
-`[candidate-code]` = done by you for now, on the list to become a script.
 
 ## Steps
 
@@ -168,7 +164,7 @@ def cmd_stage_mode(a) -> int:
     (mode_dir / "SKILL.md").write_text(SKILL_MD.format(**fmt), encoding="utf-8")
     golden = json.loads(json.dumps(GOLDEN).replace("{pack}", a.pack).replace("{name}", a.name))
     (mode_dir / "evals" / "golden-01.json").write_text(json.dumps(golden, indent=2) + "\n", encoding="utf-8")
-    add_export(pack_dir / "pack.yaml", "modes", f"{a.pack}/{a.name}")
+    add_export(pack_dir / "pack.yaml", "modes", a.name)
     version = bump_minor(pack_dir / "pack.yaml") if bump else None
     print(json.dumps({"staged_pack": str(pack_dir.relative_to(ROOT)), "mode_dir": str(mode_dir.relative_to(ROOT)),
                       "pack_version": version}, indent=2))
@@ -215,7 +211,7 @@ def cmd_lint(a) -> int:
         if skill.exists():
             m = re.search(r"^name:\s*(\S+)", skill.read_text(encoding="utf-8"), flags=re.M)
             want = str(man.get("name", "")).replace("/", "-")
-            if not m or m.group(1) != want:
+            if m and m.group(1) != want:  # the name is optional; `pmos render` generates it
                 problems.append(f"{skill.relative_to(ROOT)}: frontmatter name should be '{want}'")
     if problems:
         print("FAIL")

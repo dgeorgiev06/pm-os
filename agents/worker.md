@@ -19,8 +19,8 @@ those systems are proposed as `actions` in your result; the Operator executes th
    lists (with their paths). Don't load other context. If the mode switches roles for a step,
    `python scripts/pmos.py role show <pack>/<role>` prints that role.
    **Read every principle `task show` lists** before you start: the Reviewer scores exactly those checks.
-4. **Follow the mode's `SKILL.md`** step by step. Steps tagged `[code: ...]` run the named script;
-   don't do that work by hand. Steps tagged `[model]` are yours.
+4. **Follow the mode's `SKILL.md`** step by step. Steps tagged `[code: ...]` run the named command;
+   don't do that work by hand. Steps tagged `[model]` or `[candidate-code]` are yours.
 5. **Read systems of record fresh** (Jira, roadmap, docs) with read-only tools. Never rely on memory
    or chat history for facts.
 6. **Write artifacts** to `outputs/<task id>/`.

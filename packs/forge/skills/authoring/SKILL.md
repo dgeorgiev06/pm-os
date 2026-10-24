@@ -4,18 +4,23 @@ description: The pm-os conventions for authoring packs, modes, roles, skills and
 ---
 # Authoring pm-os packs and modes
 
+The README's "Building blocks" and "Adding to a pack" sections are the reference for people; this
+is the same set of rules for the Worker.
+
 ## Names
 
 | Thing | Name | File |
 | --- | --- | --- |
 | Pack | `acme` (lowercase, hyphens) | `packs/acme/pack.yaml` |
-| Mode | `acme/brief` | `packs/acme/modes/brief/mode.yaml`; `SKILL.md` frontmatter `name: acme-brief` |
+| Mode | `acme/brief` | `packs/acme/modes/brief/mode.yaml` and `SKILL.md` |
 | Role | `acme/briefer` | entry `briefer` in `packs/acme/roles.yaml` |
-| Skill | `acme:domain/brief-style` | `packs/acme/skills/domain/brief-style/SKILL.md`, `name: acme-domain-brief-style` |
-| Principle | `acme:one-page` | `packs/acme/skills/principles/one-page/SKILL.md`, `name: acme-principles-one-page`, `kind: principle`, `check: "…"` |
+| Skill | `acme:domain/brief-style` | `packs/acme/skills/domain/brief-style/SKILL.md` |
+| Principle | `acme:one-page` | `packs/acme/skills/principles/one-page/SKILL.md`, with `kind: principle` and `check: "…"` |
 
-Inside a pack a bare name means that pack. Core items are `core:…`; another pack's are `<pack>:…`
-and need that pack in `depends` and the item in its `exports`.
+Inside a pack a bare name means that pack (`brief`, `briefer`, `domain/brief-style`, `one-page`),
+including in `exports`. Core items are `core:…`; another pack's are `<pack>:…` (or `<pack>/…` for
+modes and roles) and need that pack in `depends` and the item in its `exports`. SKILL.md frontmatter
+needs a `description`; `name` is optional (`pmos render` generates it, and if present it must match).
 
 ## A mode
 
@@ -30,6 +35,7 @@ and need that pack in `depends` and the item in its `exports`.
   `pmos task move <id> waiting`; pmos re-queues the parent when they finish.
 - Every external change is an `action` (system, op, idempotency_key, payload, preview). Never write.
 - At least one golden task in `evals/` with `envelope`, optional `fixtures`, and `expect` lines.
+- Make it reachable: export it in `pack.yaml`, or list it in another mode's `calls`.
 
 ## A pack
 
@@ -39,6 +45,7 @@ skills and principles. Unexported items are internal to the pack.
 
 ## Versions and grants
 
-Bump the mode's version and the pack's version on any change. A change that widens grants (a new
-system, or read → draft → write) must be re-approved by the PM with
+Bump the version of every mode you change and of its pack, on any change: `pmos pack add --upgrade`
+refuses an upgrade that doesn't raise the pack's version. A change that widens grants (a new
+system, or read → draft → write) must also be re-approved by the PM with
 `pmos pack add <path> --upgrade --approve-grants`; until then pmos refuses to run that mode.
