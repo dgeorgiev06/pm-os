@@ -1,5 +1,5 @@
 name: pm/prd
-version: 0.2.0
+version: 0.2.1
 contract: task@1
 author: dima
 summary: Draft a PRD from a goal and references, written for institutional staking customers
@@ -20,4 +20,7 @@ principles: [testable-requirements, cite-customer-claims]
 rubric:
   - Success metrics have a baseline or an explicit "to measure" note
   - Open questions list owners
+acceptance:             # the envelope's default when the CoS passes no --acceptance
+  - "Covers the goal's personas, requirements and success metrics"
+  - "check_prd.py passes on the PRD"
 evals: evals/

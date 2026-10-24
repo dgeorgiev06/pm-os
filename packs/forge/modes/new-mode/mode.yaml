@@ -1,5 +1,5 @@
 name: forge/new-mode
-version: 0.1.0
+version: 0.1.1
 contract: task@1
 author: dima
 summary: Design a new mode for an installed pack, stage it, check it, and propose it for approval
@@ -22,4 +22,8 @@ principles: [contract-first, smallest-unit, compose-dont-copy]
 rubric:
   - The design names the existing modes, roles and principles it reuses
   - The golden task exercises the mode's main path and one gate or failure case
+acceptance:             # the envelope's default when the CoS passes no --acceptance
+  - "The staged pack passes forge lint and a dry-run admission"
+  - "The mode reuses existing roles, skills and principles where they fit"
+  - "Nothing outside outputs/<id>/ is changed before approval"
 evals: evals/

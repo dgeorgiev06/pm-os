@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import filecmp
 import json
+import os
 import re
 import shutil
 import sys
@@ -48,6 +49,8 @@ risk: medium
 principles: []                    # cite existing principles before writing new ones
 rubric:
   - "TODO: one line a reviewer can check for this mode"
+acceptance:                       # the envelope's default acceptance when the CoS passes none
+  - "TODO: one outcome the Worker self-checks before submitting"
 evals: evals/
 """
 
@@ -117,7 +120,8 @@ def installed_pack_dir(pack: str) -> Path:
 
 
 def staging(task: str) -> Path:
-    return ROOT / "outputs" / task / "staged"
+    base = Path(os.environ["PMOS_OUTPUTS_DIR"]) if os.environ.get("PMOS_OUTPUTS_DIR") else ROOT / "outputs"
+    return base / task / "staged"
 
 
 def bump_minor(pack_yaml: Path) -> str:

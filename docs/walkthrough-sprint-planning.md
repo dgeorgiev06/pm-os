@@ -9,14 +9,16 @@ agents run, and how state moves. Your side is three short messages.
 
 The CoS can name the job, so it skips the router:
 `pmos task new --mode pm/sprint-planning --verb plan --inputs '{"sprint": "2026-S22", "project": "STK", "goals_hint": "router beta readiness"}'`
-→ **T-101**, `queued`. It delegates T-101 to a fresh Worker.
+→ **T-101**, `queued`. It delegates T-101 to a fresh `worker-mid`, the worker its `delegate to:` line
+names (the default role, `pm/sprint-planner`, is mid tier).
 
 > **CoS:** On it. Sprint 22 planning is running (T-101). I'll bring you a ranking to approve first.
 
 ## 2. Worker run 1 — prioritize (stage A)
 
-- Role `pm/roadmap-strategist`, top tier. Reads the five core principles plus `plan-to-capacity`
-  and `explicit-trade-offs` from `pmos task show`.
+- Switches to `pm/roadmap-strategist` for the ranking: its persona, skills and principles, on the
+  task's mid-tier model. Reads the five core principles plus `plan-to-capacity` and
+  `explicit-trade-offs` from `pmos task show`.
 - Reads the backlog and the last three sprints from Jira (read-only). Runs `capacity.py`:
   **21 committed points, 3 stretch**.
 - Writes `ranking.md` with a score and rationale per item and a "deliberately deferred" list.
@@ -33,28 +35,34 @@ The CoS logs it (`pmos decide`), re-queues T-101 with your answer as a note, and
 
 ## 4. Worker run 2 — plan and roadmap diff (stage B)
 
-- As `pm/sprint-planner` (mid): `plan.md` with three sprint goals and 21 committed points.
+- As `pm/sprint-planner`: `plan.md` with three sprint goals and 21 committed points; `check_plan.py`
+  confirms they fit capacity.
 - As `pm/roadmap-strategist`: `roadmap-diff.md`, only the entries that change.
 - Creates child **T-102** (`pm/jira-tickets`, approval none) and moves T-101 to `waiting`.
 
 ## 5. Worker run 3 — tickets (child T-102)
 
-- As `pm/jira-curator` (small): drafts four tickets. `dedupe.py` flags one as a duplicate of
+- The CoS sees T-102 in `task list --state queued` and delegates it to `worker-small`
+  (`pm/jira-curator` is small tier).
+- Drafts four tickets. `dedupe.py` flags one as a duplicate of
   STK-402, so it becomes an update.
 - Returns dry-run actions with idempotency keys and preview lines.
 
-## 6. Reviewer run 1 — T-102
+## 6. No separate review for T-102
 
-Fresh context; scores the core principles plus `testable-requirements`. Passes → `done`. pmos sees
-the last child finish and re-queues T-101 automatically.
+T-102's approval rolls up to T-101, so pmos moves it straight to `done`: its tickets are reviewed
+once, inside T-101's review. pmos sees the last child finish and re-queues T-101; the CoS sees it
+in the queue and delegates it again.
 
-## 7. Worker run 4 — assemble (stage C)
+## 7. Worker run 4 — hand off (stage C)
 
-Combines the roadmap action with the four ticket actions; submits `needs_approval`.
+Submits `needs_approval` with the roadmap action; pmos appends the four ticket actions from T-102
+(`merge_child_actions`), so no model copies them.
 
-## 8. Reviewer run 2 — T-101
+## 8. Reviewer run — T-101
 
-Checklist includes `plan-to-capacity` and the gate-1 rubric line. Passes (4.5) → `awaiting_approval`.
+Gives a verdict on every checklist line, including `plan-to-capacity`, `testable-requirements` for
+the tickets and the gate-1 rubric line; pmos computes the pass (score 4.5) → `awaiting_approval`.
 
 ## 9. Gate 2 — one approval for everything
 
@@ -85,12 +93,13 @@ from a task id.
 | Agent | Runs | Role and tier | Can write? |
 | --- | --- | --- | --- |
 | CoS | 1, for the whole conversation | mid | No |
-| Worker | 4 | strategist (top), planner (mid), curator (small) | No |
-| Reviewer | 2 | mid | No |
+| Worker | 4 | planner and strategist (`worker-mid`), curator (`worker-small`) | No |
+| Reviewer | 1 | mid | No |
 | Operator | 1 | small | Yes, after approval |
 
 - Your thread stayed free: the CoS replied within seconds each time.
-- Only the ranking used the top tier; capacity math and dedupe ran as code.
+- Each run used the tier its task's role names: T-101 on mid, T-102 on small. Capacity math, the
+  capacity check, dedupe and assembling the actions ran as code.
 - State lived in `pmos`, not in any agent: a crashed run is picked up by the next Worker from T-101.
 
 ## Variations

@@ -26,12 +26,20 @@ calling write tools.
 4. **Create the envelope**:
    `python scripts/pmos.py task new --mode <pack>/<mode> --verb <verb> --inputs '<json>' [--risk ...] [--approval ...]`
    You can only create tasks for modes a pack exports.
-5. **Delegate** to the agent the task's role names (`worker` by default): give it only the task id.
+5. **Delegate** to the worker named on the task's `delegate to:` line — `worker-small`, `worker-mid`
+   or `worker-top`, from the role's tier. `python scripts/pmos.py task list` shows it per task, and
+   `task show <id>` prints it on its second line. Give the worker only the task id.
    If your harness can't run a separate agent, run the step in a fresh context with `agents/worker.md`
-   as the instructions — never in your own conversation context.
+   as the instructions, on that tier's model — never in your own conversation context.
 6. **Reply immediately**: what you dispatched, to which mode, what you need from the PM.
-7. **When results land**: delegate review to `reviewer` with the task id, then post a 2–5 line digest
-   from the result's `summary`. Link artifacts; don't paste them.
+7. **When results land**: if the task is `in_review`, delegate review to `reviewer` with the task id
+   (a child gated by its parent goes straight to `done`; it's reviewed with the parent). Post a 2–5
+   line digest from the result's `summary`. Link artifacts; don't paste them.
+8. **After every subagent returns** (worker, reviewer or operator), dispatch what is now ready:
+   `python scripts/pmos.py task list --state queued`, and delegate each queued task to its
+   `delegate to:` worker — new child tasks, and parents pmos re-queued when their children finished.
+   Tasks that don't depend on each other run in parallel, in the background; don't wait for one to
+   start the next. Skip a task whose `depends_on` isn't done yet.
 
 ## Approvals and gates
 
@@ -102,8 +110,8 @@ do it unasked.
 
 | Pack | Version | What it covers | Router | Modes | Source |
 | --- | --- | --- | --- | --- | --- |
-| `pm` | 0.2.0 | Product management — PRDs, sprint planning, roadmap diffs, Jira tickets, release notes | `pm/router` | `pm/jira-tickets`, `pm/prd`, `pm/release-notes`, `pm/router`, `pm/sprint-planning` | local |
-| `cos` | 0.2.0 | Chief of Staff — talks to the PM, routes to packs and modes, keeps the todo list, batches approvals, posts digests | — | `cos/todos` | local |
-| `forge` | 0.2.0 | Builds and reviews pm-os itself — new modes or packs, staged and checked before they land, and on-demand framework reviews | — | `forge/new-mode`, `forge/new-pack`, `forge/review-framework` | local |
+| `pm` | 0.2.1 | Product management — PRDs, sprint planning, roadmap diffs, Jira tickets, release notes | `pm/router` | `pm/jira-tickets`, `pm/prd`, `pm/release-notes`, `pm/router`, `pm/sprint-planning` | local |
+| `cos` | 0.2.1 | Chief of Staff — talks to the PM, routes to packs and modes, keeps the todo list, batches approvals, posts digests | — | `cos/todos` | local |
+| `forge` | 0.2.1 | Builds and reviews pm-os itself — new modes or packs, staged and checked before they land, and on-demand framework reviews | — | `forge/new-mode`, `forge/new-pack`, `forge/review-framework` | local |
 
 Use `python scripts/pmos.py catalog --pack <pack>` for a pack's modes and what each accepts.

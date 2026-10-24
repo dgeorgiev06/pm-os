@@ -32,22 +32,30 @@ the task history notes and any child tasks it lists.
 
 6. Read the PM's answer in the history notes. If they asked for changes, go back to step 4 with
    their notes and stay in stage A.
-7. `[model]` As **pm/sprint-planner**, write `outputs/<id>/plan.md` and `plan.json`: 2–4 sprint goals,
-   committed items within `capacity.json`'s `committed_points`, stretch items, risks with owners.
+7. `[model]` As **pm/sprint-planner**, write `outputs/<id>/plan.md` and `plan.json`
+   (`{"goals": [..], "committed": [{key, summary, points}], "stretch": [..], "risks": [..]}`): 2–4 sprint
+   goals, committed items within `capacity.json`'s `committed_points`, stretch items, risks with owners.
+   Then `[code: python packs/pm/modes/sprint-planning/scripts/check_plan.py outputs/<id>/plan.json outputs/<id>/capacity.json]`
+   — if it says `over capacity`, move items to stretch until it passes. Don't argue with it.
 8. `[model]` As **pm/roadmap-strategist**, write `outputs/<id>/roadmap-diff.md`: only the roadmap
    entries that change, before → after, each tied to a ranked item.
 9. Create the child task for tickets, then wait:
    `[code: python scripts/pmos.py task new --mode pm/jira-tickets --verb draft --parent <id> --approval none --inputs '{"plan": "outputs/<id>/plan.json", "project": "<project>", "sprint": "<sprint>"}']`
    Set stage to `"C"`, then `[code: python scripts/pmos.py task move <id> waiting]`.
-   The child's actions execute only through this task's gate 2, never on their own.
+   The child's actions execute only through this task's gate 2, never on their own. Because its
+   approval rolls up to this task, the child skips its own review and goes straight to `done`: its
+   tickets are reviewed once, as part of this task.
 
-## Stage C — assemble and hand off
+## Stage C — hand off (short: pmos assembles the actions)
 
-10. `[code: python scripts/pmos.py task show <child id>]` → read the child's `result.json`.
-11. `[model]` Self-check against acceptance and every principle and rubric line `task show` lists. Committed points must not exceed capacity.
+10. `[code: python scripts/pmos.py task show <id>]` → the child's id and result path. Read only the
+    child's summary and preview artifact, not its drafts.
+11. `[model]` Self-check against acceptance and every principle and rubric line `task show` lists.
+    Capacity is already checked by `check_plan.py` in step 7.
 12. Submit the result with `status: "needs_approval"` and:
     - `artifacts`: ranking.md, plan.md, roadmap-diff.md, and the child's ticket preview
-    - `actions`: one roadmap action
-      `{"system": "roadmap", "op": "apply_diff", "idempotency_key": "<id>-roadmap", "payload": {"diff": "outputs/<id>/roadmap-diff.md"}, "preview": "Roadmap: <n> changes"}`,
-      followed by every action from the child's result, unchanged.
+    - `actions`: only the roadmap action
+      `{"system": "roadmap", "op": "apply_diff", "idempotency_key": "<id>-roadmap", "payload": {"diff": "outputs/<id>/roadmap-diff.md"}, "preview": "Roadmap: <n> changes"}`.
+      Don't copy the child's actions: this mode sets `merge_child_actions`, so pmos appends every
+      ticket action from the child, unchanged, when you submit.
     Review and **gate 2** (one approval for roadmap + tickets) follow; the Operator executes.

@@ -37,7 +37,8 @@ review used; its report is `evals/framework/findings/<aspect>.md`):
 4. `[model]` Judge as `core/reviewer` would (`python scripts/pmos.py role show core/reviewer`):
    evidence only, no credit for intent. Judge what the conformance cases can't — for clarity, how
    fast a newcomer gets from README to a working mode and whether each topic has one home; for
-   performance, hops and model tiers per workflow and context loaded per run; for modularity,
+   performance, hops and model tiers per workflow, context loaded per run, and what
+   `python scripts/pmos.py stats` measures from the traces; for modularity,
    whether each component has one job and how swappable the CoS pack, harness, model and runtime
    are; for composability, whether a new workflow or output needs new code, and how data flows
    between modes.
@@ -57,4 +58,7 @@ review used; its report is `evals/framework/findings/<aspect>.md`):
    `task show` lists.
 8. `[code: python scripts/pmos.py task result <id> outputs/<id>/result.json]` — `status: "done"`,
    `artifacts`: `report.md` (kind `review`) and `conformance.json` (kind `data`), no actions. The
-   summary gives the scores and the number of failing cases in under 80 words.
+   summary gives the scores and the number of failing cases in 80 words or fewer (pmos refuses more).
+   If the review sends the task back (`revise`), the failing checklist lines are in the history
+   notes: fix them and resubmit the same `result.json` (pmos keeps the review in task state, not in
+   your file).

@@ -1,5 +1,5 @@
 name: forge/review-framework
-version: 0.1.0
+version: 0.1.1
 contract: task@1
 author: dima
 summary: "Re-run one framework review of pm-os (conformance evals plus judgment) and report it in the original reviews' shape"
@@ -23,4 +23,8 @@ rubric:
   - "Every issue cites file:line evidence and is marked with the conformance case that covers it, or judgment-only"
   - "Conformance results are quoted from conformance.json, not re-judged"
   - "Nothing outside outputs/<id>/ changed (the verify-clean step passed)"
+acceptance:             # the envelope's default when the CoS passes no --acceptance
+  - "Every sub-scale of the aspect is scored 1-5 with a reason"
+  - "Every issue is marked with its conformance case or judgment-only"
+  - "The repo under review is unchanged"
 evals: evals/
