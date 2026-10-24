@@ -4,9 +4,6 @@ description: Prioritize the next sprint, update the roadmap, plan the work and d
 ---
 # pm/sprint-planning — prioritize, plan, roadmap diff, tickets
 
-Step tags: `[model]` = your judgment · `[code: …]` = run the script, don't do it by hand ·
-`[candidate-code]` = done by you for now, on the list to become a script.
-
 This mode runs in **three stages** across several deliveries of the same task. Track where you are
 in `outputs/<id>/progress.json` (`{"stage": "A" | "B" | "C"}`); create it at stage A.
 Start every delivery with `[code: python scripts/pmos.py task show <id>]` and read `progress.json`,

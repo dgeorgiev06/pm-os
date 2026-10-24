@@ -7,8 +7,6 @@ description: Design a new pm-os mode for an installed pack, stage it, lint it, r
 You build in the staging area only: `outputs/<id>/staged/`. Nothing reaches `packs/` until the PM
 approves and the Operator applies it. Follow the `forge:authoring` skill for every convention.
 
-Step tags: `[model]` = your judgment · `[code: …]` = run the command.
-
 ## Steps
 
 1. `[code: python scripts/pmos.py task show <id>]` — the request, your role and principles.

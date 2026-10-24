@@ -21,18 +21,8 @@ things exact, so a confused agent can stall a task but can't corrupt state.
 
 ### How the CoS knows when to call `pmos`
 
-Its manual maps each step of its loop to a command:
-
-| When… | The CoS runs… |
-| --- | --- |
-| You ask for new work | `pmos catalog --pack <pack>` if needed, then `pmos task new …` |
-| You ask what's happening | reads `state/status.md`, or `pmos task show <id>` |
-| A delegated agent finishes | `pmos task show <id>`, then delegates review |
-| You approve | `pmos task approve <id> --by <you>`, then delegates to the Operator |
-| You answer a gate or ask for changes | `pmos task move <id> queued` (or `revise`) with your words |
-| You make a decision | `pmos decide "…"` |
-
-It never tracks ids or states from memory; it asks `pmos`. If it gets a step wrong, `pmos`
+Its manual, [packs/cos/COS.md](../packs/cos/COS.md), maps each step of its loop to a `pmos`
+command. It never tracks ids or states from memory; it asks `pmos`. If it gets a step wrong, `pmos`
 refuses (illegal transition, wrong inputs, internal mode, approving the wrong state).
 
 ### One request, mechanically
@@ -40,11 +30,12 @@ refuses (illegal transition, wrong inputs, internal mode, approving the wrong st
 1. You type in the session. The CoS reads the catalog and picks the mode by reasoning over mode
    summaries and `accepts`.
 2. It runs `pmos task new …`; `pmos` validates and returns an id.
-3. It invokes the `worker` subagent with "Work task T-131". Fresh context; the Worker runs
-   `pmos task show`, reads systems of record with read-only tools, writes `outputs/`, and submits
-   through `pmos task result`.
+3. It invokes the Worker subagent that `task show` names for the task's tier, with "Work task
+   T-131". In a fresh context the Worker runs `pmos task show`, reads systems of record with
+   read-only tools, writes `outputs/`, and submits through `pmos task result`.
 4. The CoS invokes the `reviewer` subagent the same way.
-5. You reply "yes"; the CoS runs `pmos task approve` and invokes the `operator` subagent.
+5. You reply "yes"; the CoS runs `pmos task approve` and invokes the `operator` subagent, which runs
+   `pmos action run`.
 
 ### Phase 0 limits
 
@@ -66,17 +57,7 @@ refuses (illegal transition, wrong inputs, internal mode, approving the wrong st
 | 2 — codify ladder | Promote `[candidate-code]` steps to scripts: JQL building, field mapping, velocity, dedupe, diffs | High-volume steps run as code; review failures on them drop |
 | 3 — durable runtime | CoS as an SDK service; DBOS for workflows, waits and schedules; events pushed to the CoS | Your thread never waits; approvals can wait days; the sprint tracker runs unattended |
 
-### The codify ladder
-
-Every step in a mode's `SKILL.md` is tagged:
-
-- `[model]` — judgment: prioritizing, writing, reviewing. Stays with the model.
-- `[candidate-code]` — the model does it today, but it's rule-shaped.
-- `[code: script]` — already a script; agents run it instead of reasoning about it.
-
-Promote a step when you can write a unit test for it, or when traces show it's high-volume or keeps
-failing review. Codified so far: `check_prd.py`, `capacity.py`, `dedupe.py`, `group_tickets.py`, and
-`forge.py` for building packs.
+Step tags and when to promote a step are in the [README](../README.md#step-tags-the-codify-ladder).
 
 ### Rule that keeps phase 3 cheap
 

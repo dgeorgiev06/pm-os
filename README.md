@@ -1,221 +1,235 @@
 # pm-os
 
-A modular, harness-neutral framework for automating product-management work. A Chief of Staff
-delegates, installable **packs** of composable **modes** do the work, four agents are split by
-permissions, **principles** define good work, and every output is reviewed. Phase 0 runs entirely
-on skills plus a small deterministic CLI.
+pm-os automates product-management work with agents you can audit. You talk to a **Chief of Staff
+(CoS)** agent. It turns each request into a task for one **mode** (a typed capability such as
+`pm/prd`), a Worker does the work, a separate Reviewer checks it, and nothing changes in Jira, docs
+or the roadmap until you approve it. A small deterministic CLI, `pmos`, owns all task state and
+checks every hand-off.
 
-Nothing in the core depends on one vendor:
-
-| Concern | Open format used |
-| --- | --- |
-| CoS instructions | `AGENTS.md`, generated from the `cos` pack (read natively by many agent harnesses) |
-| Modes, skills, principles | `SKILL.md` folders with name/description frontmatter |
-| Tools | MCP servers (Jira, docs, Slack…) mapped to grants |
-| Contracts | JSON Schema in `contracts/` |
-| State, registry, validation | `scripts/pmos.py`: plain Python, no LLM |
-| Models | tiers (`small` / `mid` / `top`) mapped per provider in `pm-os.yaml` |
-
-Harness-specific config is **generated** by `pmos render <adapter>` and never hand-edited.
-
-Also in this repo:
-
-- [`docs/`](docs/README.md) — the design and its reasoning: [architecture](docs/architecture.md),
-  [decisions](docs/decisions.md), a [sprint-planning walkthrough](docs/walkthrough-sprint-planning.md),
-  [phase 0 and the build plan](docs/phase-0-and-build-plan.md),
-  [routing and delegation](docs/routing-and-delegation.md), the [DBOS runtime](docs/runtime-dbos.md),
-  and [proposals](docs/proposals/todo-plan.md).
-- [`examples/dbos/sprint_workflows.py`](examples/dbos/sprint_workflows.py) — two modes on a durable
-  runtime (DBOS): `plan_next_sprint` and `track_sprint`.
+Today pm-os runs as **phase 0**: agents are skills and subagents inside an agent harness (such as
+Claude Code), `pmos` is a Python script, and state is files. Later the same packs move to a durable
+runtime ([DBOS](docs/runtime-dbos.md)). Formats are open (AGENTS.md, SKILL.md, MCP, JSON Schema),
+and harness config is generated, never hand-edited.
 
 ## Quick start
 
 ```bash
 pip install -r requirements.txt
-python scripts/pmos.py validate          # core, every installed pack, and all references
-python scripts/pmos.py catalog           # state/catalog.md + AGENTS.md for the CoS
-python scripts/pmos.py catalog --pack pm # one pack's modes and what each accepts
+alias pmos="python scripts/pmos.py"   # this README uses the alias; agents run the long form
+pmos validate                         # core, every installed pack, and all references
+pmos catalog                          # writes state/catalog.md and AGENTS.md for the CoS
+pmos catalog --pack pm                # one pack's modes and what each accepts
 ```
 
-Then pick a harness:
+Then:
 
-- **Claude Code**: `python scripts/pmos.py render claude-code`. This writes `CLAUDE.md` (imports
-  `AGENTS.md`), subagents in `.claude/agents/` and skills in `.claude/skills/`. Map your MCP tool
-  names under `adapters.claude-code.grants_to_tools` first; until you do, `render` warns that the
-  Worker can still reach write tools.
-- **Any harness that reads `AGENTS.md` and `SKILL.md` folders**: point it at this repo.
-- **Your own runtime (any SDK or API)**: `python scripts/pmos.py render generic` writes one system
-  prompt per agent, `models.json` (agent and role → model id) and `grants.json` to `build/generic/`.
+1. **Pick a harness.**
+   - Claude Code: `pmos render claude-code` writes `CLAUDE.md` (imports `AGENTS.md`), subagents in
+     `.claude/agents/` (one Worker per model tier) and skills in `.claude/skills/`. First map your MCP
+     tool names under `adapters.claude-code.grants_to_tools` in `pm-os.yaml`; until you do, `render`
+     warns that the Worker can still reach write tools.
+   - Any harness that reads `AGENTS.md` and `SKILL.md` folders: point it at this repo.
+   - Your own runtime (any SDK or API): `pmos render generic` writes a system prompt per agent,
+     `models.json` and `grants.json` to `build/generic/`.
+2. **Add your context.** Fill in `context/` (product, customers, glossary, roadmap) and replace
+   `packs/pm/skills/product/staking-prd/SKILL.md` with your own PRD skill.
+3. **Ask for work.** Say "draft a PRD for X" to the CoS. It creates a `pm/prd` task, delegates it,
+   and replies with a short digest, then with an approval request before anything is published.
 
-Fill in `context/` (product, customers, glossary, roadmap) and replace
-`packs/pm/skills/product/staking-prd/SKILL.md` with your existing staking PRD skill.
+## How work flows
+
+Four agents, split by what they may touch: the **CoS** (talks to you, creates tasks), the
+**Worker** (does all thinking work, under a role), the **Reviewer** (scores results in a fresh
+context) and the **Operator** (the only one that writes to external systems, and only for approved
+tasks). Only `pmos` moves a task between states, and every transition is a line in `traces/`.
+
+```mermaid
+stateDiagram-v2
+  [*] --> queued: CoS runs pmos task new
+  queued --> running
+  running --> in_review: result done / needs_approval
+  running --> waiting: created child tasks
+  waiting --> queued: all children finished (automatic)
+  running --> blocked: a gate or an open question
+  blocked --> queued: CoS re-queues with your answer
+  in_review --> done: passed, no approval needed
+  in_review --> awaiting_approval: passed, approval needed
+  in_review --> revise: failed (up to max_revisions, then failed)
+  revise --> running
+  awaiting_approval --> approved: your yes (pmos task approve)
+  awaiting_approval --> revise: your changes
+  approved --> done: Operator ran the actions
+  done --> [*]
+```
+
+[docs/walkthrough-sprint-planning.md](docs/walkthrough-sprint-planning.md) follows one request
+through every step.
 
 ## Building blocks
 
-| Unit | What it is | Lives in | Addressed as |
+| Unit | What it is | Lives in | Written as |
 | --- | --- | --- | --- |
 | **Pack** | The unit you install and share, like a plugin | `packs/<pack>/pack.yaml` | `pm` |
-| **Mode** | One capability with a typed contract; composable | `packs/<pack>/modes/<mode>/` | `pm/prd` |
-| **Router** | A pack's entry mode for goal-level asks | a mode named in `pack.yaml` | `pm/router` |
-| **Role** | Config the Worker loads: persona, skills, context, tier | `packs/<pack>/roles.yaml` | `pm/doc-writer` |
-| **Skill** | How-to knowledge, loaded by reference | `packs/<pack>/skills/<path>/` | `pm:domain/prd-structure` |
-| **Principle** | A rule of good work with a one-line check | `packs/<pack>/skills/principles/<name>/` | `pm:plan-to-capacity` |
-| **Agent** | Who executes, split by permissions | `agents/` (core), `packs/<pack>/agents/` | `worker` |
+| **Mode** | One capability with a typed contract (`accepts`, `returns`, grants, approval) | `packs/<pack>/modes/<mode>/` | `pm/prd` |
+| **Router** | A pack's entry mode for goal-level asks; it plans with the pack's own modes | `router:` in `pack.yaml` | `pm/router` |
+| **Role** | What the Worker becomes for a task: persona, skills, context, tier, principles | `packs/<pack>/roles.yaml` | `pm/doc-writer` |
+| **Skill** | How-to knowledge, loaded by reference | `packs/<pack>/skills/<path>/SKILL.md` | `pm:domain/prd-structure` |
+| **Principle** | A rule of good work with a one-line `check` the Reviewer scores | `packs/<pack>/skills/principles/<name>/SKILL.md` | `pm:plan-to-capacity` |
+| **Agent** | Who executes: CoS, Worker, Reviewer, Operator | `agents/`, `packs/<pack>/agents/` | `worker` |
+| **Envelope** | A task's work order: mode, verb, inputs, acceptance, risk, approval, budget; immutable once queued | `state/tasks/<id>.json` ([schema](contracts/task.schema.json)) | `T-20261024-001` |
+| **Grant** | What a mode may do in one system: `read`, `draft` or `write`; you approve a pack's grants when you install it | `grants:` in `mode.yaml` | `jira: read` |
+| **Action** | One external change a result proposes (system, op, payload, preview, idempotency key); it runs only after your approval | `actions` in `result.json` | `jira.create_issue` |
 
-Inside a pack a bare name means "this pack". The core (the repo root) is the pack called `core`:
-it holds the Worker, Operator and Reviewer agents, the infra skills, and the core principles.
+**Writing a reference.** The last column is the full form, which works everywhere. Inside a pack a
+bare name means "this pack": `prd`, `doc-writer`, `domain/prd-structure`, `plan-to-capacity` (this
+is how `exports`, roles and modes list the pack's own items). The repo root is the pack `core` (the
+Worker, Operator and Reviewer, infra skills, core principles), so core items are `core:infra/…`.
+Using another pack's item needs that pack in your `depends` and the item in its `exports`. Mode
+references (`--mode`, `calls`) may pin a version: `pm/prd@^0.2`. SKILL.md `name` frontmatter is
+optional; `pmos render` generates it (`pm-prd`, `pm-domain-prd-structure`).
 
 Built-in packs:
 
 | Pack | What it does |
 | --- | --- |
-| `cos` | The Chief of Staff manual (`AGENTS.md` is generated from it) and your todo list: `todos.py` for exact edits, `cos/todos` for planning, delegation only when you direct it |
+| `cos` | The Chief of Staff manual ([COS.md](packs/cos/COS.md), copied into `AGENTS.md`) and your todo list ([routing and delegation](docs/routing-and-delegation.md)) |
 | `pm` | PRDs, sprint planning, roadmap diffs, Jira tickets, release notes, and the `pm/router` |
-| `forge` | Builds pm-os itself: `forge/new-mode` adds a mode to a pack, `forge/new-pack` creates a pack, `forge/review-framework` re-runs a framework review |
+| `forge` | Builds pm-os itself: `forge/new-mode`, `forge/new-pack`, and `forge/review-framework` (re-runs a framework review) |
 
-### Principles
+| Other terms | Meaning |
+| --- | --- |
+| Verb | The kind of work: `plan`, `draft`, `analyze`, `execute` or `review`. `--verb` is optional when a mode lists one |
+| Tier | A role's model size: `small`, `mid` or `top`, mapped to model ids in `pm-os.yaml` |
+| Gate | Where a task waits for you: mid-way (a `blocked` result with one question) or at the end (`awaiting_approval`) |
+| Admission | The checks `pmos pack add` runs before it installs a pack (below) |
+| Golden eval | A sample task in a mode's `evals/`, with `expect` lines a grader checks; every mode needs one |
+| Conformance eval | A deterministic check of pm-os itself, in `evals/framework/`; no model |
+| Phase 0 | Today's setup (above); later phases are in [the build plan](docs/phase-0-and-build-plan.md) |
 
-Principles are how pm-os encodes judgment once and reuses it everywhere (the same idea as pstack's
-`principle-*` skills). Each is a short `SKILL.md` with `kind: principle` and a one-line `check`.
+## What pmos enforces
 
-- Modes and roles **cite** principles instead of restating rules. The Worker reads them before it
-  starts; the Reviewer scores their `check` lines. Producer and reviewer judge against the same words.
-- **Core principles** (`always: true`) apply to every task: grounded, no unapproved side effects,
-  answers the envelope, honest self-check, usable summary. A task fails review if one fails.
-- The improvement loop fixes the **highest layer** that solves a problem: a better principle
-  improves every mode and role that cites it. See `quality/README.md`.
+Prompts ask agents to behave; these rules hold in code whatever an agent does.
 
-## How a pack registers
+- **State.** Only `pmos` changes task state. Only `task review` takes a task out of `in_review`,
+  and only `task approve` puts it in `approved`. A hand-edited task file is refused.
+- **Composition.** The CoS may start any mode a pack exports. A child task (`--parent`) needs a
+  `running` parent, and its mode must be in the parent mode's `calls` (`["*"]` means any mode the
+  pack can see), at the pinned version. A pack sees its own items plus what packs in its `depends`
+  export. Call depth and cycles are checked.
+- **Grants.** `validate` and `task new` refuse a mode whose grants exceed what its pack was approved
+  for. `task result` refuses an action on a system the mode isn't granted (at `draft` or `write`).
+- **Approval.** `task new` can't set a weaker approval or a lower risk than the mode's. The
+  Operator runs `pmos action run <id>`, which refuses unless the task is `approved` and its actions
+  are exactly the ones you approved.
+- **Budgets.** `task result` refuses a result whose `usage` exceeds the task's budget. A child's
+  spend counts against its parent's `max_usd`.
+- **Review.** The Reviewer gives a verdict per checklist line; pmos computes pass or fail
+  ([quality/README.md](quality/README.md)).
+- **Versions.** `pack add --upgrade` refuses unless the pack's version goes up.
 
-Packs don't register with the CoS. They register with the core **registry**, and the CoS reads what
-the registry publishes, so any pack (including the CoS itself) can be swapped.
+## Installing packs
 
 ```bash
-python scripts/pmos.py pack add path/to/pack --source third-party          # admission + grant review
-python scripts/pmos.py pack add path/to/pack --source third-party --approve-grants
-python scripts/pmos.py pack list
-python scripts/pmos.py pack remove <name>
+pmos pack add path/to/pack --source third-party                  # admission; lists requested grants
+pmos pack add path/to/pack --source third-party --approve-grants # install
+pmos pack add packs/pm --upgrade --approve-grants                # upgrade (the version must go up)
+pmos pack add path/to/pack --dry-run                             # admission and grants, no install
+pmos pack list
+pmos pack remove <name>
 ```
 
-`pack add` runs **admission**: the pack and mode schemas are valid, the core version and dependency
-packs match, every mode has golden evals, and every reference to another pack names something that
-pack **exports**. It then shows the union of grants the pack's modes request and installs only with
-`--approve-grants`. An upgrade that widens grants asks again. The pack is recorded in `packs.yaml`,
-and `state/catalog.md` and `AGENTS.md` are regenerated, so the CoS sees the new pack as one line.
+**Admission** checks the pack's and modes' schemas, the core version and `depends`, a golden eval
+for every mode, and that every reference to another pack names something it exports. `pack add`
+then lists the grants the pack's modes request and installs only with `--approve-grants`; an
+upgrade that widens a grant asks again. The pack goes into `packs.yaml`, and `state/catalog.md` and
+`AGENTS.md` are regenerated, so the CoS sees it as one line. Packs register here, not with the CoS,
+so any pack can be swapped, even the one that supplies the CoS (`cos_pack` in `pm-os.yaml`).
 
-Guards: a pack can't be removed while another depends on it or while it has open tasks; the pack
-that supplies the CoS (`cos_pack` in `pm-os.yaml`) can't be removed until another one is configured.
-For a pack from another repo, clone it (e.g. into `vendor/`) and `pack add` the folder.
-
-**Grants are enforced, not just recorded.** `pmos validate` and `pmos task new` refuse a mode
-whose grants exceed what its pack was approved for. Widening a grant (a new system, or
-read → draft → write) means bumping the pack's version and re-running
-`pmos pack add <path> --upgrade --approve-grants`. `--dry-run` runs admission and lists the grants
-without installing.
-
-**Composition rules.** The CoS may start any mode a pack exports. A mode may call modes of its own
-pack, plus exported modes of packs it lists in `depends`. Roles, skills and principles follow the
-same rule. Everything else is internal to its pack.
-
-**Routing.** When the PM names a concrete job ("draft a PRD for X"), the CoS goes straight to that
-mode. Only goal-level asks go through a pack's router, which plans with the pack's own modes.
-
-## How work flows
-
-```
-PM ──> CoS (AGENTS.md) ──pmos task new──> queued
-                                            │  worker: pmos task move running
-                                            ▼
-            ┌──────── running ──task result──> in_review ──review──> done
-            │            │                        │                    ▲
-   children │   waiting <┘ (auto-requeued         ├─fail─> revise ─────┘ (≤ max_revisions, then failed)
-  (pmos task│            when children finish)    │
-     new    │                                     └─pass + approval needed─> awaiting_approval
-   --parent)│                                                                  │ PM yes (pmos task approve)
-            │   blocked <── result status "blocked" (a gate or a question)     ▼
-            │      └─ CoS re-queues with the PM's answer                     approved ──Operator──> done
-```
-
-- **Only `pmos` changes task state.** Agents report results; the CLI validates them against
-  `contracts/` and applies the transition. Every transition is a JSONL line in `traces/`.
-- **Only the Operator writes to external systems**, and only for a task in `approved`.
-- **Gates are states**: a mid-workflow decision is a `blocked` result with an open question;
-  final approval is `awaiting_approval`.
-- **Composition**: a mode creates child tasks with `--parent` and moves itself to `waiting`; pmos
-  re-queues the parent when every child finishes. Budgets, depth limits and cycle checks apply.
-
-## Repo layout
-
-```
-AGENTS.md                generated: the CoS manual from the cos pack + installed packs
-pm-os.yaml               core config: version, tiers → model ids, adapters, cos_pack, defaults
-packs.yaml               installed packs (managed by `pmos pack add/remove`)
-roles.yaml               core roles (reviewer)
-agents/                  core agents: worker, operator, reviewer
-skills/infra/            core skills: envelope I/O, self-check
-skills/principles/       core principles (apply to every task)
-packs/cos/               pack.yaml, COS.md, agents/cos.md
-packs/pm/
-  pack.yaml              exports, router, depends, required core version
-  roles.yaml             pm roles
-  skills/                domain and product skills, pm principles
-  modes/<mode>/          mode.yaml, SKILL.md, scripts/, evals/
-contracts/               task, result, mode, roles and pack JSON Schemas
-context/                 product knowledge, roadmap.yaml, decisions.log
-quality/                 how review works
-state/                   tasks, catalog, status board (managed by pmos)
-traces/                  one JSONL event per state change
-outputs/<task id>/       artifacts and result.json
-```
+Any change to a pack bumps its `version` (and each changed mode's). A pack can't be removed while
+another depends on it or it has open tasks. For a pack from another repo, clone it (e.g. into
+`vendor/`) and `pack add` the folder.
 
 ## Adding to a pack
 
 The easy way is to ask the CoS: "add a mode to pm that drafts the weekly leadership update" runs
-`forge/new-mode`. It designs the contract and golden task first, stages a skeleton under
-`outputs/<task>/staged/` with `packs/forge/scripts/forge.py`, fills it in, lints it, and runs a
-dry-run admission. You approve the file list like any other change, the Operator copies the files
-into `packs/`, and you run the install command the result gives you. `forge/new-pack` does the same
-for a whole pack, building each first mode as its own `forge/new-mode` child task.
+`forge/new-mode`. It designs the contract and golden eval first, stages the mode under
+`outputs/<task>/staged/`, lints it and runs a dry-run admission. You approve it like any other
+change, the Operator copies it into `packs/`, and you run the install command the result gives you.
+`forge/new-pack` does the same for a whole pack.
 
-By hand:
+### A mode, by hand
 
-- **Mode**: `packs/<pack>/modes/<mode>/` with `mode.yaml` (name `<pack>/<mode>`), `SKILL.md`
-  (frontmatter `name: <pack>-<mode>`) and at least one golden task in `evals/`. Add it to the
-  pack's `exports.modes` if the CoS or other packs should use it.
-- **Role**: an entry in the pack's `roles.yaml`, citing skills and principles.
-- **Principle**: `packs/<pack>/skills/principles/<name>/SKILL.md` with `kind: principle` and `check`.
+1. Copy a working mode: `cp -r packs/pm/modes/prd packs/<pack>/modes/<mode>`.
+2. Edit `mode.yaml` ([schema](contracts/mode.schema.json)). Required:
+   `name` (`<pack>/<mode>`), `version`, `contract` (`task@1`), `summary` (one line; the CoS routes
+   on it), `accepts` (`input: type`, a trailing `?` = optional), `returns`, `default_role` and
+   `approval` (`none`, `before_publish` or `before_execute`). Optional: `verbs`, `calls`, `grants`,
+   `risk`, `principles`, `rubric`, `acceptance`, `evals`.
+3. Edit `SKILL.md`: a `description` in the frontmatter, then numbered steps, each tagged (see the
+   next section). Start with `task show <id>`; end with `task result <id> outputs/<id>/result.json`.
+4. Rewrite `evals/golden-01.json`: `name`, `envelope` (`verb`, `mode`, `inputs`, `acceptance`,
+   `risk`, `approval`), optional `fixtures`, and `expect` (lines a grader checks).
+5. Make it reachable: add the bare name to `exports.modes` in `pack.yaml` (for the CoS and other
+   packs), or to another mode's `calls`. `validate` warns about a mode that is neither.
+6. Bump the pack's `version`, run `pmos validate`, then
+   `pmos pack add packs/<pack> --upgrade` (add `--approve-grants` if grants widened), and re-render
+   your harness.
 
-Then `python scripts/pmos.py validate && python scripts/pmos.py catalog`, and re-render your adapter.
+Other units:
 
-## From skills to code: the codify ladder
+- **Role**: an entry in `roles.yaml` with `agent`, `tier`, `persona`, `skills`, `context`,
+  `principles` and `rubric`.
+- **Principle**: `packs/<pack>/skills/principles/<name>/SKILL.md` with `description`,
+  `kind: principle` and a one-line `check`. Cite principles instead of restating rules: the Worker
+  reads them and the Reviewer scores the same `check` lines.
+- **Action handler**: `actions: {"<system>.<op>": "<script> [args]"}` in `pack.yaml` lets
+  `pmos action run` apply that action with a script; actions without one are applied by the
+  Operator with its tools.
+
+The `forge:authoring` skill ([SKILL.md](packs/forge/skills/authoring/SKILL.md)) has the full
+conventions.
+
+## Step tags: the codify ladder
 
 Every step in a mode's `SKILL.md` carries a tag:
 
-- `[model]` — judgment: prioritizing, writing, reviewing. Stays with the model.
-- `[candidate-code]` — the model does it today, but it is rule-shaped (building JQL, mapping fields).
-- `[code: script]` — already a script; agents run it instead of reasoning about it.
+- `[model]`: judgment (prioritizing, writing, reviewing). Stays with the model.
+- `[candidate-code]`: the model does it for now, but it's rule-shaped (building JQL, mapping fields).
+- `[code: <command>]`: already a script. Run it; don't redo the work by hand.
 
-Promote a `[candidate-code]` step when you can write a unit test for it, or when traces show it is
-high-volume or keeps failing review. Three steps are already codified: `check_prd.py`,
-`capacity.py` and `dedupe.py`.
-
-## Later: moving to a durable runtime
-
-When the CoS thread needs to stay free during long work, approvals wait for days, or the sprint
-tracker must run unattended, move the runtime to an SDK service with a durable workflow engine
-(e.g. DBOS on Postgres). `pmos` transitions become workflow state, codified scripts become steps,
-`waiting` becomes child workflows, gates become `recv` waits. Packs, modes, roles, skills,
-principles and contracts carry over unchanged.
+Promote a `[candidate-code]` step to a script when you can write a unit test for it, or when traces
+show it is high-volume or keeps failing review. Codified steps live in each mode's `scripts/`
+folder (e.g. `check_prd.py`, `capacity.py`) and in pack scripts (`todos.py`, `forge.py`).
 
 ## Evals
 
-`python scripts/pmos.py eval [pack | pack/mode …]` renders each golden task to
-`build/evals/…/prompt.md` (for the agent) and `grader.md` (for the reviewer, with the principles
-and rubric). Set `eval.command` in `pm-os.yaml` to any non-interactive runner and it runs each case
-with its own state, traces and outputs folders (`PMOS_OUTPUTS_DIR`) and distinct task ids; a golden
-task's `gates` list answers the mode's gates so multi-stage modes run to the end. Set
-`eval.grader_command` too and each run is graded into `score.json`, with the pass rate in
-`build/evals/summary.json`.
+| Layer | What it checks | How to run |
+| --- | --- | --- |
+| Golden evals (per mode) | A mode's output on its sample tasks, graded against `expect`, principles and rubric | `pmos eval [pack \| pack/mode …]` renders `prompt.md` and `grader.md` per case to `build/evals/`; set `eval.command` in `pm-os.yaml` to run them |
+| Conformance evals (the framework) | pm-os's own behaviour: the cases from the framework reviews, in code, no model | `pmos eval --framework [clarity \| performance \| modularity \| composability]` ([details](evals/framework/README.md)) |
+| Framework review (judgment) | What code can't check, scored like the original reviews | ask the CoS for a framework review, or `pmos task new --mode forge/review-framework --inputs '{"aspect": "clarity"}'` |
 
-`python scripts/pmos.py eval --framework [clarity | performance | modularity | composability]`
-runs the framework's own conformance evals (no model); see `evals/framework/README.md`.
+With `eval.command` set, each golden case runs with its own state, traces and outputs folders
+(`PMOS_OUTPUTS_DIR`) and distinct task ids; a golden task's `gates` list answers the mode's gates so
+multi-stage modes run to the end. Set `eval.grader_command` too and each run is graded into
+`score.json`, with the pass rate in `build/evals/summary.json`.
+
+## Repo layout
+
+Besides the folders in the Building blocks table:
+
+```
+AGENTS.md          generated: the CoS manual (from the cos pack) + installed packs
+pm-os.yaml         core config: version, tiers -> model ids, adapters, cos_pack, defaults
+packs.yaml         installed packs (managed by `pmos pack add/remove`)
+context/           product knowledge, roadmap.yaml, decisions.log
+state/, traces/    tasks, catalog, status board; one JSONL event per state change (pmos writes these)
+outputs/<task>/    artifacts and result.json
+evals/framework/   conformance evals for pm-os itself
+```
+
+## More
+
+[docs/](docs/README.md) has the design in depth (architecture, decisions, diagrams, routing,
+phases, the durable runtime), [quality/README.md](quality/README.md) explains how work is reviewed,
+and [examples/dbos/](examples/dbos/sprint_workflows.py) sketches modes on the durable runtime.

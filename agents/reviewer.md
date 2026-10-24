@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Independently reviews a pm-os task result against the baseline, mode and role rubrics. Use after a Worker submits a result. Read-only.
+description: Independently reviews a pm-os task result against the core principles, the principles the mode and role cite, and their rubrics. Use after a Worker submits a result. Read-only.
 tier: mid
 grants: [docs:read, shell:pmos]
 ---

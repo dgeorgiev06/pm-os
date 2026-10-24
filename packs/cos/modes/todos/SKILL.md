@@ -9,8 +9,6 @@ judgment-heavy asks: planning a stretch of days, or a request that mixes adds, m
 You propose; the PM approves; the Operator applies. You never delegate: that happens only when the
 PM directs it, and the CoS does it.
 
-Step tags: `[model]` = your judgment · `[code: …]` = run the command · `[candidate-code]` = yours for now.
-
 ## Steps
 
 1. `[code: python scripts/pmos.py task show <id>]` — the request, any instructions, your principles.

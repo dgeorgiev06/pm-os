@@ -48,11 +48,11 @@ The CoS logs it (`pmos decide`), re-queues T-101 with your answer as a note, and
   STK-402, so it becomes an update.
 - Returns dry-run actions with idempotency keys and preview lines.
 
-## 6. No separate review for T-102
+## 6. T-102 finishes without its own review
 
-T-102's approval rolls up to T-101, so pmos moves it straight to `done`: its tickets are reviewed
-once, inside T-101's review. pmos sees the last child finish and re-queues T-101; the CoS sees it
-in the queue and delegates it again.
+Its approval is `none` and its parent's isn't, so pmos moves it straight to `done`: its tickets are
+reviewed once, inside T-101's review. pmos sees the last child finish and re-queues T-101; the CoS
+sees it in the queue and delegates it again.
 
 ## 7. Worker run 4 — hand off (stage C)
 
@@ -61,8 +61,9 @@ Submits `needs_approval` with the roadmap action; pmos appends the four ticket a
 
 ## 8. Reviewer run — T-101
 
-Gives a verdict on every checklist line, including `plan-to-capacity`, `testable-requirements` for
-the tickets and the gate-1 rubric line; pmos computes the pass (score 4.5) → `awaiting_approval`.
+Fresh context, covering the ticket actions too. It gives a verdict on every checklist line,
+including the core principles, `plan-to-capacity`, `testable-requirements` for the tickets and the
+gate-1 rubric line. Every line passes and the score is 4.5, so pmos passes it → `awaiting_approval`.
 
 ## 9. Gate 2 — one approval for everything
 

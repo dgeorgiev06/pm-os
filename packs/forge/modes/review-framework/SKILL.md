@@ -7,8 +7,6 @@ description: "Re-run one framework review of pm-os (clarity, performance, modula
 You review pm-os; you never change it. Everything you write goes to `outputs/<id>/`. Code answers
 what code can (the conformance evals in `evals/framework/<aspect>/`); you judge the rest.
 
-Step tags: `[model]` = your judgment · `[code: …]` = run the command.
-
 ## The rubric
 
 The review question for each aspect, and the sub-scales you score 1–5 (the same ones the original

@@ -10,10 +10,12 @@ where the work comes from.
    its own modes; ties between packs go local → org → third-party, then to you. It chooses from
    the catalog (each mode's one-line `summary` and `accepts`). `pmos` then checks the choice: the
    mode must be exported, and the inputs must match `accepts`.
-2. **Delegating todos.** The `pm/todo-plan` Worker proposes a mode per todo; you approve the list
-   before any task exists. A todo with no clear match stays yours.
+2. **You delegate a todo.** Only when you direct it: you name the mode, or the CoS picks one from
+   the catalog and asks you if more than one fits ([below](#delegating-a-todo--only-when-you-direct-it)).
+   `cos/todos` plans your list but never delegates.
 3. **Inside a composite mode** (sprint planning creating a ticket task, the router running a plan),
-   the mode's own steps decide, limited to the modes listed in its `calls`, which `pmos` enforces.
+   the mode's own steps decide. A child must be one of the modes in the parent's `calls` list
+   (see [what pmos enforces](../README.md#what-pmos-enforces)).
 
 What keeps it honest: ambiguous cases go to you as a question, not a guess; misroutes show up in
 traces (blocked on inputs, failed review, you redirecting) and the improvement loop sharpens the
@@ -45,9 +47,10 @@ What `pmos` checks, rather than leaves to SKILL.md prose:
 `name` is an input to `forge/new-mode`, so whoever creates the envelope picks it: you, or the CoS
 from your words. Constraints: lowercase and hyphens, the pack prefix is forced, `forge.py` refuses
 duplicates, and the forge Worker stops if an existing mode already does the job. Your final say is
-the approval preview ("Add mode `pm/todo-plan` to pack pm"). Once installed, a name is part of the
+the approval preview ("Add mode `pm/weekly-update` to pack pm"). Once installed, a name is part of the
 contract (envelopes, `calls`, the router refer to it), so renaming later is a breaking change.
-Planned improvement: forge proposes the name and contract at an early gate (see the proposal).
+Planned improvement: forge proposes the name and contract at an early gate (see the
+[todo-plan proposal](history/todo-plan-proposal.md)).
 
 ## Todos and tasks
 

@@ -4,9 +4,6 @@ description: Draft Jira tickets from a sprint plan as dry-run actions, deduplica
 ---
 # pm/jira-tickets — draft tickets as dry-run actions
 
-Step tags: `[model]` = your judgment · `[code: …]` = run the script, don't do it by hand ·
-`[candidate-code]` = done by you for now, on the list to become a script.
-
 You never create tickets. You produce actions; the Operator executes them after approval.
 
 ## Steps

@@ -8,7 +8,7 @@ requires:
 depends: []
 router: pm/router          # entry for goal-level asks ("get the router beta launch-ready")
 exports:
-  modes: [pm/router, pm/prd, pm/sprint-planning, pm/jira-tickets, pm/release-notes]
+  modes: [router, prd, sprint-planning, jira-tickets, release-notes]
   roles: [doc-writer, sprint-planner, roadmap-strategist, jira-curator]
   skills: [domain/prd-structure, domain/prioritization, domain/sprint-planning, domain/jira-conventions]
   principles: [plan-to-capacity, testable-requirements, explicit-trade-offs, cite-customer-claims]
