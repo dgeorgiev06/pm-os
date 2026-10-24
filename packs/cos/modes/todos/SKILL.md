@@ -32,7 +32,8 @@ Step tags: `[model]` = your judgment · `[code: …]` = run the command · `[can
 7. `[model]` Self-check against the envelope's `acceptance` and every principle and rubric line
    `task show` lists.
 8. `[code: python scripts/pmos.py task result <id> outputs/<id>/result.json]`:
-   - no diff → `status: "done"` with `plan.md`
-   - a diff → `status: "needs_approval"` with `plan.md` and one action:
+   - no diff → `status: "done"` with `plan.md` and `outputs: {"plan": "outputs/<id>/plan.md"}`
+   - a diff → `status: "needs_approval"` with `plan.md`,
+     `outputs: {"plan": "outputs/<id>/plan.md", "todo_diff": "outputs/<id>/diff.json"}` and one action:
      `{"system": "todos", "op": "apply_diff", "idempotency_key": "<id>-todos",
      "payload": {"diff": "outputs/<id>/diff.json"}, "preview": "Todos: +<n> added, <n> moved, <n> closed"}`

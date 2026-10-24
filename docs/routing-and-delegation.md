@@ -20,6 +20,26 @@ traces (blocked on inputs, failed review, you redirecting) and the improvement l
 summary that caused them. If routing needs to be more predictable, modes can list a few example
 asks in `mode.yaml` for the CoS to match against.
 
+## How work flows between tasks
+
+What `pmos` checks, rather than leaves to SKILL.md prose:
+
+- **Typed contracts.** `accepts` and `returns` use a closed set of types (`string`, `number`,
+  `integer`, `bool`, `list`, `object`, `doc_ref`, `diff_ref`, `?` for optional); anything else
+  fails admission. A `doc_ref`/`diff_ref` input must be an existing path or a `scheme:` ref.
+- **Results carry outputs.** A `done` or `needs_approval` result has `outputs: {name: value}`
+  matching the mode's `returns`: every required name, no unknown ones, values of the right type.
+- **Wiring.** An input may be `{"$from": "<task id>", "output": "<name>"}`. `pmos` checks the source
+  declares that output, adds it to `depends_on`, and resolves the value into `inputs_resolved` when
+  the task moves to running.
+- **Failure cascades.** When a task fails, its queued or blocked dependents fail too
+  ("dependency X failed"), so a parent waiting on them still wakes.
+- **What flows down.** Children inherit the parent's PM instructions (labelled with where they came
+  from), and every child's `usage.usd` counts against the parent's `max_usd`.
+- **Upgrades.** `pack add --upgrade` re-runs the checks of every pack that depends on the upgraded
+  one and refuses, naming them, unless `--force`. A task whose `mode@version` is no longer installed
+  is still shown from its stored mode directory.
+
 ## Who names a new mode
 
 `name` is an input to `forge/new-mode`, so whoever creates the envelope picks it: you, or the CoS

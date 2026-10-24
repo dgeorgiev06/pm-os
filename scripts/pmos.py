@@ -6,7 +6,7 @@ framework the same way. Later, the same functions become steps in a durable work
 
   pmos validate                         check core, every installed pack, and their references
   pmos pack list                        installed packs
-  pmos pack add PATH [--source S] [--approve-grants] [--upgrade] [--dry-run]
+  pmos pack add PATH [--source S] [--approve-grants] [--upgrade [--force]] [--dry-run]
   pmos pack remove NAME
   pmos catalog [--pack NAME]            write state/catalog.md + AGENTS.md; --pack prints one pack's modes
   pmos role show PACK/ROLE              a role's persona, skills, principles, context, rubric
@@ -503,6 +503,9 @@ def check_pack(name: str, check_grants: bool = True) -> tuple[list[str], list[st
     for m in [m for m in discover_modes() if m["pack"] == name]:
         mm, where = m["manifest"], rel(m["path"])
         errs = schema_errors(mm, "mode", where)
+        type_errs = type_vocab_errors(mm, where)
+        if type_errs:  # say it once, in words, instead of the schema's pattern message
+            errs = [e for e in errs if not re.match(rf"{re.escape(where)}: (accepts|returns)/", e)] + type_errs
         if errs:
             errors += errs
             continue
@@ -661,6 +664,22 @@ def cmd_pack_add(args) -> int:
         for e in errors:
             print(f"  - {e}")
         return 1
+    if existing:  # an upgrade must not silently break the packs that depend on this one
+        broken = {}
+        for dep in [n for n in packs() if n not in (CORE, name) and name in depends_on(n)]:
+            dep_errors, _ = check_pack(dep, check_grants=False)
+            if dep_errors:
+                broken[dep] = dep_errors
+        if broken:
+            print(f"{'warn' if args.force else 'Upgrade refused'}: upgrading '{name}' to {man['version']} breaks "
+                  f"pack(s) that depend on it: {', '.join(broken)}")
+            for dep, errs in broken.items():
+                for e in errs:
+                    print(f"  - {dep}: {e}")
+            if not args.force:
+                clear_cache()
+                print("Upgrade those packs first, or re-run with --force to install anyway.")
+                return 1
 
     requested = mode_grants(name)
     previously = (existing or {}).get("grants_approved") or {}
@@ -874,6 +893,40 @@ TYPE_CHECKS = {
     "list": lambda v: isinstance(v, list),
     "object": lambda v: isinstance(v, dict),
 }
+REF_TYPES = ("doc_ref", "diff_ref")
+
+
+def is_ref(v) -> bool:
+    """A doc_ref / diff_ref value: a `scheme:` ref (jira:, doc:, url: …) or a path that exists."""
+    return isinstance(v, str) and bool(v) and (bool(re.match(r"^[a-z]+:", v)) or (ROOT / v).exists())
+
+
+for _t in REF_TYPES:
+    TYPE_CHECKS[_t] = is_ref
+TYPE_RE = re.compile(r"^(" + "|".join(TYPE_CHECKS) + r")\??$")
+
+
+def type_problem(name: str, base: str, value, what: str = "input") -> str | None:
+    """A message when VALUE doesn't fit type BASE, else None."""
+    if TYPE_CHECKS[base](value):
+        return None
+    hint = " (an existing path or a scheme: ref)" if base in REF_TYPES else ""
+    return f"{what} '{name}' should be {base}{hint}, got {json.dumps(value, ensure_ascii=False)[:80]}"
+
+
+def type_vocab_errors(manifest: dict, where: str) -> list[str]:
+    """accepts/returns types must come from the closed vocabulary (contracts/mode.schema.json)."""
+    out = []
+    for section in ("accepts", "returns"):
+        for field, typ in (manifest.get(section) or {}).items():
+            if not isinstance(typ, str) or not TYPE_RE.match(typ):
+                out.append(f"{where}: {section}.{field}: unknown type {typ!r}; types are "
+                           f"{', '.join(TYPE_CHECKS)}, optionally ending in '?'")
+    return out
+
+
+def is_from_ref(v) -> bool:
+    return isinstance(v, dict) and "$from" in v
 
 
 def check_inputs(inputs: dict, accepts: dict, mode_name: str) -> None:
@@ -885,9 +938,11 @@ def check_inputs(inputs: dict, accepts: dict, mode_name: str) -> None:
             if not optional:
                 problems.append(f"missing required input '{field}' ({base})")
             continue
-        check = TYPE_CHECKS.get(base)
-        if check and not check(inputs[field]):
-            problems.append(f"input '{field}' should be {base}")
+        if is_from_ref(inputs[field]):  # checked by check_from_refs, resolved at `task move … running`
+            continue
+        problem = type_problem(field, base, inputs[field]) if base in TYPE_CHECKS else None
+        if problem:
+            problems.append(problem)
     unknown = set(inputs) - set(accepts)
     if unknown:
         problems.append(f"unknown input(s) {sorted(unknown)}; {mode_name} accepts {sorted(accepts)}")
@@ -904,8 +959,18 @@ def transition(task: dict, to: str, by: str, note: str | None = None) -> None:
     task["history"].append({"ts": now(), "from": frm, "to": to, "by": by, "note": note})
     save_task(task)
     trace(task, "transition", **{"from": frm, "to": to, "by": by, "note": note})
+    if to == "failed":
+        fail_dependents(task["envelope"]["id"])
     if to in TERMINAL and task["envelope"].get("parent"):
         maybe_wake_parent(task["envelope"]["parent"])
+
+
+def fail_dependents(task_id: str) -> None:
+    """A failed task can never be `done`, so its queued or blocked dependents can never start: fail them
+    too (recursively, through transition), and let their parents wake as usual."""
+    for t in all_tasks():
+        if t["state"] in ("queued", "blocked") and task_id in (t["envelope"].get("depends_on") or []):
+            transition(t, "failed", "pmos", f"dependency {task_id} failed")
 
 
 def maybe_wake_parent(parent_id: str) -> None:
@@ -930,6 +995,110 @@ def parse_inputs(raw: str) -> dict:
     return data
 
 
+def task_mode(task: dict) -> dict:
+    """The mode a task was created with: its mode@version if still installed, otherwise the mode in the
+    stored mode_dir (e.g. after the pack was upgraded under an in-flight task)."""
+    try:
+        return resolve_mode(f"{task['mode_name']}@{task['mode_version']}", check_visibility=False)
+    except PmosError:
+        d = ROOT / task["mode_dir"]
+        if not (d / "mode.yaml").exists():
+            raise PmosError(f"{task['envelope']['id']}: {task['mode_name']}@{task['mode_version']} is no longer "
+                            f"installed and {task['mode_dir']}/mode.yaml is gone")
+        return {"manifest": load_yaml(d / "mode.yaml") or {}, "dir": d, "path": d / "mode.yaml",
+                "pack": task.get("pack"), "source": "stored mode_dir", "fallback": True}
+
+
+def check_from_refs(inputs: dict, accepts: dict) -> list[str]:
+    """Check every `{"$from": "<task id>", "output": "<name>"}` input; return the source task ids."""
+    sources = []
+    for field, v in inputs.items():
+        if not is_from_ref(v):
+            continue
+        if set(v) != {"$from", "output"} or not all(isinstance(x, str) for x in v.values()):
+            raise PmosError(f"input '{field}': a $from ref is {{\"$from\": \"<task id>\", \"output\": \"<name>\"}}")
+        src = load_task(v["$from"])
+        if src["state"] == "failed":
+            raise PmosError(f"input '{field}': {v['$from']} failed, so its output '{v['output']}' will never exist")
+        returns = {k: str(t).rstrip("?") for k, t in (task_mode(src)["manifest"].get("returns") or {}).items()}
+        if v["output"] not in returns:
+            raise PmosError(f"input '{field}': {v['$from']} ({src['mode_name']}) has no output '{v['output']}'; "
+                            f"its returns: {', '.join(sorted(returns)) or 'none'}")
+        want, have = str(accepts.get(field, "")).rstrip("?"), returns[v["output"]]
+        if want and want != have and not (want == "string" and have in REF_TYPES):
+            raise PmosError(f"input '{field}' is {want}, but {v['$from']}'s output '{v['output']}' is {have}")
+        if v["$from"] not in sources:
+            sources.append(v["$from"])
+    return sources
+
+
+def resolve_from_refs(task: dict) -> dict | None:
+    """The task's inputs with each $from ref replaced by its source's result.outputs value (None if no refs)."""
+    inputs = task["envelope"]["inputs"]
+    if not any(is_from_ref(v) for v in inputs.values()):
+        return None
+    accepts = task_mode(task)["manifest"].get("accepts") or {}
+    out = {}
+    for field, v in inputs.items():
+        if not is_from_ref(v):
+            out[field] = v
+            continue
+        outputs = (load_task(v["$from"]).get("result") or {}).get("outputs") or {}
+        if v["output"] in outputs:
+            out[field] = outputs[v["output"]]
+        elif not str(accepts.get(field, "")).endswith("?"):
+            raise PmosError(f"input '{field}': {v['$from']}'s result has no output '{v['output']}'")
+    return out
+
+
+def check_outputs(result: dict, man: dict) -> None:
+    """result.outputs against the mode's `returns`: names declared, required ones present, values typed."""
+    returns = {k: str(t) for k, t in (man.get("returns") or {}).items()}
+    outputs = result.get("outputs") or {}
+    problems = []
+    if result["status"] in ("done", "needs_approval"):
+        missing = [k for k, t in returns.items() if not t.endswith("?") and k not in outputs]
+        if missing:
+            problems.append(f"result.outputs is missing {', '.join(missing)} (declared in {man['name']}'s returns)")
+    unknown = sorted(set(outputs) - set(returns))
+    if unknown:
+        problems.append(f"result.outputs has unknown name(s) {', '.join(unknown)}; "
+                        f"{man['name']} returns {', '.join(returns) or 'nothing'}")
+    for k, v in outputs.items():
+        base = returns.get(k, "").rstrip("?")
+        problem = type_problem(k, base, v, what="output") if base in TYPE_CHECKS else None
+        if problem:
+            problems.append(problem)
+    if problems:
+        raise PmosError(f"outputs don't match {man['name']}'s returns:\n  - " + "\n  - ".join(problems))
+
+
+def usd_spent(task: dict) -> float:
+    if "usd_spent" in task:
+        return float(task["usd_spent"])
+    return float((((task.get("result") or {}).get("usage")) or {}).get("usd") or 0)
+
+
+def tree_usd(task_id: str, override: dict) -> float:
+    t = override.get(task_id) or load_task(task_id)
+    return usd_spent(t) + sum(tree_usd(c, override) for c in t.get("children", []))
+
+
+def check_tree_budget(task: dict, usd: float) -> None:
+    """Children draw down their ancestors' budgets: refuse spending that takes any ancestor's tree
+    (the ancestor plus all its descendants) over that ancestor's max_usd."""
+    override = {task["envelope"]["id"]: {**task, "usd_spent": usd_spent(task) + usd}}
+    pid = task["envelope"].get("parent")
+    while pid:
+        anc = load_task(pid)
+        limit = (anc["envelope"].get("budget") or {}).get("max_usd")
+        total = tree_usd(pid, override)
+        if limit is not None and total > limit + 1e-9:
+            raise PmosError(f"budget: this result's ${usd:g} takes {pid}'s tree to ${total:g}, over its "
+                            f"max_usd ${limit:g} (children draw down the parent's budget)")
+        pid = anc["envelope"].get("parent")
+
+
 def cmd_task_new(args) -> int:
     parent = load_task(args.parent) if args.parent else None
     from_pack = parent.get("pack") if parent else None     # None = the CoS: exported modes only
@@ -939,6 +1108,7 @@ def cmd_task_new(args) -> int:
         raise PmosError(grant_excess_message(mode))
     inputs = parse_inputs(args.inputs)
     check_inputs(inputs, man.get("accepts", {}), man["name"])
+    from_sources = check_from_refs(inputs, man.get("accepts", {}))
     if man.get("verbs") and args.verb not in man["verbs"]:
         raise PmosError(f"{man['name']} supports verbs {man['verbs']}, not '{args.verb}'")
     role = resolve_role(args.role or man["default_role"], pack)
@@ -977,7 +1147,7 @@ def cmd_task_new(args) -> int:
         "risk": args.risk or man.get("risk", "medium"),
         "approval": args.approval or man.get("approval", "none"),
         "budget": budget,
-        "depends_on": args.depends_on or [],
+        "depends_on": (args.depends_on or []) + [s for s in from_sources if s not in (args.depends_on or [])],
         "parent": args.parent,
         "depth": depth,
         "reply_to": args.reply_to,
@@ -985,8 +1155,12 @@ def cmd_task_new(args) -> int:
     }
     if args.workflow:
         envelope["workflow"] = args.workflow
+    instructions_from = None
     if args.instructions:
         envelope["instructions"] = args.instructions
+    elif parent and parent["envelope"].get("instructions"):  # the PM's instructions flow down to children
+        envelope["instructions"] = parent["envelope"]["instructions"]
+        instructions_from = parent.get("instructions_from") or parent["envelope"]["id"]
     if args.todo:
         envelope["origin"] = {"todo": args.todo}
     validate_against(envelope, "task", "envelope")
@@ -1009,6 +1183,8 @@ def cmd_task_new(args) -> int:
         "result_path": None,
         "history": [{"ts": now(), "from": None, "to": "queued", "by": args.by, "note": args.note}],
     }
+    if instructions_from:
+        task["instructions_from"] = instructions_from
     save_task(task)
     trace(task, "created", by=args.by)
     if parent:
@@ -1029,7 +1205,7 @@ def cmd_task_show(args) -> int:
         print(json.dumps(task, indent=2, ensure_ascii=False))
         return 0
     env = task["envelope"]
-    mode = resolve_mode(f"{task['mode_name']}@{task['mode_version']}", check_visibility=False)
+    mode = task_mode(task)
     man = mode["manifest"]
     role = all_roles()[task["role"]]
     out = [
@@ -1039,8 +1215,18 @@ def cmd_task_show(args) -> int:
         "```json", json.dumps(env, indent=2, ensure_ascii=False), "```",
         "",
     ]
+    if mode.get("fallback"):
+        out += [f"Note: {task['mode_name']}@{task['mode_version']} is no longer installed; showing the mode from "
+                f"its stored directory {task['mode_dir']} (now {man.get('name')}@{man.get('version')}).", ""]
+    if task.get("inputs_resolved") is not None:
+        out += ["## Inputs resolved (use these: each `$from` ref replaced by its source's output)",
+                "```json", json.dumps(task["inputs_resolved"], indent=2, ensure_ascii=False), "```", ""]
+    elif any(is_from_ref(v) for v in env.get("inputs", {}).values()):
+        out += ["Inputs with `$from` refs are resolved when the task moves to running.", ""]
     if env.get("instructions"):
-        out += ["## Instructions from the PM (follow these; they come from the PM directly)", "",
+        source = (f"inherited from parent task {task['instructions_from']}; " if task.get("instructions_from")
+                  else "")
+        out += [f"## Instructions from the PM ({source}follow these; they come from the PM directly)", "",
                 *[f"> {line}" for line in env["instructions"].splitlines()], ""]
     if env.get("origin", {}).get("todo"):
         out += [f"Delegated from todo {env['origin']['todo']}.", ""]
@@ -1102,6 +1288,9 @@ def cmd_task_move(args) -> int:
         pending = deps_pending(task)
         if pending:
             raise PmosError(f"{args.id} depends on unfinished task(s): {', '.join(pending)}")
+        resolved = resolve_from_refs(task)
+        if resolved is not None:
+            task["inputs_resolved"] = resolved
     if args.state == "waiting":
         open_children = [c for c in task.get("children", []) if load_task(c)["state"] not in TERMINAL]
         if not open_children:
@@ -1135,8 +1324,13 @@ def cmd_task_result(args) -> int:
     keys = [a["idempotency_key"] for a in result.get("actions", [])]
     if len(keys) != len(set(keys)):
         raise PmosError("idempotency_key values must be unique within a result")
+    check_outputs(result, task_mode(task)["manifest"])
+    usd = float((result.get("usage") or {}).get("usd") or 0)
+    check_tree_budget(task, usd)
 
+    spent = usd_spent(task) + usd  # cumulative across resubmissions; read before the result is replaced
     task["result"] = result
+    task["usd_spent"] = spent
     task["result_path"] = rel(path.resolve())
     to = {"done": "in_review", "needs_approval": "in_review", "blocked": "blocked", "failed": "failed"}[result["status"]]
     note = "; ".join(result.get("open_questions", [])) if to == "blocked" else result["summary"][:200]
@@ -1461,6 +1655,8 @@ def build_parser() -> argparse.ArgumentParser:
     pa.add_argument("--approve-grants", action="store_true")
     pa.add_argument("--upgrade", action="store_true")
     pa.add_argument("--dry-run", action="store_true", help="run admission and show grants without installing")
+    pa.add_argument("--force", action="store_true",
+                    help="with --upgrade: install even if packs that depend on this one would fail their checks")
     pa.set_defaults(fn=cmd_pack_add)
     pr = pk.add_parser("remove")
     pr.add_argument("name")

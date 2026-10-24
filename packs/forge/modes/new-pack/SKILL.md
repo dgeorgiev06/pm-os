@@ -36,7 +36,8 @@ Step tags: `[model]` = your judgment · `[code: …]` = run the command. Track y
 9. `[code: python scripts/pmos.py pack add outputs/<id>/staged/<name> --dry-run]` — fix until it passes;
    note the grants it lists.
 10. `[code: python packs/forge/scripts/forge.py changes outputs/<id>/staged/<name> --target packs/<name>]`
-11. Submit `status: "needs_approval"` with `design.md` as an artifact and one action:
+11. Submit `status: "needs_approval"` with `design.md` as an artifact,
+    `outputs: {"staged": "outputs/<id>/staged/<name>"}` and one action:
     `{"system": "repo", "op": "sync_pack", "idempotency_key": "<id>-sync",
     "payload": {"staged": "outputs/<id>/staged/<name>", "target": "packs/<name>", "files": [<from step 10>]},
     "preview": "Create pack <name> (<n> modes, <n> files)"}`.

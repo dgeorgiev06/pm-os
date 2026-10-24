@@ -1,5 +1,5 @@
 name: cos/todos
-version: 0.1.0
+version: 0.1.1
 contract: task@1
 author: dima
 summary: Plan the next few days from the todo list and free hours; turn a messy request into proposed todo changes
@@ -10,7 +10,7 @@ accepts:
   hours: object?        # free hours per day, e.g. {"2026-10-26": 3.5}; default 6 on weekdays
 returns:
   plan: doc_ref
-  todo_diff: diff_ref
+  todo_diff: diff_ref?
 skill: SKILL.md
 default_role: todo-planner
 calls: []

@@ -102,8 +102,8 @@ do it unasked.
 
 | Pack | Version | What it covers | Router | Modes | Source |
 | --- | --- | --- | --- | --- | --- |
-| `pm` | 0.2.0 | Product management — PRDs, sprint planning, roadmap diffs, Jira tickets, release notes | `pm/router` | `pm/jira-tickets`, `pm/prd`, `pm/release-notes`, `pm/router`, `pm/sprint-planning` | local |
-| `cos` | 0.2.0 | Chief of Staff — talks to the PM, routes to packs and modes, keeps the todo list, batches approvals, posts digests | — | `cos/todos` | local |
-| `forge` | 0.2.0 | Builds and reviews pm-os itself — new modes or packs, staged and checked before they land, and on-demand framework reviews | — | `forge/new-mode`, `forge/new-pack`, `forge/review-framework` | local |
+| `pm` | 0.2.1 | Product management — PRDs, sprint planning, roadmap diffs, Jira tickets, release notes | `pm/router` | `pm/jira-tickets`, `pm/prd`, `pm/release-notes`, `pm/router`, `pm/sprint-planning` | local |
+| `cos` | 0.2.1 | Chief of Staff — talks to the PM, routes to packs and modes, keeps the todo list, batches approvals, posts digests | — | `cos/todos` | local |
+| `forge` | 0.2.1 | Builds and reviews pm-os itself — new modes or packs, staged and checked before they land, and on-demand framework reviews | — | `forge/new-mode`, `forge/new-pack`, `forge/review-framework` | local |
 
 Use `python scripts/pmos.py catalog --pack <pack>` for a pack's modes and what each accepts.

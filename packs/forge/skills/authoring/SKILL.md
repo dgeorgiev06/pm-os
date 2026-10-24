@@ -20,9 +20,12 @@ and need that pack in `depends` and the item in its `exports`.
 ## A mode
 
 - `mode.yaml`: `name`, `version`, `contract: task@1`, a one-line `summary` (the CoS reads it),
-  `verbs`, `accepts` (field: type, trailing `?` = optional), `returns`, `default_role`, `calls`
+  `verbs`, `accepts` (field: type, trailing `?` = optional), `returns` (output name: type; results
+  carry them in `outputs`), `default_role`, `calls`
   (modes it may start as children, version-pinned), `grants` (system: read | draft | write),
   `approval` (none | before_publish | before_execute), `risk`, `principles`, `rubric`, `evals`.
+  Types are a closed set: `string`, `number`, `integer`, `bool`, `boolean`, `list`, `object`,
+  `doc_ref`, `diff_ref` (a path or `scheme:` ref); anything else fails admission.
 - `SKILL.md`: numbered steps, each tagged `[model]`, `[code: <command>]` or `[candidate-code]`.
   Start with `pmos task show <id>`; end with `pmos task result <id> outputs/<id>/result.json`.
 - A gate that needs the PM mid-way: submit `status: "blocked"` with one open question, and track the

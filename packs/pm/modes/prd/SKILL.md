@@ -26,5 +26,6 @@ Step tags: `[model]` = your judgment · `[code: …]` = run the script, don't do
 7. `[code: python scripts/pmos.py task result <id> outputs/<id>/result.json]` — submit a result with:
    - `status: "done"` (publishing happens only after review and approval)
    - `artifacts: [{ "kind": "doc", "ref": "outputs/<id>/prd.md", "title": "<PRD title>" }]`
+   - `outputs: {"prd": "outputs/<id>/prd.md"}` (the mode's `returns`; later tasks wire it in with `$from`)
    - `actions: []` unless the envelope asks to publish; then one
      `{ "system": "docs", "op": "publish", "idempotency_key": "<id>-publish", "payload": {"path": "outputs/<id>/prd.md", "destination": "<where>"}, "preview": "Publish PRD '<title>' to <where>" }`

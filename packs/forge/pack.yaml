@@ -1,5 +1,5 @@
 name: forge
-version: 0.2.0
+version: 0.2.1
 contract: pack@1
 author: dima
 summary: Builds and reviews pm-os itself — new modes or packs, staged and checked before they land, and on-demand framework reviews

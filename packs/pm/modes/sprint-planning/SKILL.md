@@ -47,6 +47,8 @@ the task history notes and any child tasks it lists.
 11. `[model]` Self-check against acceptance and every principle and rubric line `task show` lists. Committed points must not exceed capacity.
 12. Submit the result with `status: "needs_approval"` and:
     - `artifacts`: ranking.md, plan.md, roadmap-diff.md, and the child's ticket preview
+    - `outputs`: `{"ranking": "outputs/<id>/ranking.md", "sprint_plan": "outputs/<id>/plan.md",
+      "roadmap_diff": "outputs/<id>/roadmap-diff.md", "ticket_actions": <the child's outputs.ticket_actions>}`
     - `actions`: one roadmap action
       `{"system": "roadmap", "op": "apply_diff", "idempotency_key": "<id>-roadmap", "payload": {"diff": "outputs/<id>/roadmap-diff.md"}, "preview": "Roadmap: <n> changes"}`,
       followed by every action from the child's result, unchanged.

@@ -56,5 +56,6 @@ review used; its report is `evals/framework/findings/<aspect>.md`):
 7. `[model]` Self-check against the envelope's `acceptance` and every principle and rubric line
    `task show` lists.
 8. `[code: python scripts/pmos.py task result <id> outputs/<id>/result.json]` — `status: "done"`,
-   `artifacts`: `report.md` (kind `review`) and `conformance.json` (kind `data`), no actions. The
+   `artifacts`: `report.md` (kind `review`) and `conformance.json` (kind `data`),
+   `outputs: {"report": "outputs/<id>/report.md", "conformance": "outputs/<id>/conformance.json"}`, no actions. The
    summary gives the scores and the number of failing cases in under 80 words.

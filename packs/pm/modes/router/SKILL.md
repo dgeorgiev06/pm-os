@@ -27,6 +27,9 @@ Like other multi-stage modes, track your stage in `outputs/<id>/progress.json` (
 4. If the PM changed the plan (see history notes), update `plan.md` first.
 5. Create one child task per item, in dependency order, passing dependencies explicitly:
    `[code: python scripts/pmos.py task new --parent <id> --mode <mode> --verb <verb> --inputs '<json>' [--depends-on <earlier child id>]]`
+   When an input is an earlier child's output, pass `{"$from": "<earlier child id>", "output": "<name from its mode's returns>"}`
+   as its value instead of guessing a path: pmos checks the output exists, adds the dependency, and
+   resolves the value when the child starts.
    Children keep their own approval rules; their gates reach the PM through the CoS as usual.
 6. Set stage to `"assemble"`, then `[code: python scripts/pmos.py task move <id> waiting]`.
 
@@ -35,5 +38,6 @@ Like other multi-stage modes, track your stage in `outputs/<id>/progress.json` (
 7. `[code: python scripts/pmos.py task show <id>]` lists every child, its state and result.
 8. `[model]` Write `outputs/<id>/outcome.md`: per item, what came out (link the child's artifacts),
    what is still waiting on the PM, and anything that failed with its reason.
-9. Submit `status: "done"` with `artifacts: [plan.md, outcome.md]` and no actions: every
+9. Submit `status: "done"` with `artifacts: [plan.md, outcome.md]`,
+   `outputs: {"plan": "outputs/<id>/plan.md", "outcome": "outputs/<id>/outcome.md"}` and no actions: every
    action belongs to the child that proposed it and is approved there.
