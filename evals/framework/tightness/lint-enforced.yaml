@@ -1,0 +1,39 @@
+kind: conformance
+name: lint-enforced
+covers: [script:scripts/tightness.py, script:scripts/pmos.py]
+finding: request:tightness
+severity: high
+failure: true
+desc: >-
+  The lint runs everywhere: `pmos validate` reports its failures as errors and its warnings as
+  `warn:`, `pmos pack add` refuses a pack that fails it, and `pmos lint DIR` lints a pack folder that
+  isn't installed (a staged pack), comparing it with the installed packs except its own installed
+  copy. `pmos lint --json` lists every file with kind, words, budget, filler hits and failures.
+steps:
+  - name: validate is clean today
+    run: $PMOS validate
+    expect: {stdout: '^OK', stdout_not: '(?m)^warn: .*(budget|filler|sentence)'}
+  - name: --json lists every component
+    run: |
+      $PMOS lint --json > lint.json && $PY - <<'PY'
+      import json, sys
+      r = json.load(open("lint.json"))
+      kinds = {f["kind"] for f in r["files"]}
+      need = {"principle", "skill", "mode", "agent", "cos"}
+      f = r["files"][0]
+      keys = {"file", "kind", "pack", "words", "budget", "filler", "errors", "warnings"}
+      print(sorted(kinds), sorted(f))
+      sys.exit(0 if need <= kinds and keys <= set(f) and r["errors"] == 0 and "manual" in r else 1)
+      PY
+  - name: validate reports a lint failure as an error
+    run: $PY $CORE_BIN/mktext.py packs/pm/skills/domain/x/SKILL.md 450 && $PMOS validate
+    expect: {exit: 1, stdout: '(?m)^error: lint: packs/pm/skills/domain/x/SKILL\.md: 450 words, over its budget'}
+  - name: a staged copy of an installed pack is linted on its own, not against itself
+    run: rm -r packs/pm/skills/domain/x && mkdir -p staged && cp -r packs/pm staged/pm && $PMOS lint staged/pm
+    expect: {stdout: ['staged/pm/modes/prd/SKILL\.md', '(?m)^lint: \d+ file\(s\), 0 error'], stdout_not: 'near-duplicate'}
+  - name: admission refuses a pack that fails the lint
+    run: |
+      cp -r $FX/packs/gtm packs/gtm && $PY $CORE_BIN/mktext.py packs/gtm/modes/brief/SKILL.md 20 --append --sentence 5 &&
+      printf '\nBasically, make sure to leverage it, etc. Feel free to delve.\n' >> packs/gtm/modes/brief/SKILL.md &&
+      $PMOS pack add packs/gtm --approve-grants
+    expect: {exit: 1, stdout: ['Admission failed', 'gtm/modes/brief/SKILL\.md.*filler'], files: {not_contains: {packs.yaml: 'name: gtm'}}}

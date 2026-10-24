@@ -1,0 +1,31 @@
+kind: conformance
+name: lint-cite-dont-copy
+covers: [script:scripts/tightness.py, script:scripts/pmos.py]
+finding: request:tightness
+severity: high
+failure: true
+desc: >-
+  Cite, don't copy: a mode, role, skill, agent or the CoS manual that repeats 8 or more consecutive
+  words of a principle's body or check fails (it should cite the principle). Near-duplicate
+  paragraphs across component files fail too (this generalises docs-deduplicated to every component).
+steps:
+  - name: today's components cite instead of copying
+    run: $PMOS lint
+    expect: {stdout_not: '(?i)restates principle|near-duplicate'}
+  - name: a mode restating a principle
+    run: |
+      printf '\nRemember: every requirement or acceptance criterion is a testable statement with a number.\n' >> packs/pm/modes/prd/SKILL.md && $PMOS lint
+    expect: {exit: 1, stdout: 'packs/pm/modes/prd/SKILL\.md:\d+: restates principle pm:testable-requirements'}
+  - name: a role restating one
+    run: |
+      sed -i '$ d' packs/pm/modes/prd/SKILL.md; sed -i '$ d' packs/pm/modes/prd/SKILL.md
+      $PY $FX/bin/yset.py packs/pm/roles.yaml 'roles.doc-writer.rubric' '["Facts about customers, metrics, tickets or dates trace to a ref"]' && $PMOS lint
+    expect: {exit: 1, stdout: 'packs/pm/roles\.yaml: role pm/doc-writer restates principle core:grounded'}
+  - name: the same paragraph in two component files
+    run: |
+      $PY $FX/bin/yset.py packs/pm/roles.yaml 'roles.doc-writer.rubric' '["Problem, personas, requirements, success metrics and open questions present"]'
+      para="Before drafting, read the staking release calendar, the custodian onboarding checklist and the open incident list, then note which of them changes the scope of this document."
+      printf '\n%s\n' "$para" >> packs/pm/skills/domain/prd-structure/SKILL.md
+      printf '\n%s\n' "$(echo "$para" | sed 's/Before drafting/Before planning/')" >> packs/pm/skills/domain/sprint-planning/SKILL.md
+      $PMOS lint
+    expect: {exit: 1, stdout: '(?m)^error: packs/pm/skills/domain/(prd-structure|sprint-planning)/SKILL\.md:\d+: paragraph is a near-duplicate of packs/pm/skills/domain/(sprint-planning|prd-structure)/SKILL\.md:\d+'}

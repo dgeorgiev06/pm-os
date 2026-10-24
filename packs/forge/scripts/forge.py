@@ -12,10 +12,11 @@ Operator runs `apply` for an approved task.
   stage-pack --task ID --name NAME --summary TEXT [--role ROLE]
       Create a skeleton pack in the staging area (with evals/conformance/ and evals/workflows/).
   lint [DIR] [--target packs/NAME]
-      Fail on `TODO:` markers, on skill names that don't match their mode (a name is optional), and on
-      coverage gaps (`pmos eval --coverage DIR`). With DIR and --target, only the files this task
-      added or changed are checked for markers (a new pack's files are all new); with only --target,
-      DIR is the target and every file is checked.
+      Fail on `TODO:` markers, on skill names that don't match their mode (a name is optional), on
+      coverage gaps (`pmos eval --coverage DIR`) and on core's tightness lint (`pmos lint DIR`: word
+      budgets, mode step structure, filler, copied principles or paragraphs). With DIR and --target,
+      only the files this task added or changed are checked for markers (a new pack's files are all
+      new); with only --target, DIR is the target and every file is checked.
   changes STAGED --target packs/NAME
       JSON list of files added or modified relative to the target.
   apply STAGED --target packs/NAME [--files PATH ...]
@@ -79,14 +80,10 @@ description: "{summary}. Use when a Worker has been given a pm-os task whose env
 ---
 # {pack}/{name}
 
-## Steps
-
-1. `[code: python scripts/pmos.py task show <id>]` — load the envelope, role, principles and notes.
-2. TODO: the steps, each tagged. Read systems of record fresh; propose external changes as actions.
-3. `[model]` Self-check against the envelope's `acceptance` and every principle and rubric line
-   `task show` lists.
-4. `[code: python scripts/pmos.py task result <id> outputs/<id>/result.json]` — TODO: say what the
-   result carries (status, artifacts, actions).
+1. `[code: python scripts/pmos.py task show <id>]` — the envelope, role, principles and notes.
+2. `[model]` TODO: replace with the steps, each tagged and at most 60 words; cite principles and skills by name.
+3. `[code: python scripts/pmos.py task result <id> outputs/<id>/result.json]` — TODO: what the
+   result carries (status, artifacts, outputs, actions).
 """
 
 GOLDEN = {
@@ -365,6 +362,14 @@ def cmd_lint(a) -> int:
         problems += [ln.strip()[2:] for ln in cov.stdout.splitlines() if ln.startswith("  - ")]
         if cov.returncode not in (0, 1):
             problems.append(f"`pmos eval --coverage` failed: {(cov.stderr or cov.stdout).strip()[-300:]}")
+        tight = pmos("lint", str(base), "--json")      # core's tightness lint, on the whole pack
+        try:
+            report = json.loads(tight.stdout)
+            problems += report["error_lines"]
+            for w in report["warning_lines"]:
+                print(f"warn: {w}")
+        except (json.JSONDecodeError, KeyError):
+            problems.append(f"`pmos lint` failed: {(tight.stderr or tight.stdout).strip()[-300:]}")
     if problems:
         print("FAIL")
         print("\n".join(f"- {p}" for p in problems))

@@ -1,0 +1,48 @@
+kind: conformance
+name: lint-mode-structure
+covers: [script:scripts/tightness.py, script:scripts/pmos.py]
+finding: request:tightness
+severity: high
+failure: true
+desc: >-
+  A mode's SKILL.md is numbered steps, each tagged `[model]`, `[code: …]` or `[candidate-code]`, each
+  at most `lint.step_max_words` (60) words; the first step runs `pmos task show`, the last `pmos task
+  result`.
+steps:
+  - name: today's modes follow the structure
+    run: $PMOS lint
+    expect: {stdout_not: '(?i)(untagged|no tag|step \d+ is \d+ words|first step|last step)'}
+  - name: an untagged step
+    run: |
+      $PY - <<'PY'
+      p = "packs/pm/modes/release-notes/SKILL.md"
+      t = open(p).read().replace("1. `[code: python scripts/pmos.py task show <id>]`", "1. Load it with `python scripts/pmos.py task show <id>`", 1)
+      open(p, "w").write(t)
+      PY
+      $PMOS lint
+    expect: {exit: 1, stdout: 'release-notes/SKILL\.md:\d+: step 1 has no tag'}
+  - name: a step over 60 words
+    run: |
+      $PY - <<'PY'
+      p = "packs/pm/modes/release-notes/SKILL.md"
+      t = open(p).read().replace("Load it with `python scripts/pmos.py task show <id>`", "`[code: python scripts/pmos.py task show <id>]` " + " ".join(f"pad{i}" for i in range(70)), 1)
+      open(p, "w").write(t)
+      PY
+      $PMOS lint
+    expect: {exit: 1, stdout: 'release-notes/SKILL\.md:\d+: step 1 is \d+ words, over lint\.step_max_words \(60\)'}
+  - name: the first step must run task show, the last task result
+    run: |
+      $PY - <<'PY'
+      import re
+      p = "packs/pm/modes/release-notes/SKILL.md"
+      t = open(p).read()
+      t = re.sub(r"`\[code: python scripts/pmos.py task show <id>\]` (pad\d+ ?)+", "`[model]` Read the envelope.", t, count=1)
+      t = t.replace("task result", "task resolve")
+      open(p, "w").write(t)
+      PY
+      $PMOS lint
+    expect: {exit: 1, stdout: ['release-notes/SKILL\.md: the first step must run `pmos task show`', 'release-notes/SKILL\.md: the last step must run `pmos task result`']}
+  - name: no numbered steps at all
+    run: |
+      printf -- '---\ndescription: "d"\n---\n# pm/prd\n\nDraft it.\n' > packs/pm/modes/prd/SKILL.md && $PMOS lint
+    expect: {exit: 1, stdout: 'prd/SKILL\.md: no numbered steps'}

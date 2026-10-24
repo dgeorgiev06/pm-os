@@ -1,0 +1,41 @@
+kind: conformance
+name: render-lock-cos
+covers: [script:scripts/pmos.py]
+finding: request:cos-thread
+severity: high
+failure: true
+desc: >-
+  Optional enforcement: with `adapters.claude-code.lock_cos: true`, `render claude-code` writes
+  `permissions.deny` / `permissions.allow` rules into `.claude/settings.json` so the session can't
+  edit files outside outputs/ or call write-granted MCP tools, but can run pmos, the pack scripts and
+  read. Its output and the README say this also blocks the PM from editing files in that session.
+  Off (the default) writes no rules, and turning it off removes only pmos's rules.
+steps:
+  - name: off by default
+    run: $PMOS render claude-code
+    expect:
+      stdout_not: '(?i)lock_cos: on'
+      files: {absent: [.claude/settings.json]}
+  - run: 'true'
+    expect: {files: {contains: {pm-os.yaml: '(?m)^\s+lock_cos: false', README.md: ['lock_cos', '(?i)also (blocks|stops) (you|the PM)[^.]*edit']}}}
+  - name: on, with a write tool mapped and a setting of the user's own
+    run: |
+      mkdir -p .claude && printf '{"model": "opus", "permissions": {"deny": ["Read(./.env)"]}}\n' > .claude/settings.json &&
+      $PY $FX/bin/yset.py pm-os.yaml adapters.claude-code.lock_cos true &&
+      $PY $FX/bin/yset.py pm-os.yaml 'adapters.claude-code.grants_to_tools.jira:write' '[mcp__jira__create_issue]' &&
+      $PMOS render claude-code
+    expect:
+      stdout: ['(?i)lock_cos: on', '(?i)also blocks you[^\n]*edit', '\.claude/settings\.json']
+      files:
+        contains:
+          .claude/settings.json: ['"Edit\(/packs/\*\*\)"', '"Edit\(/context/\*\*\)"', '"mcp__jira__create_issue"',
+                                  '"Bash\(python scripts/pmos\.py \*\)"', '"Bash\(python packs/cos/scripts/todos\.py \*\)"',
+                                  '"Read\(\./\.env\)"', '"model": "opus"']
+        not_contains:
+          .claude/settings.json: ['Edit\(/outputs', '"Write"', '"Edit"']
+  - name: off again removes only pmos's rules
+    run: $PY $FX/bin/yset.py pm-os.yaml adapters.claude-code.lock_cos false && $PMOS render claude-code
+    expect:
+      files:
+        contains: {.claude/settings.json: ['"Read\(\./\.env\)"', '"model": "opus"']}
+        not_contains: {.claude/settings.json: ['Edit\(/packs', 'pmos\.py']}

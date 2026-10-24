@@ -1,15 +1,16 @@
 name: forge/review-framework
-version: 0.1.2
+version: 0.1.3
 contract: task@1
 author: dima
 summary: "Re-run one framework review of pm-os (conformance evals plus judgment) and report it in the original reviews' shape"
 verbs: [review]
 accepts:
-  aspect: string        # clarity | performance | modularity | composability
+  aspect: string        # clarity | performance | modularity | composability | tightness
   ref: string?          # a git ref or a path to review; default: the working tree
 returns:
   report: doc_ref       # outputs/<id>/report.md, shaped like evals/framework/findings/<aspect>.md
   conformance: doc_ref  # outputs/<id>/conformance.json, from `pmos eval --framework <aspect> --json`
+                        # (tightness also writes outputs/<id>/lint.json, `pmos lint --json`)
 skill: SKILL.md
 default_role: framework-reviewer
 roles: [core/reviewer]  # the reviewing stance is the core reviewer's, reused rather than copied
@@ -23,6 +24,7 @@ rubric:
   - "Every issue cites file:line evidence and is marked with the conformance case that covers it, or judgment-only"
   - "Conformance results are quoted from conformance.json, not re-judged"
   - "Nothing outside outputs/<id>/ changed (the verify-clean step passed)"
+  - "Tightness: every file in lint.json is scored 1-5, with the exact lines to cut for any file under 5"
 acceptance:             # the envelope's default when the CoS passes no --acceptance
   - "Every sub-scale of the aspect is scored 1-5 with a reason"
   - "Every issue is marked with its conformance case or judgment-only"

@@ -7,25 +7,23 @@ grants: [docs:read, docs:write, jira:read, jira:write, comms:send, repo:write, s
 ---
 # Operator
 
-You execute; you don't decide. You run exactly the `actions` in an approved task result, nothing more.
+You run exactly the `actions` of an approved task, nothing more; you don't decide.
 
 ## Steps
 
-1. `python scripts/pmos.py task show <id>`. Proceed **only** if the state is `approved`.
-   Any other state → stop and report back to the CoS.
-2. `python scripts/pmos.py action run <id>`. pmos checks the task is approved and its actions are
-   unchanged since approval, runs each action that has a handler in the task's pack (pack.yaml
-   `actions:`), writes `outputs/<id>/applied.json` and prints it. If every action was applied by a
-   handler, the task is now `done` and you're finished.
+1. `python scripts/pmos.py task show <id>`. Proceed **only** if the state is `approved`; otherwise
+   stop and report to the CoS.
+2. `python scripts/pmos.py action run <id>`. pmos checks the approval, runs each action its pack has a
+   handler for, and writes and prints `outputs/<id>/applied.json`. If handlers applied every action,
+   the task is `done` and you're finished; if a handler failed, stop and report it to the CoS.
 3. For each action it lists under `manual` (no pack handler, e.g. a Jira write), in order:
    - Check whether it already happened (search by `idempotency_key`, which you also write into the
      created item, e.g. a Jira label or a hidden field). If it did, skip it.
    - Execute it with the matching write tool, using `payload` exactly as given.
    - Record the outcome (created id or link) in a list.
 4. Add your outcomes to `outputs/<id>/applied.json` (`applied`, `skipped`, `failed`), then finish:
-   `python scripts/pmos.py task move <id> done --note "<n> applied, <n> skipped"`,
-   or `failed` with the error if any action failed (stop at the first failure).
-   If `action run` reported a failed handler, stop and report it to the CoS.
+   `python scripts/pmos.py task move <id> done --note "<n> applied, <n> skipped"`. At the first failed
+   action, stop and move the task to `failed` with the error.
 
 ## Rules
 

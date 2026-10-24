@@ -2,11 +2,13 @@
 """Run the framework conformance evals for one review aspect on a scratch copy (a codified step of
 forge/review-framework). The tree under review is never modified; output goes to outputs/<id>/.
 
-  conformance.py --task ID --aspect clarity|performance|modularity|composability [--ref REF]
+  conformance.py --task ID --aspect clarity|performance|modularity|composability|tightness [--ref REF] [--case GLOB]
       Copy the tree under review to a scratch folder (default: the working tree; REF may be a path
       or a git ref, extracted with `git archive`), run
-      `python scripts/pmos.py eval --framework <aspect> --json` there, and write
-      outputs/<id>/conformance.json and conformance.md. Records `git status` first.
+      `python scripts/pmos.py eval --framework <aspect> --json` there (--case narrows the cases), and
+      write outputs/<id>/conformance.json and conformance.md. For tightness, first run
+      `python scripts/pmos.py lint --json` there and write outputs/<id>/lint.json. Records
+      `git status` first.
   conformance.py --task ID --verify-clean
       Exit 1 if the repo's HEAD or `git status --porcelain` changed since the run above.
 
@@ -22,7 +24,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-ASPECTS = ("clarity", "performance", "modularity", "composability")
+ASPECTS = ("clarity", "performance", "modularity", "composability", "tightness")
 SKIP_TOP = {".git", "build", ".claude", "CLAUDE.md", "__pycache__"}
 
 
@@ -90,13 +92,25 @@ def materialize(root: Path, ref: str | None, dest: Path) -> str:
     return f"git ref {ref}"
 
 
-def run_evals(root: Path, tree: Path, aspect: str, scratch: Path) -> tuple[dict, str]:
+def run_lint(tree: Path) -> dict:
+    """`pmos lint --json` on the tree under review (the code half of a tightness review)."""
+    proc = subprocess.run([sys.executable, "scripts/pmos.py", "lint", "--json"], cwd=tree, capture_output=True,
+                          text=True, timeout=600)
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        raise SystemExit(f"error: `pmos lint --json` didn't return JSON in the tree under review (exit "
+                         f"{proc.returncode}); it needs core 0.3.1 or later:\n{proc.stdout[-800:]}{proc.stderr[-800:]}")
+
+
+def run_evals(root: Path, tree: Path, aspect: str, scratch: Path, case: str | None = None) -> tuple[dict, str]:
+    narrow = ["--case", case] if case else []
     if (tree / "scripts" / "framework_eval.py").exists() and (tree / "evals" / "framework" / aspect).is_dir():
-        cmd = [sys.executable, "scripts/pmos.py", "eval", "--framework", aspect, "--json"]
+        cmd = [sys.executable, "scripts/pmos.py", "eval", "--framework", aspect, "--json", *narrow]
         cwd, shown = tree, f"python scripts/pmos.py eval --framework {aspect} --json  (in a scratch copy)"
     else:  # an older tree without the evals: run today's cases against it
         cmd = [sys.executable, str(root / "scripts" / "framework_eval.py"), aspect, "--json", "--root", str(tree),
-               "--cases-dir", str(root / "evals" / "framework"), "--out", str(scratch / "latest.json")]
+               "--cases-dir", str(root / "evals" / "framework"), "--out", str(scratch / "latest.json"), *narrow]
         cwd = scratch
         shown = f"python scripts/framework_eval.py {aspect} --json --root <scratch copy>  (today's cases, older tree)"
     proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=1800)
@@ -129,15 +143,20 @@ def cmd_run(a) -> int:
     scratch = Path(tempfile.mkdtemp(prefix="pmos-review-"))
     try:
         source = materialize(root, a.ref, scratch / "tree")
-        summary, command = run_evals(root, scratch / "tree", a.aspect, scratch)
+        lint = run_lint(scratch / "tree") if a.aspect == "tightness" else None
+        summary, command = run_evals(root, scratch / "tree", a.aspect, scratch, a.case)
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
     summary["source"] = {"aspect": a.aspect, "ref": a.ref, "reviewed": source, "command": command}
     (out / "conformance.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     (out / "conformance.md").write_text(markdown(summary, a.aspect, source), encoding="utf-8")
+    if lint is not None:
+        (out / "lint.json").write_text(json.dumps(lint, indent=2) + "\n", encoding="utf-8")
     reg = sum(1 for c in summary["cases"] if c.get("regression") and c["result"] != "pass")
     print(f"{a.aspect} ({source}): {summary['passed']} passed, {summary['failed']} failed"
           + (f", {reg} regression case(s) failing" if reg else "")
+          + (f"; lint: {len(lint['files'])} file(s), {lint['errors']} error(s), {lint['warnings']} warning(s)"
+             if lint is not None else "")
           + f" -> {out / 'conformance.json'}")
     return 0
 
@@ -160,7 +179,8 @@ def cmd_verify(a) -> int:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--task", required=True, help="the forge/review-framework task id")
-    p.add_argument("--aspect", help="clarity, performance, modularity or composability")
+    p.add_argument("--aspect", help="clarity, performance, modularity, composability or tightness")
+    p.add_argument("--case", help="only the core cases whose name matches this glob")
     p.add_argument("--ref", help="a git ref or a folder to review (default: the working tree)")
     p.add_argument("--verify-clean", action="store_true", help="check the repo is unchanged since the run")
     a = p.parse_args()

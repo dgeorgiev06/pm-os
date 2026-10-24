@@ -1,6 +1,6 @@
 # pm-os core config. Harness- and model-neutral: nothing here assumes one vendor.
 framework: pm-os
-version: 0.3.0          # core version; packs declare `requires.core` against it
+version: 0.3.1          # core version; packs declare `requires.core` against it
 contract: task@1
 
 paths:
@@ -14,6 +14,12 @@ paths:
   outputs: outputs
 
 cos_pack: cos           # which installed pack supplies the Chief of Staff (AGENTS.md is generated from it)
+
+# How the CoS keeps the PM's thread free. `pmos catalog` writes these numbers into AGENTS.md
+# (COS.md says {{cos.inline_max_seconds}}); `pmos stats` reports replies over the call limit.
+cos:
+  inline_max_seconds: 10      # a command not known to finish within this runs in a background shell
+  inline_max_tool_calls: 2    # answer directly only within this many quick read calls; else it becomes a task
 
 precedence: [local, org, third-party]   # how the CoS breaks ties between matching modes
 
@@ -52,6 +58,8 @@ adapters:
     supports_effort: false          # true: write `effort:` (from effort_map) into subagent frontmatter
     supports_background: false      # true: write a background field into subagent frontmatter
     background_field: background    # that field's name, if the harness has one
+    lock_cos: false                 # true: .claude/settings.json denies file edits (outside outputs/) and write-granted
+                                    # MCP tools, allowing pmos and the pack scripts. Blocks the PM's edits in that session too.
     agents_dir: .claude/agents
     skills_dir: .claude/skills
     # Map framework grants to this harness's tool names. This is what enforces the
@@ -81,3 +89,44 @@ eval:
   # Golden runs cost money: one `pmos eval` run stops starting golden cases once their summed
   # usage.usd reaches this (each case also runs under defaults.budget.max_usd).
   max_usd: 10.0
+  # Seconds per case for the estimate `pmos eval` prints first, until build/evals/results.json has real ones.
+  typical_seconds: { conformance: 3, golden: 300 }
+
+# `pmos lint` (also run by validate, `pack add` and forge.py lint): component text stays tight.
+lint:
+  budgets:                    # body words, frontmatter and fenced code excluded; warn at warn_at, fail over
+    principle: 120
+    principle_check: 25
+    skill: 400
+    mode: 450
+    agent: 500
+    cos: 1000                 # COS.md plus every installed cos_section
+  warn_at: 0.9
+  max_raise: 1.5              # a file may set `budget:` with `budget_reason:`, up to this times its kind's budget
+  step_max_words: 60          # per numbered step of a mode SKILL.md
+  sentence_avg_max: 22        # warn above this average
+  copy_words: 8               # this many consecutive words of a principle = a restatement; cite it instead
+  duplicate: { min_words: 15, shingle: 4, similarity: 0.6 }   # near-duplicate paragraphs across component files
+  filler_max: { principle: 0, default: 2 }
+  filler:                     # whole words, any case; /…/ is a regex
+    - it is important to
+    - it's important to
+    - make sure to
+    - be sure to
+    - in order to
+    - please note
+    - note that
+    - robust
+    - seamless
+    - comprehensive
+    - leverage
+    - delve
+    - various
+    - etc.
+    - should probably
+    - feel free to
+    - as needed
+    - in a timely manner
+    - very
+    - really
+    - basically

@@ -1,0 +1,34 @@
+kind: conformance
+name: tight-instructions-principle
+covers: [script:scripts/pmos.py, principle:core:tight-instructions]
+finding: request:tightness
+severity: medium
+desc: >-
+  `core:tight-instructions` is a core principle (not `always`) with the check "Every line tells the
+  agent what to do or why; nothing a capable reader would skip." forge/new-mode and forge/new-pack
+  cite it, so the Reviewer scores it on their tasks; forge:authoring tells authors to meet it and to
+  run the lint; forge/review-framework has a `tightness` aspect with a golden case.
+steps:
+  - run: 'true'
+    expect:
+      files:
+        contains:
+          skills/principles/tight-instructions/SKILL.md: ['(?m)^kind: principle$', "(?m)^check: \"Every line tells the agent what to do or why; nothing a capable reader would skip\\.\"$"]
+          packs/forge/modes/new-mode/mode.yaml: 'core:tight-instructions'
+          packs/forge/modes/new-pack/mode.yaml: 'core:tight-instructions'
+          packs/forge/skills/authoring/SKILL.md: ['core:tight-instructions', 'pmos lint']
+          packs/forge/modes/review-framework/SKILL.md: ['(?i)tightness', 'pmos lint']
+          packs/forge/modes/review-framework/mode.yaml: 'tightness'
+          packs/forge/modes/review-framework/scripts/conformance.py: 'tightness'
+        not_contains:
+          skills/principles/tight-instructions/SKILL.md: '(?m)^always:'
+        exists: [packs/forge/modes/review-framework/evals/golden-tightness*.json]
+  - name: the Reviewer scores it on a forge/new-mode task, not on a pm/prd task
+    run: $PMOS task new --mode forge/new-mode --inputs '{"pack":"pm","name":"x","purpose":"p"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task show $T --checklist
+    expect: {stdout: '"id": "core:tight-instructions"'}
+  - run: $PMOS task new --mode pm/prd --inputs '{"goal":"g"}'
+    capture: {P: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task show $P --checklist
+    expect: {stdout_not: 'tight-instructions'}

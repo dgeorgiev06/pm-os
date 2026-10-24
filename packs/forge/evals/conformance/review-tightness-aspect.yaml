@@ -1,0 +1,14 @@
+kind: conformance
+name: review-tightness-aspect
+covers: [script:modes/review-framework/scripts/conformance.py, mode:forge/review-framework]
+desc: >-
+  forge/review-framework's `tightness` aspect runs the lint in code first: conformance.py
+  `--aspect tightness` writes `lint.json` (`pmos lint --json` on the tree under review) beside
+  conformance.json and conformance.md, and `--case GLOB` narrows the core cases it runs.
+steps:
+  - run: $PY $PACK/modes/review-framework/scripts/conformance.py --task T-20990101-004 --aspect tightness --case lint-sentence-length
+    expect:
+      stdout: '(?i)tightness .*passed.*lint: \d+ file'
+      files:
+        exists: [outputs/T-20990101-004/conformance.json, outputs/T-20990101-004/conformance.md]
+        contains: {outputs/T-20990101-004/lint.json: ['"files"', '"kind": "mode"', '"budget"']}

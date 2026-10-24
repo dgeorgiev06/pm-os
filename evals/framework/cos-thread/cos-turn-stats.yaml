@@ -1,0 +1,28 @@
+kind: conformance
+name: cos-turn-stats
+covers: [script:scripts/pmos.py]
+finding: request:cos-thread
+severity: medium
+failure: true
+desc: >-
+  `pmos cos-turn --started ISO --replied ISO --tool-calls N` logs one CoS reply to the traces;
+  `pmos stats` reports the CoS's time to reply (p50/p90) and tool calls before reply, and counts
+  replies over `cos.inline_max_tool_calls`. COS.md tells the CoS to log every reply in one call.
+steps:
+  - run: |
+      $PMOS cos-turn --started 2026-10-24T10:00:00+00:00 --replied 2026-10-24T10:00:04+00:00 --tool-calls 1 &&
+      $PMOS cos-turn --started 2026-10-24T10:05:00+00:00 --replied 2026-10-24T10:05:10+00:00 --tool-calls 2 &&
+      $PMOS cos-turn --started 2026-10-24T10:09:00+00:00 --replied 2026-10-24T10:09:30+00:00 --tool-calls 5
+    expect: {files: {contains: {'traces/*.jsonl': '"event": "cos_turn"'}}}
+  - run: $PMOS stats --json
+    expect: {stdout: ['"cos": \{', '"turns": 3', '"p50_seconds": 10', '"p90_seconds": 26', '"p50_tool_calls": 2', '"p90_tool_calls": 4\.4', '"over_inline_limit": 1']}
+  - run: $PMOS stats
+    expect: {stdout: ['(?i)CoS replies', '(?m)^\| 3 \| 10 \| 26']}
+  - name: a task's traces and the CoS's mix
+    run: $PMOS task new --mode cos/todos --inputs '{"request":"r"}' && $PMOS stats --json
+    expect: {stdout: ['"cos/todos"', '"turns": 3']}
+  - name: a reply before its message is refused
+    run: $PMOS cos-turn --started 2026-10-24T10:00:10+00:00 --replied 2026-10-24T10:00:00+00:00 --tool-calls 1
+    expect: {exit: nonzero, stderr: '(?i)replied'}
+  - name: COS.md logs every reply
+    run: $PY $FX/bin/section.py packs/cos/COS.md '.' | grep -n "cos-turn"

@@ -65,7 +65,7 @@ Built into the `cos` pack. Two different things, linked:
 | You say | What happens |
 | --- | --- |
 | "Add 'prep demo' due Wednesday, 2h" · "done td-3" · "move td-4 to Friday" | The CoS runs `todos.py` directly. Your words are the approval; no agent runs. |
-| "What's on my plate this week?" | The CoS runs `todos.py sync` and `todos.py plan`, and includes anything on the status board that's waiting on you. |
+| "What's on my plate this week?" | The CoS answers from `todos.py list` or `todos.py plan` and anything on the status board that's waiting on you, and runs `todos.py sync` in the background, reporting what it changes. |
 | "Plan my week; Thursday is all meetings; add the demo prep and push the API reading" | The `cos/todos` mode plans against your free hours and proposes a diff; you approve; the Operator applies it. |
 
 `todos.py plan` fits open todos into free hours (6 per weekday by default, or what you give it), due

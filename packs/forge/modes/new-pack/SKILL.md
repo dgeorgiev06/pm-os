@@ -4,46 +4,40 @@ description: Design a new pm-os pack with its roles, principles and first modes,
 ---
 # forge/new-pack — create a pack
 
-You build in the staging area only. Each first mode is built by its own `forge/new-mode` child task,
-so every mode gets its own design, review and checks. Follow the `forge:authoring` skill.
-
-Track your stage in `outputs/<id>/progress.json` (`{"stage": "design" | "modes" | "check"}`).
+Build only under `outputs/<id>/staged/`. Each first mode is a `forge/new-mode` child, so it gets its
+own design and checks. Conventions: `forge:authoring`. Track the stage in
+`outputs/<id>/progress.json` (`{"stage": "design" | "modes" | "check"}`).
 
 ## Stage: design
 
 1. `[code: python scripts/pmos.py task show <id>]` and `[code: python scripts/pmos.py catalog]` — the
-   request, and what installed packs already cover. Reuse through `depends`, don't duplicate
-   (`forge:compose-dont-copy`).
-2. `[model]` Write `outputs/<id>/design.md`: the pack's scope and what it deliberately leaves to other
-   packs; its roles; principles it adds or reuses; its first modes (one job each) and which one, if
-   any, is its router.
+   request, and what installed packs already cover (reuse them through `depends`).
+2. `[model]` Write `outputs/<id>/design.md`: the pack's scope and what it leaves to other packs; its
+   roles; the principles it adds or reuses; its first modes (one job each) and its router, if any.
 3. `[code: python packs/forge/scripts/forge.py stage-pack --task <id> --name <name> --summary "<summary>" [--role <role>]]`
 4. `[model]` Fill in the staged `pack.yaml` (depends, router, exports), `roles.yaml` and any new
    principles under `skills/principles/`.
-5. If the design has more than three modes, stop for the PM: set stage to `"modes"`, submit
-   `status: "blocked"` with `design.md` and `open_questions: ["Build these modes, or change the design?"]`.
+5. `[code: python scripts/pmos.py task result <id> outputs/<id>/result.json]` — only if the design
+   has more than three modes: set stage `"modes"`, submit `status: "blocked"` with `design.md` and
+   `open_questions: ["Build these modes, or change the design?"]`.
 
 ## Stage: modes
 
-6. For each first mode, create a child:
-   `[code: python scripts/pmos.py task new --parent <id> --mode forge/new-mode --verb draft --approval none --inputs '{"pack": "<name>", "name": "<mode>", "purpose": "<purpose>", "into": "outputs/<id>/staged/<name>"}']`
-   For the router, say so in `purpose`: that child stages it with `--router`, which adds the
-   workflow case (`evals/workflows/`) the coverage rule requires.
-   Each child's approval rolls up to this task, so it skips its own review and goes straight to
-   `done` when it submits; its mode is reviewed with the whole pack, in this task's review.
-7. Set stage to `"check"`, then `[code: python scripts/pmos.py task move <id> waiting]`.
+6. `[code: python scripts/pmos.py task new --parent <id> --mode forge/new-mode --verb draft --approval none --inputs '{"pack": "<name>", "name": "<mode>", "purpose": "<purpose>", "into": "outputs/<id>/staged/<name>"}']`
+   per first mode; for the router, say so in `purpose` (it stages with `--router`). Children roll
+   up to this task's approval and are reviewed with it.
+7. `[code: python scripts/pmos.py task move <id> waiting]` after setting stage `"check"`.
 
 ## Stage: check
 
-8. `[code: python packs/forge/scripts/forge.py lint outputs/<id>/staged/<name> --target packs/<name>]` — fix until PASS
-   (markers, names, and eval coverage of the whole pack).
-9. `[code: python scripts/pmos.py pack add outputs/<id>/staged/<name> --dry-run]` — fix until it passes
-   (it runs the pack's conformance cases in a sandbox); note the grants it lists.
+8. `[code: python packs/forge/scripts/forge.py lint outputs/<id>/staged/<name> --target packs/<name>]`
+   — markers, names, coverage and `pmos lint` of the whole pack; fix until PASS.
+9. `[code: python scripts/pmos.py pack add outputs/<id>/staged/<name> --dry-run]` — fix until it
+   passes; note the grants it lists.
 10. `[code: python packs/forge/scripts/forge.py changes outputs/<id>/staged/<name> --target packs/<name>]`
-11. Submit `status: "needs_approval"` with `design.md` as an artifact,
-    `outputs: {"staged": "outputs/<id>/staged/<name>"}` and one action:
-    `{"system": "repo", "op": "sync_pack", "idempotency_key": "<id>-sync",
-    "payload": {"staged": "outputs/<id>/staged/<name>", "target": "packs/<name>", "files": [<from step 10>]},
-    "preview": "Create pack <name> (<n> modes, <n> files)"}`.
-    In `summary`, say that after the Operator applies it the PM installs it with
-    `python scripts/pmos.py pack add packs/<name> --approve-grants`, listing the grants from step 9.
+11. `[code: python scripts/pmos.py task result <id> outputs/<id>/result.json]` — `status:
+    "needs_approval"`, `design.md` as an artifact, `outputs: {"staged": "outputs/<id>/staged/<name>"}`,
+    one `repo.sync_pack` action (`idempotency_key: "<id>-sync"`, `payload: {"staged": …, "target":
+    "packs/<name>", "files": <step 10>}`, `preview: "Create pack <name> (<n> modes, <n> files)"`).
+    The summary gives the PM's install command with the grants from step 9:
+    `python scripts/pmos.py pack add packs/<name> --approve-grants`.

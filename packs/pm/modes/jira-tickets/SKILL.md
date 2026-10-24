@@ -4,11 +4,9 @@ description: Draft Jira tickets from a sprint plan as dry-run actions, deduplica
 ---
 # pm/jira-tickets — draft tickets as dry-run actions
 
-You never create tickets. You produce actions; the Operator executes them after approval.
+You propose tickets as actions; the Operator creates them after approval.
 
-## Steps
-
-1. `[code: python scripts/pmos.py task show <id>]` — load the envelope and role (jira-curator).
+1. `[code: python scripts/pmos.py task show <id>]` — the envelope and role.
 2. `[candidate-code]` Read open tickets in the project with read-only Jira tools; save
    `outputs/<id>/existing.json` as a list of `{key, summary, status}`.
 3. `[model]` From the plan, draft `outputs/<id>/drafts.json`: a list of

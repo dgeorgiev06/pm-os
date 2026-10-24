@@ -157,14 +157,14 @@ Never hard-code a task id or date; capture it.
   `x-staking`, `x-noevals` (admission must refuse them).
 - `fixtures/bin/`: helpers. `mkresult.py` writes and submits a result; `advance.py` takes a task
   through review and approval; `verdicts.py` builds per-line verdicts; `yset.py` edits YAML/JSON;
-  `section.py`, `once.py`, `before.py`, `legend_check.py`, `unused_roles.py`,
+  `mktext.py` writes a component file of N words; `section.py`, `once.py`, `before.py`, `legend_check.py`, `unused_roles.py`,
   `cli_help_check.py`, `grants_claim_check.py`; and `fake_runner.py` / `fake_grader.py` stand in
   for `eval.command` and `eval.grader_command`. The helpers detect which contract the tree has
   (see the end of INTERFACES.md), so one owner's change doesn't break another owner's cases.
 
 ## Core's groups
 
-83 cases: 72 conformance, 11 regression.
+95 cases: 84 conformance, 11 regression.
 
 | Group | Cases | Regression | Covers |
 | --- | --- | --- | --- |
@@ -175,9 +175,12 @@ Never hard-code a task id or date; capture it.
 | eval-standard | 10 | 0 | request:eval@1 — the schema, the coverage rule, the sandbox, the runner, CoS/hub docs, forge skeletons, `pmos path` |
 | effort | 5 | 0 | request:effort — resolution and risk scaling, risk-scaled review, schemas and defaults, renders, `task list`/`stats` |
 | dispatch | 2 | 0 | request:dispatch — resolution, schemas, renders, COS.md |
+| tightness | 7 | 0 | request:tightness — `pmos lint` (budgets, mode structure, filler, cite don't copy, sentence length), where it runs, `core:tight-instructions` |
+| cos-thread | 5 | 0 | request:cos-thread — background long commands, the inline limit rendered from pm-os.yaml, the eval estimate, `lock_cos`, `cos-turn` and stats |
 
 Baseline on core 0.2.0 (2026-10-24): all 55 review conformance cases failed and all 11 regression
-cases passed. The eval-standard, effort and dispatch cases all failed before core 0.3.0.
+cases passed. The eval-standard, effort and dispatch cases all failed before core 0.3.0; the
+tightness and cos-thread cases all failed before core 0.3.1.
 
 ## Judgment-only (scored by `forge/review-framework`, no conformance case)
 

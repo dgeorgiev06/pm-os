@@ -1,5 +1,5 @@
 name: forge/new-pack
-version: 0.1.2
+version: 0.1.3
 contract: task@1
 author: dima
 summary: Design a new pack (its roles, principles and first modes), stage it, check it, and propose it for approval
@@ -17,7 +17,7 @@ calls: [forge/new-mode@^0.1]
 grants: { repo: draft }
 approval: before_execute
 risk: medium
-principles: [contract-first, smallest-unit, compose-dont-copy]
+principles: [contract-first, smallest-unit, compose-dont-copy, core:tight-instructions]
 rubric:
   - The pack's scope doesn't overlap an installed pack; overlaps are reused through depends
   - Every first mode was built by a forge/new-mode child task

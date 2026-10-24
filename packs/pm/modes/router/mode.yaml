@@ -1,5 +1,5 @@
 name: pm/router
-version: 0.1.3
+version: 0.1.4
 contract: task@1
 author: dima
 summary: Turn a goal-level PM ask into a small plan of pm modes, run them, and assemble the outcome

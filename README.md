@@ -27,7 +27,12 @@ Then:
    - Claude Code: `pmos render claude-code` writes `CLAUDE.md` (imports `AGENTS.md`), subagents in
      `.claude/agents/` (one Worker per model tier) and skills in `.claude/skills/`. First map your MCP
      tool names under `adapters.claude-code.grants_to_tools` in `pm-os.yaml`; until you do, `render`
-     warns that the Worker can still reach write tools.
+     warns that the Worker can still reach write tools. To hold the CoS to its manual, set
+     `adapters.claude-code.lock_cos: true`: `render` then writes `permissions` rules into
+     `.claude/settings.json` so the session can run `pmos`, the pack scripts and reads, but can't edit
+     files outside `outputs/` or call write-granted MCP tools. This also blocks you (the PM) from having
+     that session edit files, and Claude Code applies the rules to its subagents too, so approved
+     actions without a pack handler need a session without the lock.
    - Any harness that reads `AGENTS.md` and `SKILL.md` folders: point it at this repo.
    - Your own runtime (any SDK or API): `pmos render generic` writes a system prompt per agent,
      `models.json` and `grants.json` to `build/generic/`.
@@ -135,6 +140,10 @@ Prompts ask agents to behave; these rules hold in code whatever an agent does.
 - **Versions.** `pack add --upgrade` refuses unless the pack's version goes up.
 - **Evals.** `pack add` (and `validate`) refuses a pack whose eval cases don't match eval@1 or leave a
   feature uncovered, and `pack add` refuses one whose conformance cases fail in the sandbox.
+- **Tight text.** `pmos lint` (also run by `validate`, `pack add` and `forge.py lint`) fails a
+  principle, skill, mode, agent or CoS manual over its word budget (`lint.budgets` in `pm-os.yaml`), a
+  mode SKILL.md whose steps aren't numbered, tagged and short, too many filler phrases, and text that
+  copies a principle or another component's paragraph instead of citing it.
 
 ## Installing packs
 
@@ -176,7 +185,8 @@ change, the Operator copies it into `packs/`, and you run the install command th
    `approval` (`none`, `before_publish` or `before_execute`). Optional: `verbs`, `calls`, `grants`,
    `risk`, `principles`, `rubric`, `acceptance`, `evals`.
 3. Edit `SKILL.md`: a `description` in the frontmatter, then numbered steps, each tagged (see the
-   next section). Start with `task show <id>`; end with `task result <id> outputs/<id>/result.json`.
+   next section) and at most 60 words. Start with `task show <id>`; end with
+   `task result <id> outputs/<id>/result.json`. `pmos lint` checks this and the word budgets.
 4. Rewrite the eval cases ([eval@1](evals/framework/README.md)): `evals/golden-01.json` (`kind: golden`,
    `name`, `covers: ["mode:<pack>/<mode>"]`, `envelope` with `verb`, `mode`, `inputs`, `acceptance`,
    `risk`, `approval`, optional `fixtures`, and `expect` lines a grader checks), a failure-path case
@@ -238,6 +248,10 @@ pmos eval --coverage                   # each pack's features and the cases cove
 pmos eval pm --kind golden             # renders prompt.md and grader.md per case; runs them if eval.command is set
 ```
 
+`pmos eval` first prints an estimate (cases × typical seconds), so the CoS can run it in the
+background when it is over `cos.inline_max_seconds`. `pmos cos-turn` logs each CoS reply, and
+`pmos stats` reports the CoS's time to reply and tool calls before replying.
+
 With `eval.command` set, each golden case runs with its own state, traces and outputs folders
 (`PMOS_OUTPUTS_DIR`) and distinct task ids, and stops starting new cases once the run has spent
 `eval.max_usd`; a golden task's `gates` list answers the mode's gates so multi-stage modes run to the
@@ -250,7 +264,7 @@ Besides the folders in the Building blocks table:
 
 ```
 AGENTS.md          generated: the CoS manual (from the cos pack) + installed packs
-pm-os.yaml         core config: version, tiers -> model ids, effort_map, adapters, cos_pack, defaults
+pm-os.yaml         core config: version, tiers -> model ids, effort_map, adapters, cos_pack, cos limits, lint, defaults
 packs.yaml         installed packs (managed by `pmos pack add/remove`)
 context/           product knowledge, roadmap.yaml, decisions.log
 state/, traces/    tasks, catalog, status board; one JSONL event per state change (pmos writes these)

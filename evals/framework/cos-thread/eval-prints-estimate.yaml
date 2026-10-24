@@ -1,0 +1,23 @@
+kind: conformance
+name: eval-prints-estimate
+covers: [script:scripts/pmos.py, script:scripts/framework_eval.py]
+finding: request:cos-thread
+severity: medium
+desc: >-
+  `pmos eval` prints an estimate before it runs anything: the number of cases times their typical
+  seconds (from the last results in build/evals/results.json, else pm-os.yaml
+  `eval.typical_seconds`), and whether that is over `cos.inline_max_seconds`, so the CoS can decide
+  to background it. With --json the estimate goes to stderr and stdout stays JSON.
+steps:
+  - run: $PMOS eval cos --kind conformance
+    expect:
+      stdout: ['\Aestimate: \d+ case\(s\) \(\d+ conformance × ~[\d.]+ s(, \d+ golden × ~[\d.]+ s)?\) ≈ [\d.]+ (s|min)', '(?m)^cos: \d+/\d+ passed']
+  - name: over the inline limit says so
+    run: $PY $FX/bin/yset.py pm-os.yaml eval.typical_seconds.conformance 60 && rm -f build/evals/results.json && $PMOS eval cos --kind conformance --case todos-plan
+    expect: {stdout: '\Aestimate: 1 case\(s\) \(1 conformance × ~60 s\) ≈ 60 s; over cos\.inline_max_seconds \(10 s\): run it in the background'}
+  - name: --json keeps stdout JSON
+    run: $PMOS eval cos --kind conformance --case todos-plan --json > out.json 2> err.txt && $PY -c "import json; json.load(open('out.json'))"
+    expect: {files: {contains: {err.txt: '^estimate: 1 case'}}}
+  - name: --framework prints it too
+    run: $PMOS eval --framework clarity --case cli-help-complete
+    expect: {stdout: '\Aestimate: 1 case\(s\)'}

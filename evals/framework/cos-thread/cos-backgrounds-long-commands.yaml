@@ -1,0 +1,25 @@
+kind: conformance
+name: cos-backgrounds-long-commands
+covers: [script:scripts/pmos.py]
+finding: request:cos-thread
+severity: high
+desc: >-
+  The CoS keeps its thread free: anything not known to return in seconds (`pmos eval` of any kind,
+  `todos.py sync`, anything over `cos.inline_max_seconds`) runs in a background shell, and the CoS
+  replies at once and reports when it finishes. COS.md says so with the configured number, which
+  `pmos catalog` renders into AGENTS.md.
+steps:
+  - run: 'true'
+    expect:
+      files:
+        contains:
+          pm-os.yaml: ['(?m)^cos:$', '(?m)^\s+inline_max_seconds: 10\b']
+          packs/cos/COS.md: ['\{\{cos\.inline_max_seconds\}\}', '(?i)background shell', 'pmos eval|scripts/pmos\.py eval', 'todos\.py sync', '(?i)reply at once|replies at once|reply first']
+          AGENTS.md: ['(?i)over 10 seconds', '(?i)background shell']
+        not_contains:
+          AGENTS.md: '\{\{cos\.'
+  - name: no hard-coded limit in COS.md
+    run: '! grep -nE "(within|over|under|than) [0-9]+ (s|sec|seconds)\b" packs/cos/COS.md'
+  - name: the number comes from pm-os.yaml
+    run: $PY $FX/bin/yset.py pm-os.yaml cos.inline_max_seconds 25 && $PMOS catalog
+    expect: {files: {contains: {AGENTS.md: '(?i)over 25 seconds'}}}

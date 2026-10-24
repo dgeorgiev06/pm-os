@@ -1,5 +1,5 @@
 name: pm
-version: 0.2.2
+version: 0.2.3
 contract: pack@1
 author: dima
 summary: Product management — PRDs, sprint planning, roadmap diffs, Jira tickets, release notes

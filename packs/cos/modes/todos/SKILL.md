@@ -4,12 +4,9 @@ description: Plan the PM's next few days from their todo list and free hours, an
 ---
 # cos/todos — plan the next few days
 
-The CoS handles exact edits itself ("add X", "done td-3") with `todos.py`. You get the
-judgment-heavy asks: planning a stretch of days, or a request that mixes adds, moves and closes.
-You propose; the PM approves; the Operator applies. You never delegate: that happens only when the
-PM directs it, and the CoS does it.
-
-## Steps
+You get the judgment-heavy asks (planning a stretch of days, or a request mixing adds, moves and
+closes); the CoS makes exact edits itself. You propose a diff; the Operator applies it after
+approval. Never delegate a todo: suggest it in the plan (`cos:delegate-only-when-directed`).
 
 1. `[code: python scripts/pmos.py task show <id>]` — the request, any instructions, your principles.
 2. `[code: python packs/cos/scripts/todos.py list --json]` — the open list, including delegated
@@ -27,9 +24,7 @@ PM directs it, and the CoS does it.
 6. `[model]` Write `outputs/<id>/plan.md`: one list per day; what's overdue; what didn't fit and a
    suggestion for each (move, drop, or "could be delegated to <pack>/<mode> if you say so");
    anything waiting on the PM from delegated tasks.
-7. `[model]` Self-check against the envelope's `acceptance` and every principle and rubric line
-   `task show` lists.
-8. `[code: python scripts/pmos.py task result <id> outputs/<id>/result.json]`:
+7. `[code: python scripts/pmos.py task result <id> outputs/<id>/result.json]`:
    - no diff → `status: "done"` with `plan.md` and `outputs: {"plan": "outputs/<id>/plan.md"}`
    - a diff → `status: "needs_approval"` with `plan.md`,
      `outputs: {"plan": "outputs/<id>/plan.md", "todo_diff": "outputs/<id>/diff.json"}` and one action:

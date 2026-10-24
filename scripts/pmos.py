@@ -28,6 +28,8 @@ framework the same way. Later, the same functions become steps in a durable work
   pmos eval [PACK | PACK/MODE ... | --all] [--kind conformance|golden|all] [--json] [--coverage] [--case GLOB]
                                         eval@1 cases per pack: conformance (code), then golden (model)
   pmos eval --framework [GROUP ...] [--case GLOB] [--json]   core's conformance cases (alias of `eval core`)
+  pmos lint [PACK | DIR ...] [--json]   tightness: word budgets, mode step structure, filler, cite don't copy
+  pmos cos-turn --started ISO [--replied ISO] --tool-calls N   log one CoS reply (pmos stats reports them)
 
 Naming: modes are <pack>/<mode>; roles <pack>/<role>; skills and principles <pack>:<path>.
 Inside a pack, a bare name means "this pack". Core resources belong to the pack "core".
@@ -40,6 +42,7 @@ import datetime as dt
 import fnmatch
 import hashlib
 import json
+import math
 import os
 import re
 import shlex
@@ -659,7 +662,98 @@ def check_pack(name: str, check_grants: bool = True) -> tuple[list[str], list[st
                 warnings.append(f"mode {mname} is internal (not in exports.modes) and no mode of pack '{name}' "
                                 f"calls it, so nothing can start it; export it or add it to a mode's calls")
     errors += eval_errors(name)      # eval@1: every case valid, every feature covered
+    rep = lint_report([name])        # tightness: budgets, mode structure, filler, cite don't copy
+    errors += [f"lint: {e}" for e in rep["error_lines"]]
+    warnings += [f"lint: {w}" for w in rep["warning_lines"]]
     return errors, warnings
+
+
+# --------------------------------------------------------------------------- lint (tightness)
+def tightness_module():
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import tightness
+    return tightness
+
+
+def components_of(name: str, d: Path, man: dict) -> list[dict]:
+    """The text a pack ships for agents to load, as tightness components (see scripts/tightness.py)."""
+    core, out = name == CORE, []
+    skills = ROOT / config()["paths"]["skills"] if core else d / "skills"
+    for f in sorted(skills.rglob("SKILL.md")) if skills.is_dir() else []:
+        local = f.parent.relative_to(skills).as_posix()
+        principle = local.startswith("principles/") and local.count("/") == 1
+        out.append({"file": rel(f), "kind": "principle" if principle else "skill", "pack": name,
+                    "id": f"{name}:{local.split('/', 1)[1] if principle else local}", "text": f.read_text(encoding="utf-8")})
+    agents = ROOT / config()["paths"]["agents"] if core else d / "agents"
+    for f in sorted(agents.glob("*.md")) if agents.is_dir() else []:
+        out.append({"file": rel(f), "kind": "agent", "pack": name, "text": f.read_text(encoding="utf-8")})
+    for mf in [] if core else sorted((d / "modes").glob("*/mode.yaml")):
+        mm = load_yaml(mf) or {}
+        sf = mf.parent / str(mm.get("skill") or "SKILL.md")
+        if sf.exists():
+            out.append({"file": rel(sf), "kind": "mode", "pack": name, "id": mm.get("name"),
+                        "text": sf.read_text(encoding="utf-8")})
+        lines = [*(mm.get("rubric") or []), *(mm.get("acceptance") or [])]
+        if lines:
+            out.append({"file": rel(mf), "kind": "manifest", "pack": name, "id": mm.get("name"), "text": lines})
+    for key in [] if core else ("cos", "cos_section"):
+        if man.get(key) and (d / man[key]).is_file():
+            out.append({"file": rel(d / man[key]), "kind": "cos", "pack": name,
+                        "text": (d / man[key]).read_text(encoding="utf-8")})
+    roles = ROOT / config()["paths"]["roles"] if core else d / "roles.yaml"
+    if roles.is_file():
+        for rname, r in ((load_yaml(roles) or {}).get("roles") or {}).items():
+            out.append({"file": rel(roles), "kind": "role", "pack": name, "id": f"{name}/{rname}",
+                        "text": [str(r.get("persona") or ""), *[str(x) for x in r.get("rubric") or []]]})
+    return out
+
+
+def lint_report(names: list[str] | None = None, override: tuple[str, Path, dict] | None = None) -> dict:
+    """The tightness lint over NAMES (installed packs, core included; default: all), with every installed
+    pack as context. OVERRIDE = (name, dir, manifest): a pack folder that replaces (or joins) the
+    installed packs, e.g. a staged copy; NAMES then defaults to it."""
+    view = {n: (p["dir"], p["manifest"]) for n, p in packs().items()}
+    if override:
+        view[override[0]] = (override[1], override[2])
+        names = names or [override[0]]
+    comps = {n: components_of(n, d, m) for n, (d, m) in view.items()}
+    cos, cos_files = config().get("cos_pack"), []
+    if cos in view and view[cos][1].get("cos"):
+        cos_files.append(rel(view[cos][0] / view[cos][1]["cos"]))
+    cos_files += [rel(d / m["cos_section"]) for n, (d, m) in view.items() if n != CORE and m.get("cos_section")]
+    targets = [c for n in (names or list(view)) for c in comps.get(n, [])]
+    return tightness_module().lint(targets, [c for cs in comps.values() for c in cs], config(), cos_files)
+
+
+def cmd_lint(args) -> int:
+    reports = []
+    names = [t for t in args.targets if not (Path(t) / "pack.yaml").exists()]
+    for t in names:
+        if t not in packs():
+            raise PmosError(f"'{t}' is not core, an installed pack or a pack folder")
+    if names or not args.targets:
+        reports.append(lint_report(names or None))
+    for t in [t for t in args.targets if (Path(t) / "pack.yaml").exists()]:
+        d = Path(t).resolve()
+        man = load_yaml(d / "pack.yaml") or {}
+        if not man.get("name"):
+            raise PmosError(f"{t}/pack.yaml has no name")
+        reports.append(lint_report(override=(man["name"], d, man)))
+    report = reports[0] if len(reports) == 1 else {
+        "contract": "lint@1", "files": [f for r in reports for f in r["files"]],
+        "manual": next((r["manual"] for r in reports if r["manual"]), None),
+        "errors": sum(r["errors"] for r in reports), "warnings": sum(r["warnings"] for r in reports),
+        "error_lines": [e for r in reports for e in r["error_lines"]],
+        "warning_lines": [w for r in reports for w in r["warning_lines"]], "notes": [n for r in reports for n in r["notes"]]}
+    if args.json:
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+    else:
+        print(tightness_module().table(report) + "\n")
+        for kind, lines in (("error", report["error_lines"]), ("warn", report["warning_lines"]), ("note", report["notes"])):
+            for line in lines:
+                print(f"{kind}: {line}")
+        print(f"lint: {len(report['files'])} file(s), {report['errors']} error(s), {report['warnings']} warning(s)")
+    return 1 if report["errors"] else 0
 
 
 def validate_all() -> tuple[list[str], list[str]]:
@@ -684,10 +778,12 @@ def validate_all() -> tuple[list[str], list[str]]:
     elif not packs()[cos]["manifest"].get("cos"):
         errors.append(f"pm-os.yaml: cos_pack '{cos}' doesn't supply a Chief of Staff (no 'cos' in pack.yaml)")
     else:
+        errors += placeholder_errors()
         agents_md = ROOT / "AGENTS.md"
         if not agents_md.exists() or agents_md.read_text(encoding="utf-8") != build_agents_md():
             warnings.append("AGENTS.md is out of date; run `pmos catalog` (or `pmos render agents-md`)")
-    return errors, warnings
+    # a cross-file lint finding is reported by each pack it touches; say it once
+    return list(dict.fromkeys(errors)), list(dict.fromkeys(warnings))
 
 
 def grant_approvals_file() -> Path:
@@ -828,10 +924,8 @@ def cmd_pack_add(args) -> int:
     entry = {"name": name, "version": man["version"], "path": stored_path, "source": args.source,
              "enabled": True, "grants_approved": {}, "installed_at": now()}
     trial = [e for e in entries if e["name"] != name] + [entry]
+    _CACHE.clear()
     _CACHE["install"] = trial
-    _CACHE.pop("packs", None)
-    for k in ("skills", "roles", "modes"):
-        _CACHE.pop(k, None)
     errors, warnings = check_pack(name, check_grants=False)
     for w in warnings:
         print(f"warn: {w}")
@@ -966,10 +1060,52 @@ def mode_rows(pack: str, include_internal: bool) -> list[str]:
     return lines
 
 
+PLACEHOLDER = re.compile(r"\{\{\s*([A-Za-z_][\w.-]*)\s*\}\}")   # {{cos.inline_max_tool_calls}} in COS.md
+
+
+def setting(dotted: str):
+    """A pm-os.yaml value by dotted path, or KeyError."""
+    cur = config()
+    for part in dotted.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            raise KeyError(dotted)
+        cur = cur[part]
+    return cur
+
+
+def fill_placeholders(text: str) -> str:
+    """{{dotted.key}} -> its pm-os.yaml value, so the CoS manual states the configured numbers; unknown
+    keys stay as they are (validate reports them)."""
+    def sub(m):
+        try:
+            return str(setting(m.group(1)))
+        except KeyError:
+            return m.group(0)
+    return PLACEHOLDER.sub(sub, text)
+
+
+def cos_manual_files() -> list[Path]:
+    cos = packs()[config()["cos_pack"]]
+    return [cos["dir"] / cos["manifest"]["cos"]] + [p["dir"] / p["manifest"]["cos_section"] for n, p in packs().items()
+                                                   if n != CORE and p["manifest"].get("cos_section")]
+
+
+def placeholder_errors() -> list[str]:
+    out = []
+    for f in cos_manual_files():
+        for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            for m in PLACEHOLDER.finditer(line):
+                try:
+                    setting(m.group(1))
+                except KeyError:
+                    out.append(f"{rel(f)}:{i}: placeholder {{{{{m.group(1)}}}}} names no setting in pm-os.yaml")
+    return out
+
+
 def build_agents_md() -> str:
     cos = packs()[config()["cos_pack"]]
-    manual = (cos["dir"] / cos["manifest"]["cos"]).read_text(encoding="utf-8").rstrip()
-    sections = "".join("\n\n" + (p["dir"] / p["manifest"]["cos_section"]).read_text(encoding="utf-8").strip()
+    manual = fill_placeholders((cos["dir"] / cos["manifest"]["cos"]).read_text(encoding="utf-8").rstrip())
+    sections = "".join("\n\n" + fill_placeholders((p["dir"] / p["manifest"]["cos_section"]).read_text(encoding="utf-8").strip())
                        for n, p in packs().items() if n != CORE and p["manifest"].get("cos_section"))
     return ("<!-- Generated by `pmos` from " + rel(cos["dir"] / cos["manifest"]["cos"]) +
             ", each installed pack's cos_section and packs.yaml. Edit those, then run `pmos catalog`. -->\n\n" +
@@ -2029,6 +2165,8 @@ def compute_stats(records: list[dict]) -> dict:
     revise-after-approval rate."""
     per_task: dict[str, dict] = {}
     for r in sorted(records, key=lambda r: r.get("ts", "")):
+        if not r.get("task_id"):       # a CoS reply (`pmos cos-turn`), summarised below
+            continue
         t = per_task.setdefault(r["task_id"], {"mode": split_ref(r.get("mode") or "?")[0], "usd": 0.0,
                                                "created": None, "ready": None, "reviews": [],
                                                "awaited": False, "changed": False, "effort": None})
@@ -2066,8 +2204,45 @@ def compute_stats(records: list[dict]) -> dict:
         groups["modes"].setdefault(t["mode"], []).append(t)
         groups["efforts"].setdefault(t["effort"] or "unknown", []).append(t)
     order = {lvl: i for i, lvl in enumerate(EFFORT_LEVELS)}
+    turns = [r for r in records if r.get("event") == "cos_turn"]
+    secs, calls = [float(r.get("seconds") or 0) for r in turns], [float(r.get("tool_calls") or 0) for r in turns]
+    limit = (config().get("cos") or {}).get("inline_max_tool_calls", 2)
+    cos = {"turns": len(turns), "p50_seconds": percentile(secs, 0.5), "p90_seconds": percentile(secs, 0.9),
+           "p50_tool_calls": percentile(calls, 0.5), "p90_tool_calls": percentile(calls, 0.9),
+           "max_tool_calls": max(calls) if calls else None, "inline_max_tool_calls": limit,
+           "over_inline_limit": sum(1 for c in calls if c > limit)}
     return {"modes": {k: summary(v) for k, v in sorted(groups["modes"].items())},
-            "efforts": {k: summary(v) for k, v in sorted(groups["efforts"].items(), key=lambda kv: order.get(kv[0], 9))}}
+            "efforts": {k: summary(v) for k, v in sorted(groups["efforts"].items(), key=lambda kv: order.get(kv[0], 9))},
+            "cos": cos}
+
+
+def parse_ts(raw: str, flag: str) -> dt.datetime:
+    try:
+        t = dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        raise PmosError(f"{flag}: '{raw}' is not an ISO 8601 time, e.g. 2026-10-24T10:00:00+00:00")
+    return t if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
+
+
+def cmd_cos_turn(args) -> int:
+    """One CoS reply, logged to the traces: how long the PM waited and how many tool calls came first."""
+    started = parse_ts(args.started, "--started")
+    replied = parse_ts(args.replied, "--replied") if args.replied else dt.datetime.now(dt.timezone.utc)
+    if replied < started:
+        raise PmosError(f"--replied {replied.isoformat()} is before --started {started.isoformat()}")
+    if args.tool_calls < 0:
+        raise PmosError("--tool-calls can't be negative")
+    seconds = round((replied - started).total_seconds(), 1)
+    limit = (config().get("cos") or {}).get("inline_max_tool_calls", 2)
+    record = {"ts": now(), "event": "cos_turn", "started": started.isoformat(), "replied": replied.isoformat(),
+              "seconds": seconds, "tool_calls": args.tool_calls, "inline_max_tool_calls": limit, "note": args.note}
+    traces = path_of("traces")
+    traces.mkdir(parents=True, exist_ok=True)
+    with open(traces / f"{dt.date.today():%Y-%m}.jsonl", "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    print(f"logged CoS reply: {seconds:g} s, {args.tool_calls} tool call(s)"
+          + (f" (over cos.inline_max_tool_calls {limit})" if args.tool_calls > limit else ""))
+    return 0
 
 
 def cmd_stats(args) -> int:
@@ -2088,11 +2263,20 @@ def cmd_stats(args) -> int:
         return 0
 
     def fmt(v, pct=False):
-        return "—" if v is None else (f"{v:.0%}" if pct else f"{v}")
-    if not stats["modes"]:
+        return "—" if v is None else (f"{v:.0%}" if pct else f"{v:g}" if isinstance(v, float) else f"{v}")
+    if not stats["modes"] and not stats["cos"]["turns"]:
         print("(no traces yet)")
         return 0
+    c = stats["cos"]
+    if c["turns"]:
+        print("| CoS replies | p50 s | p90 s | p50 tool calls | p90 tool calls | Over inline limit |")
+        print("| --- | --- | --- | --- | --- | --- |")
+        print(f"| {c['turns']} | {fmt(c['p50_seconds'])} | {fmt(c['p90_seconds'])} | {fmt(c['p50_tool_calls'])} | "
+              f"{fmt(c['p90_tool_calls'])} | {c['over_inline_limit']} (> {c['inline_max_tool_calls']}) |")
+        print()
     for title, key in (("Mode", "modes"), ("Effort", "efforts")):
+        if not stats[key]:
+            continue
         print(f"| {title} | Tasks | USD total | USD mean | p50 s | p90 s | First-pass | Revised after approval |")
         print("| --- | --- | --- | --- | --- | --- | --- | --- |")
         for name, m in stats[key].items():
@@ -2191,11 +2375,14 @@ def render_claude_code() -> int:
             shutil.copy2(mode_dir / "mode.yaml", target / "mode.yaml")
         names.append(name)
     marker.write_text("\n".join(names) + "\n", encoding="utf-8")
+    lock_lines = render_cos_lock(ad)
 
     for w in warnings:
         print(f"warn: {w}")
     print(f"claude-code: {count} agent(s) -> {ad['agents_dir']}, {len(names)} skill(s) -> {ad['skills_dir']}, "
           f"CLAUDE.md -> AGENTS.md")
+    for line in lock_lines:
+        print(line)
     if not ad.get("supports_effort"):
         print("note: effort not written to subagent frontmatter (adapters.claude-code.supports_effort is false): "
               "subagents run at the session default; `task show` still prints each task's effort")
@@ -2203,6 +2390,65 @@ def render_claude_code() -> int:
         print("note: dispatch not written to subagent frontmatter (adapters.claude-code.supports_background is "
               "false): it is carried by `task show` (`run:`) and COS.md")
     return 0
+
+
+def cos_lock_rules(ad: dict) -> dict[str, list[str]]:
+    """Claude Code permission rules (`permissions.allow` / `permissions.deny`, the documented keys) that
+    keep the session to pmos, the pack scripts and reads: no file edits outside the outputs folder (an
+    `Edit(path)` rule covers every built-in file-writing tool) and no write-granted MCP tools."""
+    outputs = path_of("outputs")
+    keep = outputs.relative_to(ROOT).parts[0] if outputs.is_relative_to(ROOT) else None
+    deny = [f"Edit(/{p.name}/**)" if p.is_dir() else f"Edit(/{p.name})"
+            for p in sorted(ROOT.iterdir()) if p.name != keep]
+    for grant, tools in (ad.get("grants_to_tools") or {}).items():
+        if grant.split(":")[-1] not in ("read", "pmos"):          # write, send, …: a change to some system
+            deny += [t for t in tools or [] if str(t).startswith("mcp__")]
+    allow = ["Bash(python scripts/pmos.py *)"]
+    for name, p in packs().items():
+        if name != CORE:
+            allow += [f"Bash(python {rel(p['dir'] / s)} *)" for s in view_scripts(pack_view(name)) if s.endswith(".py")]
+    return {"allow": list(dict.fromkeys(allow)), "deny": list(dict.fromkeys(deny))}
+
+
+def render_cos_lock(ad: dict) -> list[str]:
+    """adapters.claude-code.lock_cos: merge pmos's rules into .claude/settings.json (true), or take them out
+    again (false). Rules pmos added are listed in .claude/.pmos-settings.json, so the PM's own stay."""
+    settings, mine = ROOT / ".claude" / "settings.json", ROOT / ".claude" / ".pmos-settings.json"
+    previous = load_json(mine) if mine.exists() else {}
+    data = load_json(settings) if settings.exists() else None
+    if data is not None:
+        perms = data.get("permissions") or {}
+        for key in ("allow", "deny"):
+            if key in perms:
+                perms[key] = [r for r in perms[key] if r not in (previous.get(key) or [])]
+                if not perms[key]:
+                    del perms[key]
+        if perms:
+            data["permissions"] = perms
+        else:
+            data.pop("permissions", None)
+    if not ad.get("lock_cos"):
+        if previous and data is not None:
+            write_json(settings, data)
+        mine.unlink(missing_ok=True)
+        return []
+    rules = cos_lock_rules(ad)
+    data = data or {}
+    perms = data.setdefault("permissions", {})
+    for key in ("allow", "deny"):
+        perms[key] = list(dict.fromkeys([*(perms.get(key) or []), *rules[key]]))
+    write_json(settings, data)
+    write_json(mine, rules)
+    mcp = [r for r in rules["deny"] if r.startswith("mcp__")]
+    return [f"lock_cos: on — {rel(settings)} denies file edits outside {rel(path_of('outputs'))}/ "
+            f"({len(rules['deny']) - len(mcp)} rule(s)) and {len(mcp)} write-granted MCP tool(s), and allows pmos "
+            f"and {len(rules['allow']) - 1} pack script(s); reads stay allowed",
+            "warn: lock_cos also blocks you (the PM) from having Claude edit files in this session; set "
+            "adapters.claude-code.lock_cos: false and re-render to edit here, or edit in another session",
+            "note: Claude Code documents no per-agent scope for these rules, so subagents started from this session "
+            "get them too: Workers still write under outputs/, but the Operator can't use the denied MCP write tools; "
+            "run approved actions that have no pack handler from a session without the lock. Re-render after "
+            "adding top-level files or folders."]
 
 
 def render_generic() -> int:
@@ -2688,9 +2934,39 @@ def cmd_eval_coverage(args) -> int:
     return 1 if total else 0
 
 
+def eval_estimate(n_conf: int, n_gold: int) -> str:
+    """`estimate: …` — cases × typical seconds (the mean from the last build/evals/results.json, else
+    eval.typical_seconds), and whether that is over cos.inline_max_seconds, so the CoS can background it."""
+    typical = {"conformance": 3.0, "golden": 300.0, **((config().get("eval") or {}).get("typical_seconds") or {})}
+    try:
+        last = load_json(ROOT / "build" / "evals" / "results.json")["cases"]
+        for kind in typical:
+            secs = [c["seconds"] for c in last if c.get("kind") == kind and c.get("result") in ("pass", "fail")]
+            if secs:
+                typical[kind] = sum(secs) / len(secs)
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    golden_runs = bool((config().get("eval") or {}).get("command"))
+    t_conf, t_gold = float(typical["conformance"]), float(typical["golden"]) if golden_runs else 0.0
+    jobs = min(8, os.cpu_count() or 2)
+    wall = math.ceil(n_conf / jobs) * t_conf + n_gold * t_gold
+    parts = [f"{n_conf} conformance × ~{round(t_conf, 1):g} s"] if n_conf else []
+    parts += [f"{n_gold} golden × ~{round(t_gold, 1):g} s"] if n_gold else []
+    shown = f"{round(wall):d} s" if wall < 120 else f"{wall / 60:.0f} min"
+    limit = (config().get("cos") or {}).get("inline_max_seconds", 10)
+    verdict = (f"over cos.inline_max_seconds ({limit} s): run it in the background" if wall > limit
+               else f"within cos.inline_max_seconds ({limit} s)")
+    return (f"estimate: {n_conf + n_gold} case(s) ({', '.join(parts) or 'none'}) ≈ {shown}; {verdict}"
+            + ("" if golden_runs or not n_gold else "; golden cases only render (no eval.command)"))
+
+
 def cmd_eval(args) -> int:
     if args.framework:  # alias of `pmos eval core --kind conformance`, with review filters and the legacy table
-        return framework_eval_module().run(args.targets, case=args.case, as_json=args.json)
+        fe = framework_eval_module()
+        groups = [g for g in args.targets if g in fe.REVIEWS] or fe.REVIEWS
+        n = len(fe.load_cases(CORE_CASES, groups, args.case))
+        print(eval_estimate(n, 0), file=sys.stderr if args.json else sys.stdout, flush=True)
+        return fe.run(args.targets, case=args.case, as_json=args.json)
     if args.coverage:
         return cmd_eval_coverage(args)
     kind = args.kind or "all"
@@ -2712,6 +2988,8 @@ def cmd_eval(args) -> int:
                                            for r in c.get("covers") or [])]
             gold = [c for c in gold if c["_mode"] == mode]
         plan.append((v, conf if kind in ("conformance", "all") else [], gold if kind in ("golden", "all") else []))
+    print(eval_estimate(sum(len(c) for _, c, _ in plan), sum(len(g) for _, _, g in plan)),
+          file=sys.stderr if args.json else sys.stdout, flush=True)
     results: dict[str, list[dict]] = {v["name"]: [] for v, _, _ in plan}
     for v, conf, _ in plan:                      # conformance first: cheap, and no model
         results[v["name"]] += [case_record(r) for r in run_conformance(v, conf)]
@@ -2833,6 +3111,22 @@ def build_parser() -> argparse.ArgumentParser:
     st.add_argument("--mode", help="only this mode (pack/mode)")
     st.add_argument("--json", action="store_true", help="print JSON instead of a table")
     st.set_defaults(fn=cmd_stats)
+
+    li = sub.add_parser("lint", help="check component text is tight: word budgets per kind, mode step structure, "
+                                     "filler phrases, principles cited not copied, no duplicate paragraphs")
+    li.add_argument("targets", nargs="*", help="core, installed pack names or pack folders (a staged pack); "
+                                               "empty = core and every installed pack")
+    li.add_argument("--json", action="store_true", help="print the report as JSON (lint@1)")
+    li.set_defaults(fn=cmd_lint)
+
+    ct = sub.add_parser("cos-turn", help="log one Chief of Staff reply to the traces (time to reply, tool calls); "
+                                         "`pmos stats` reports them")
+    ct.add_argument("--started", required=True, help="when the PM's message arrived (ISO 8601)")
+    ct.add_argument("--replied", help="when the CoS replied (ISO 8601; default: now)")
+    ct.add_argument("--tool-calls", type=int, required=True, dest="tool_calls",
+                    help="tool calls the CoS made before replying (not counting this one)")
+    ct.add_argument("--note", help="optional: what the turn was, e.g. 'status question'")
+    ct.set_defaults(fn=cmd_cos_turn)
 
     r = sub.add_parser("render", help="generate harness config from the installed packs")
     r.add_argument("adapter", choices=["agents-md", "claude-code", "generic"], help="which harness to generate for")

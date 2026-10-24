@@ -1,0 +1,31 @@
+{
+  "kind": "golden",
+  "name": "tightness review of the working tree",
+  "covers": [
+    "mode:forge/review-framework"
+  ],
+  "envelope": {
+    "verb": "review",
+    "mode": "forge/review-framework",
+    "inputs": {
+      "aspect": "tightness"
+    },
+    "acceptance": [
+      "scores every component file 1-5 for tightness and lists the lines to cut",
+      "lint results are quoted from lint.json, not re-counted",
+      "the repo under review is unchanged"
+    ],
+    "risk": "low",
+    "approval": "none"
+  },
+  "expect": [
+    "lint.json and conformance.json exist; lint.json is `pmos lint --json` on the tree under review and conformance.json is `pmos eval --framework tightness --json`",
+    "report.md has a Verdict section answering \"Is every component tight: does every line tell the agent what to do or why, with nothing a capable reader would skip?\" with a 1-5 score and a one-line reason for each of: budgets, structure, filler, cite-don't-copy",
+    "report.md has a table with one row per component file in lint.json (file, kind, words/budget from lint.json, a 1-5 tightness score) and, for every file scored under 5, the exact lines to cut or merge, each with path:line",
+    "every lint error and warning in lint.json appears in the report with its file, copied, not re-judged",
+    "no listed cut drops an instruction a step, principle check or conformance case depends on; where a cut changes meaning the report says so",
+    "report.md has Quick wins and What's already good sections",
+    "git status of the repo under review is the same before and after (verify-clean passed); nothing outside outputs/<id>/ was written",
+    "the result has status done, no actions, and a summary under 80 words with the scores"
+  ]
+}
