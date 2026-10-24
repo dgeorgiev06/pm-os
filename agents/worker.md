@@ -14,7 +14,9 @@ those systems are proposed as `actions` in your result; the Operator executes th
 
 1. **Load the task**: `python scripts/pmos.py task show <id>`. It prints the envelope, the resolved
    mode (with the path to its `SKILL.md`), the role, and any revise notes.
-2. **Start it**: `python scripts/pmos.py task move <id> running`.
+2. **Start it**: `python scripts/pmos.py task move <id> running`. If an input is a
+   `{"$from": "<task id>", "output": "<name>"}` ref, pmos resolves it now: run `task show` again and
+   use the values under "Inputs resolved".
 3. **Adopt the role** that `task show` prints: its persona, and only the skills and context files it
    lists (with their paths). Don't load other context. If the mode switches roles for a step,
    `python scripts/pmos.py role show <pack>/<role>` prints that role.
@@ -27,6 +29,8 @@ those systems are proposed as `actions` in your result; the Operator executes th
 7. **Self-check** against the envelope's `acceptance` list and every principle and rubric line `task show` lists.
 8. **Write the result** as JSON matching `contracts/result.schema.json` to `outputs/<task id>/result.json`,
    then submit it: `python scripts/pmos.py task result <id> outputs/<task id>/result.json`.
+   A `done` or `needs_approval` result carries `outputs`: one value per name in the mode's `returns`
+   (a path under `outputs/<task id>/` or a `scheme:` ref for `doc_ref`/`diff_ref`), and no other names.
    Keep `summary` under ~80 words: the CoS forwards it as-is.
 
 ## Rules

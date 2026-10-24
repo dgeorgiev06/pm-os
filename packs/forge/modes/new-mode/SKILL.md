@@ -35,6 +35,7 @@ Step tags: `[model]` = your judgment · `[code: …]` = run the command.
 9. Submit the result:
    - `status: "needs_approval"` (or `"done"` when `into` is set: the parent proposes the whole pack)
    - `artifacts`: `design.md`, and the staged `mode.yaml` and `SKILL.md`
+   - `outputs: {"staged": "outputs/<id>/staged/<pack>"}` (or the `into` directory when it is set)
    - one action: `{"system": "repo", "op": "sync_pack", "idempotency_key": "<id>-sync",
      "payload": {"staged": "outputs/<id>/staged/<pack>", "target": "packs/<pack>", "files": [<from step 8>]},
      "preview": "Add mode <pack>/<name> to pack <pack> (<n> files, version <new version>)"}` — omit when `into` is set.

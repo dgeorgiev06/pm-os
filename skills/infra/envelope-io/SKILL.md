@@ -22,6 +22,7 @@ All state changes go through `python scripts/pmos.py`. Never edit files under `s
   "status": "done | needs_approval | blocked | failed",
   "summary": "Under ~80 words. Leads with the outcome. The CoS forwards this verbatim.",
   "artifacts": [{ "kind": "doc", "ref": "outputs/T-20261024-001/prd.md", "title": "..." }],
+  "outputs": { "prd": "outputs/T-20261024-001/prd.md" },
   "actions": [],
   "self_check": [{ "criterion": "has success metrics", "met": true }],
   "open_questions": []
@@ -30,3 +31,13 @@ All state changes go through `python scripts/pmos.py`. Never edit files under `s
 
 `task result` validates against the schema and rejects anything malformed; fix and resubmit.
 `blocked` needs at least one `open_questions` entry. Don't fill in `review`; that's the Reviewer's.
+
+`outputs` maps each name in the mode's `returns` to its value; `done` and `needs_approval` results
+need every non-optional name (types ending in `?` are optional) and no others, with `doc_ref` /
+`diff_ref` values an existing path or a `scheme:` ref.
+
+To feed an earlier task's output into a new task, give the input as
+`{"$from": "<task id>", "output": "<name>"}`. pmos checks the source declares that output, makes the
+new task depend on it, and resolves the value when the task moves to running (`task show` prints it
+under "Inputs resolved"). Children inherit the parent's PM instructions, and their spending counts
+against the parent's `max_usd`.

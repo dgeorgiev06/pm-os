@@ -25,5 +25,6 @@ You never create tickets. You produce actions; the Operator executes them after 
    `pmos-<idempotency_key>` so the Operator can detect repeats.
 6. `[model]` Write `outputs/<id>/preview.md`: one line per action (`CREATE Story · 5 pts · <summary>`).
 7. `[code: python scripts/pmos.py task result <id> outputs/<id>/result.json]` with `status: "done"`,
-   `artifacts: [preview.md]`, and one action per ticket:
-   `{"system": "jira", "op": "create_issue", "idempotency_key": "<id>-<n>", "payload": {...}, "preview": "<the preview line>"}`.
+   `artifacts: [preview.md]`, one action per ticket:
+   `{"system": "jira", "op": "create_issue", "idempotency_key": "<id>-<n>", "payload": {...}, "preview": "<the preview line>"}`,
+   and `outputs: {"ticket_actions": [<every action's idempotency_key>], "preview": "outputs/<id>/preview.md"}`.

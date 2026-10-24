@@ -53,8 +53,8 @@ summary: "{summary}"
 verbs: [draft]                    # TODO: pick from plan | draft | analyze | execute | review
 accepts:
   goal: string                    # TODO: the real inputs; a trailing ? marks optional
-returns:
-  doc: doc_ref                    # TODO: the real outputs
+returns:                          # types: string number integer bool list object doc_ref diff_ref
+  doc: doc_ref                    # TODO: the real outputs (results carry them in `outputs`)
 skill: SKILL.md
 default_role: {role}
 calls: []                         # modes this one may start as children, version-pinned

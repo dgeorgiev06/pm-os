@@ -14,6 +14,13 @@
     "approval"
   ],
   "additionalProperties": false,
+  "$defs": {
+    "type": {
+      "type": "string",
+      "pattern": "^(string|number|integer|bool|boolean|list|object|doc_ref|diff_ref)\\??$",
+      "description": "The closed type vocabulary, optionally ending in ? (optional)"
+    }
+  },
   "properties": {
     "name": {
       "type": "string",
@@ -49,15 +56,16 @@
     },
     "accepts": {
       "type": "object",
-      "description": "field -> type. A trailing ? marks optional (e.g. goals_hint: string?)",
+      "description": "field -> type. A trailing ? marks optional (e.g. goals_hint: string?). doc_ref / diff_ref inputs must be an existing path or a scheme: ref. An input value may instead be {\"$from\": \"<task id>\", \"output\": \"<name>\"}: pmos checks the source declares that output, adds it to depends_on, and resolves it into the task's inputs_resolved when the task moves to running.",
       "additionalProperties": {
-        "type": "string"
+        "$ref": "#/$defs/type"
       }
     },
     "returns": {
       "type": "object",
+      "description": "output name -> type. A done or needs_approval result must carry every non-optional name in result.outputs, and no other names.",
       "additionalProperties": {
-        "type": "string"
+        "$ref": "#/$defs/type"
       }
     },
     "skill": {

@@ -27,5 +27,6 @@ Step tags: `[model]` = your judgment · `[code: …]` = run the script, don't do
 5. `[model]` Self-check against the envelope's `acceptance` and every principle and rubric line
    `task show` lists.
 6. `[code: python scripts/pmos.py task result <id> outputs/<id>/result.json]` with `status: "done"`,
-   `artifacts: [{"kind": "doc", "ref": "outputs/<id>/notes.md"}]`, and `actions: []` unless the
+   `artifacts: [{"kind": "doc", "ref": "outputs/<id>/notes.md"}]`, `outputs: {"notes": "outputs/<id>/notes.md"}`,
+   and `actions: []` unless the
    envelope asks to publish (then one `docs.publish` action with a preview line).
