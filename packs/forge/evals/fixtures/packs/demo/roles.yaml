@@ -1,0 +1,9 @@
+roles:
+  writer:
+    agent: worker
+    tier: small
+    persona: "Fixture role for forge's conformance cases."
+    skills: [core:infra/envelope-io, core:infra/self-check]
+    context: []
+    principles: []
+    rubric: []

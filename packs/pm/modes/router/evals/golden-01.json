@@ -1,5 +1,9 @@
 {
+  "kind": "golden",
   "name": "launch-readiness goal becomes a short plan",
+  "covers": [
+    "mode:pm/router"
+  ],
   "envelope": {
     "verb": "plan",
     "mode": "pm/router",
@@ -7,7 +11,10 @@
       "goal": "Get the Solana staking router beta ready for two custodian design partners by mid-December",
       "project": "STK"
     },
-    "acceptance": ["plan uses only pm modes", "every item says why it is needed"],
+    "acceptance": [
+      "plan uses only pm modes",
+      "every item says why it is needed"
+    ],
     "risk": "medium",
     "approval": "none"
   },

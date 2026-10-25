@@ -1,5 +1,5 @@
 name: pm/router
-version: 0.1.1
+version: 0.2.1
 contract: task@1
 author: dima
 summary: Turn a goal-level PM ask into a small plan of pm modes, run them, and assemble the outcome
@@ -13,12 +13,15 @@ returns:
   outcome: doc_ref
 skill: SKILL.md
 default_role: program-manager
-calls: [pm/prd@^0.2, pm/sprint-planning@^0.2, pm/jira-tickets@^0.2, pm/release-notes@^0.1]
+calls: [pm/prd@^0.4, pm/sprint-planning@^0.3, pm/jira-tickets@^0.3, pm/release-notes@^0.2]
 grants: {}
 approval: none            # children carry their own approvals
 risk: medium
 principles: [explicit-trade-offs]
-rubric:
-  - Uses the fewest modes that achieve the goal; no mode runs without a reason in the plan
-  - Every child task's inputs validate against that mode's accepts
+done:
+  must:
+    - "The plan uses the fewest modes that reach the goal, and each item says why it is needed"
+    - "Every child task's inputs validate against that mode's accepts"
+  should:
+    - "The outcome links each child's artifacts and says what waits on the PM"
 evals: evals/

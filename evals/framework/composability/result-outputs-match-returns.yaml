@@ -1,0 +1,28 @@
+kind: conformance
+name: result-outputs-match-returns
+covers: [script:scripts/pmos.py]
+finding: composability#4
+owner: composability
+severity: high
+desc: >-
+  A done result carries `outputs: {name: value}` validated against the mode's `returns`: every
+  declared output present, no unknown names, values of the declared type.
+setup:
+  install: [typed]
+steps:
+  - run: $PMOS task new --mode typed/memo --verb draft --inputs '{"topic":"t"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $T running
+  - name: the declared memo output is missing
+    run: $PY $FX/bin/mkresult.py --task $T --no-outputs --submit
+    expect: {exit: nonzero, output: '(?i)outputs|returns|memo'}
+  - name: an unknown output name
+    run: echo x > outputs/$T/m.md && $PY $FX/bin/mkresult.py --task $T --outputs-json "{\"memo\":\"outputs/$T/m.md\",\"banana\":\"outputs/$T/m.md\"}" --submit
+    expect: {exit: nonzero, output: 'banana'}
+  - name: the wrong type for a doc_ref
+    run: $PY $FX/bin/mkresult.py --task $T --outputs-json '{"memo":[1,2]}' --submit
+    expect: {exit: nonzero, output: 'memo'}
+  - name: a matching outputs map
+    run: $PY $FX/bin/mkresult.py --task $T --outputs-json "{\"memo\":\"outputs/$T/m.md\"}" --submit
+    expect:
+      task: {id: $T, state: in_review, fields: {result.outputs.memo: 'outputs/.*m\.md'}}

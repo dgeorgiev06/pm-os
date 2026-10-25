@@ -1,0 +1,8 @@
+internal_only_fields: [risks, support_notes]
+audiences:
+  internal:
+    channels:
+      - {name: team-slack, channel: channels:channel/slack, target: "C0PRODUCT1"}
+  external:
+    channels:
+      - {name: customer-email, channel: channels:channel/email, target: [customers@example.test, partners@example.test]}

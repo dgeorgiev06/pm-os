@@ -1,0 +1,11 @@
+kind: conformance
+name: grants-claim-matches-code
+covers: [script:scripts/pmos.py]
+finding: modularity#7
+owner: modularity
+severity: medium
+desc: >-
+  Decision 13 says grants are "enforced at run time". Either tools are rendered per role/mode from
+  the approved grants, or the docs say plainly that what's enforced is the manifest vs approval check.
+steps:
+  - run: $PY $FX/bin/grants_claim_check.py

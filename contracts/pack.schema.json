@@ -4,36 +4,155 @@
   "title": "Pack manifest (pack.yaml)",
   "description": "A pack is the unit you install and share: modes, roles, skills, principles and optionally agents or the Chief of Staff.",
   "type": "object",
-  "required": ["name", "version", "contract", "summary", "requires", "exports"],
+  "required": [
+    "name",
+    "version",
+    "contract",
+    "summary",
+    "requires",
+    "exports"
+  ],
   "additionalProperties": false,
   "properties": {
-    "name": { "type": "string", "pattern": "^[a-z0-9-]+$", "not": { "const": "core" } },
-    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
-    "contract": { "const": "pack@1" },
-    "author": { "type": "string" },
-    "summary": { "type": "string", "maxLength": 140, "description": "One line; the CoS sees this in its pack list" },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "not": {
+        "const": "core"
+      }
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "contract": {
+      "const": "pack@1"
+    },
+    "author": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 140,
+      "description": "One line; the CoS sees this in its pack list"
+    },
     "requires": {
       "type": "object",
-      "required": ["core"],
-      "properties": { "core": { "type": "string", "description": "Version range of pm-os core, e.g. ^0.2" } },
+      "required": [
+        "core"
+      ],
+      "properties": {
+        "core": {
+          "type": "string",
+          "description": "Version range of pm-os core, e.g. ^0.2"
+        }
+      },
       "additionalProperties": false
     },
     "depends": {
       "type": "array",
       "description": "Other packs this one uses, with version ranges: [\"pm@^0.1\"]",
-      "items": { "type": "string", "pattern": "^[a-z0-9-]+(@[~^]?[0-9]+(\\.[0-9]+){0,2})?$" }
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9-]+(@[~^]?[0-9]+(\\.[0-9]+){0,2})?$"
+      }
     },
-    "router": { "type": "string", "description": "The pack's entry mode for goal-level asks" },
-    "cos": { "type": "string", "description": "Path to a Chief of Staff manual this pack supplies" },
+    "router": {
+      "type": "string",
+      "description": "The pack's entry mode for goal-level asks"
+    },
+    "cos": {
+      "type": "string",
+      "description": "Path to a Chief of Staff manual this pack supplies"
+    },
+    "cos_section": {
+      "type": "string",
+      "description": "Path to Markdown that pmos appends to AGENTS.md (the CoS manual) while this pack is installed"
+    },
+    "actions": {
+      "type": "object",
+      "description": "Handlers for the actions this pack's modes propose: \"<system>.<op>\" -> \"<script path relative to the pack> [fixed args...]\". `pmos action run` calls `python <pack>/<script> [args...] <action file>` for an approved task.",
+      "propertyNames": {
+        "pattern": "^[a-z0-9_-]+\\.[a-z0-9_-]+$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
     "exports": {
       "type": "object",
       "description": "What other packs and the CoS may use. Anything not exported is internal to the pack.",
       "additionalProperties": false,
       "properties": {
-        "modes": { "type": "array", "items": { "type": "string" } },
-        "roles": { "type": "array", "items": { "type": "string" } },
-        "skills": { "type": "array", "items": { "type": "string" } },
-        "principles": { "type": "array", "items": { "type": "string" } }
+        "modes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "principles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "standards": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Document standards (standards/<name>.yaml) other packs may apply"
+        },
+        "channels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+$"
+          },
+          "description": "Channels other packs may send through (channels/<name>/)"
+        }
+      }
+    },
+    "overlays": {
+      "type": "object",
+      "description": "Product overlays: <product> -> skills added to a task of this pack for that product (`task new --product`, else context/product.md `product:`). Bare refs = this pack.",
+      "propertyNames": {
+        "pattern": "^[a-z0-9-]+$"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "grants": {
+      "type": "object",
+      "description": "Grants this pack's channels need, approved with pmos pack add --approve-grants (a pack whose modes hold grants lists them there; a channels-only pack lists them here).",
+      "propertyNames": {
+        "pattern": "^[a-z0-9_-]+$"
+      },
+      "additionalProperties": {
+        "enum": [
+          "read",
+          "draft",
+          "write"
+        ]
       }
     }
   }

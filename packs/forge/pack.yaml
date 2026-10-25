@@ -1,13 +1,16 @@
 name: forge
-version: 0.1.0
+version: 0.5.0
 contract: pack@1
 author: dima
-summary: Builds pm-os itself — new modes in a pack, or whole new packs, staged and checked before they land
+summary: Builds and reviews pm-os itself — new modes or packs, staged and checked before they land, and on-demand framework reviews
 requires:
-  core: ^0.2
+  core: ^0.6
 depends: []
+cos_section: COS-section.md    # appended to AGENTS.md while forge is installed
+actions:                       # handlers `pmos action run` calls for approved actions
+  repo.sync_pack: scripts/forge.py sync-action
 exports:
-  modes: [forge/new-mode, forge/new-pack]
+  modes: [new-mode, new-pack, review-framework]
   roles: [pack-architect]
   skills: [authoring]
   principles: [contract-first, smallest-unit, compose-dont-copy]

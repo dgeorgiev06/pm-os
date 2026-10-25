@@ -1,0 +1,17 @@
+kind: conformance
+name: hand-edited-grants-detected
+covers: [script:scripts/pmos.py]
+finding: modularity#3
+owner: modularity
+severity: high
+desc: >-
+  Boundary table row "grants_approved edited by hand in packs.yaml: not detected". validate must
+  notice grants that differ from what `pack add --approve-grants` recorded.
+setup:
+  install: [gtm]
+steps:
+  - run: $PMOS validate
+  - name: widen gtm's approved grants by hand
+    run: $PY $FX/bin/yset.py packs.yaml 'packs.[name=gtm].grants_approved.jira' write
+  - run: $PMOS validate
+    expect: {exit: nonzero, output: '(?i)grant'}

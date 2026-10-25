@@ -1,0 +1,18 @@
+name: channels
+version: 0.1.0
+contract: pack@1
+author: dima
+summary: "Starter channels: email (plain text to an address) and Slack (mrkdwn to a channel id), each sent through the tool mapped in pm-os.yaml"
+requires:
+  core: ^0.6
+depends: []
+grants: { comms: draft }            # the sends these channels make; approved with pmos pack add --approve-grants
+actions:                            # one send handler per channel: channel.yaml send.handler
+  comms.send-email: scripts/send.py email
+  comms.send-slack: scripts/send.py slack
+exports:
+  modes: []
+  roles: []
+  skills: []
+  principles: []
+  channels: [email, slack]

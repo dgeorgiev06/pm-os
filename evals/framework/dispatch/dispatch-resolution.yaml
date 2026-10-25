@@ -1,0 +1,45 @@
+kind: conformance
+name: dispatch-resolution
+covers: [script:scripts/pmos.py]
+finding: request:dispatch
+severity: high
+desc: >-
+  `dispatch: background | foreground` resolves with the effort resolver: --dispatch > mode > role
+  > agent > defaults.dispatch (background); no risk scaling. It is stored on the task, printed on
+  the delegate line and shown by `task list`.
+steps:
+  - name: the default is background
+    run: $PMOS task new --mode pm/prd --inputs '{"goal":"g"}'
+    capture: {D: '(T-\d{8}-\d{3,})'}
+    expect: {task: {id: $D, fields: {dispatch: '^background$', dispatch_source: '^default$'}}}
+  - run: $PMOS task show $D
+    expect: {stdout: '(?m)^delegate to: worker-mid · effort: medium · run: background$'}
+  - name: the PM's "run this in the foreground"
+    run: $PMOS task new --mode pm/prd --inputs '{"goal":"g"}' --dispatch foreground
+    capture: {F: '(T-\d{8}-\d{3,})'}
+    expect: {task: {id: $F, fields: {dispatch: '^foreground$', dispatch_source: '^flag$'}}}
+  - run: $PMOS task list
+    expect: {stdout: ['worker-mid\s+medium\s+foreground', 'worker-mid\s+medium\s+background']}
+  - name: agent frontmatter
+    run: |
+      sed -i 's/^tier: mid$/tier: mid\ndispatch: foreground/' agents/worker.md &&
+      $PMOS task new --mode pm/prd --inputs '{"goal":"g"}'
+    capture: {A: '(T-\d{8}-\d{3,})'}
+    expect: {task: {id: $A, fields: {dispatch: '^foreground$', dispatch_source: '^agent$'}}}
+  - name: the role comes before the agent
+    run: $PY $FX/bin/yset.py packs/pm/roles.yaml roles.doc-writer.dispatch background --str && $PMOS task new --mode pm/prd --inputs '{"goal":"g"}'
+    capture: {R: '(T-\d{8}-\d{3,})'}
+    expect: {task: {id: $R, fields: {dispatch: '^background$', dispatch_source: '^role$'}}}
+  - name: the mode comes before the role
+    run: $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml dispatch foreground --str && $PMOS task new --mode pm/prd --inputs '{"goal":"g"}'
+    capture: {M: '(T-\d{8}-\d{3,})'}
+    expect: {task: {id: $M, fields: {dispatch: '^foreground$', dispatch_source: '^mode$'}}}
+  - name: defaults.dispatch in pm-os.yaml
+    run: |
+      sed -i '/^dispatch: foreground$/d' agents/worker.md &&
+      $PY $FX/bin/yset.py pm-os.yaml defaults.dispatch foreground --str &&
+      $PMOS task new --mode pm/release-notes --inputs '{"sprint":"S","project":"STK"}'
+    capture: {G: '(T-\d{8}-\d{3,})'}
+    expect: {task: {id: $G, fields: {dispatch: '^foreground$', dispatch_source: '^default$'}}}
+  - run: $PMOS task new --mode pm/prd --inputs '{"goal":"g"}' --dispatch later
+    expect: {exit: nonzero, output: '(?i)dispatch|invalid choice'}

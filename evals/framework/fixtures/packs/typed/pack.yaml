@@ -1,0 +1,13 @@
+name: typed
+version: 0.1.0
+contract: pack@1
+author: framework-evals
+summary: "Typed-contract fixture: doc_ref inputs and outputs"
+requires:
+  core: ^0.6
+depends: []
+exports:
+  modes: [typed/memo, typed/note]
+  roles: [writer]
+  skills: []
+  principles: []

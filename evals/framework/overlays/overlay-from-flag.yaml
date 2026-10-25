@@ -1,0 +1,29 @@
+kind: conformance
+name: overlay-from-flag
+covers: [script:scripts/pmos.py]
+finding: request:overlays
+severity: medium
+desc: >-
+  `task new --product NAME` picks the product; pmos stores it with the overlay skills the task's
+  pack declares for it (`overlays:` in pack.yaml), and `task show` lists them with the role's and
+  mode's skills. A child task inherits its parent's product.
+steps:
+  - name: pm declares the staking overlay as data
+    run: 'true'
+    expect: {files: {contains: {packs/pm/pack.yaml: '(?m)^overlays:.*\n\s+staking: \[product/staking-prd\]'}}}
+  - run: $PMOS task new --mode pm/prd --inputs '{"goal":"g"}' --product staking
+    capture: {T: '(T-\d{8}-\d{3,})'}
+    expect:
+      task: {id: $T, fields: {product: '^staking$', product_source: '^flag$', overlay_skills: '^\["pm:product/staking-prd"\]$'}}
+  - run: $PMOS task show $T
+    expect:
+      stdout:
+        - '(?m)^- \[overlay: staking\] pm:product/staking-prd \(packs/pm/skills/product/staking-prd/SKILL\.md\)'
+        - '(?m)^- product: staking \(from flag\)'
+  - name: a child inherits the product
+    run: |
+      $PY $FX/bin/yset.py context/product.md product '' --front &&
+      R=$($PMOS task new --mode pm/router --inputs '{"goal":"g"}' --product staking) && $PMOS task move $R running >/dev/null &&
+      $PMOS task new --parent $R --mode pm/prd --inputs '{"goal":"g"}'
+    capture: {C: '(T-\d{8}-\d{3,})'}
+    expect: {task: {id: $C, fields: {product: '^staking$', product_source: '^parent$', overlay_skills: 'pm:product/staking-prd'}}}

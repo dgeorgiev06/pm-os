@@ -1,0 +1,24 @@
+{
+  "kind": "golden",
+  "name": "notes without a ship date block with one question, and no draft is written",
+  "covers": ["mode:release-comms/release-notify"],
+  "failure": true,
+  "envelope": {
+    "verb": "draft",
+    "mode": "release-comms/release-notify",
+    "inputs": {
+      "release_notes": "packs/release-comms/evals/fixtures/release/notes-no-date.md"
+    },
+    "acceptance": ["no date is invented"],
+    "risk": "high",
+    "approval": "before_execute"
+  },
+  "fixtures": {
+    "notes-no-date.md": "packs/release-comms/evals/fixtures/release/notes-no-date.md"
+  },
+  "expect": [
+    "the result is status blocked with one open question asking for the ship date",
+    "no draft.json is written and no cos/notify child task is created",
+    "the ship date is not guessed or filled in as a placeholder"
+  ]
+}

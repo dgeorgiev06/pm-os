@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pm-os/agent@1",
+  "title": "Agent frontmatter (agents/*.md, packs/<pack>/agents/*.md)",
+  "type": "object",
+  "required": [
+    "name",
+    "description",
+    "tier",
+    "grants"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tier": {
+      "enum": [
+        "small",
+        "mid",
+        "top"
+      ],
+      "description": "The agent's model size when no role sets one"
+    },
+    "tiers": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "small",
+          "mid",
+          "top"
+        ]
+      },
+      "description": "Also render the agent once per tier as <name>-<tier>"
+    },
+    "grants": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "<system>:<level> grants, mapped to harness tools by the adapter"
+    },
+    "effort": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ],
+      "description": "How hard the model reasons (tier picks the model). Resolved per task: task new --effort > mode > role > agent > defaults.effort; risk high/low then moves it one level, clamped by effort.min/max"
+    },
+    "dispatch": {
+      "enum": [
+        "background",
+        "foreground"
+      ],
+      "description": "How the CoS runs the subagent: background (start it, return to the PM, report when it lands) or foreground (wait). Resolved like effort: task new --dispatch > mode > role > agent > defaults.dispatch"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "kind": "golden",
+  "name": "gtm/brief fixture case",
+  "covers": [
+    "mode:gtm/brief"
+  ],
+  "envelope": {
+    "verb": "draft",
+    "mode": "gtm/brief",
+    "inputs": {
+      "goal": "x"
+    },
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "low",
+    "approval": "before_publish"
+  },
+  "expect": [
+    "result.json exists"
+  ]
+}

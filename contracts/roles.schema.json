@@ -62,6 +62,22 @@
             "items": {
               "type": "string"
             }
+          },
+          "effort": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "max"
+            ],
+            "description": "How hard the model reasons (tier picks the model). Resolved per task: task new --effort > mode > role > agent > defaults.effort; risk high/low then moves it one level, clamped by effort.min/max"
+          },
+          "dispatch": {
+            "enum": [
+              "background",
+              "foreground"
+            ],
+            "description": "How the CoS runs the subagent: background (start it, return to the PM, report when it lands) or foreground (wait). Resolved like effort: task new --dispatch > mode > role > agent > defaults.dispatch"
           }
         }
       }

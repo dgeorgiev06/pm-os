@@ -1,0 +1,17 @@
+kind: conformance
+name: plan-capacity-check
+covers: [script:scripts/pmos.py]
+finding: performance#6
+owner: performance
+severity: medium
+desc: >-
+  plan-to-capacity is checked in code: sprint-planning's check_plan.py fails when committed points
+  exceed capacity.json's committed_points, and the SKILL runs it.
+steps:
+  - run: test -f packs/pm/modes/sprint-planning/scripts/check_plan.py
+  - name: 16 committed points against a capacity of 10
+    run: echo '{"committed_points":10}' > cap.json && $PY packs/pm/modes/sprint-planning/scripts/check_plan.py $FX/data/plan.json cap.json
+    expect: {exit: nonzero, output: '(?i)capacity'}
+  - name: within capacity
+    run: echo '{"committed_points":21}' > cap.json && $PY packs/pm/modes/sprint-planning/scripts/check_plan.py $FX/data/plan.json cap.json
+  - run: grep -n "check_plan.py" packs/pm/modes/sprint-planning/SKILL.md

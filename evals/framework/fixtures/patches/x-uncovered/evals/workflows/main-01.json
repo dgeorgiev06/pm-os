@@ -1,0 +1,13 @@
+{
+  "kind": "golden",
+  "name": "the router plans a goal",
+  "covers": ["router:x-uncovered/main", "mode:x-uncovered/main"],
+  "envelope": {
+    "verb": "plan",
+    "mode": "x-uncovered/main",
+    "inputs": { "goal": "plan a thing" },
+    "risk": "low",
+    "approval": "before_publish"
+  },
+  "expect": ["plan exists"]
+}

@@ -30,7 +30,7 @@
     },
     "mode": {
       "type": "string",
-      "description": "author/name, optionally pinned: core/prd or core/prd@^1",
+      "description": "pack/mode, optionally pinned: pm/prd or pm/prd@^0.2",
       "pattern": "^[a-z0-9-]+/[a-z0-9-]+(@[~^]?[0-9]+(\\.[0-9]+){0,2})?$"
     },
     "workflow": {
@@ -44,6 +44,7 @@
     },
     "acceptance": {
       "type": "array",
+      "description": "Extra must lines for this task (task new --acceptance), judged with the mode's done.must as task-1, task-2, …",
       "items": {
         "type": "string"
       }
@@ -105,14 +106,25 @@
     },
     "origin": {
       "type": "object",
+      "required": [
+        "pack",
+        "ref"
+      ],
       "additionalProperties": false,
       "properties": {
-        "todo": {
+        "pack": {
           "type": "string",
-          "pattern": "^td-[0-9]+$"
+          "pattern": "^[a-z0-9-]+$",
+          "description": "The pack whose item the task came from"
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "Free text the pack understands, e.g. a todo id"
         }
       },
-      "description": "Where the task came from, e.g. the todo it was delegated from"
+      "description": "Where the task came from, set with `task new --origin PACK:REF`"
     }
   }
 }

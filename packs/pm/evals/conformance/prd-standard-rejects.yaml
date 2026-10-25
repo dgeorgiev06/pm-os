@@ -1,0 +1,14 @@
+kind: conformance
+name: prd-standard-rejects
+covers: [standard:pm:prd, mode:pm/prd]
+failure: true
+desc: >-
+  check_doc.py fails a PRD that misses required sections of pm:standards/prd, has a gap in the
+  requirement numbers or a TBD, naming each rule; a missing file fails too.
+steps:
+  - run: $PY scripts/check_doc.py --standard pm:standards/prd $FX/prd-bad.md
+    expect:
+      exit: 1
+      stdout: ['^FAIL', '- section:personas: ', '- section:success-metrics: ', '- numbered:requirements: .*gaps', '- forbid:markers: .*TBD']
+  - run: $PY scripts/check_doc.py --standard pm:standards/prd $FX/no-such.md
+    expect: {exit: 1, output: 'not found'}

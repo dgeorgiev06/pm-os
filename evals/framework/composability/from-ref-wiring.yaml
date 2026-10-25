@@ -1,0 +1,33 @@
+kind: conformance
+name: from-ref-wiring
+covers: [script:scripts/pmos.py]
+finding: composability#5
+owner: composability
+severity: high
+desc: >-
+  An input may be `{"$from": "<task id>", "output": "<name>"}`. pmos checks the source declares
+  that output, adds it to depends_on, and resolves the value into `inputs_resolved` when the task
+  moves to running.
+setup:
+  install: [typed]
+steps:
+  - run: $PMOS task new --mode typed/note --verb draft --inputs '{"topic":"source"}'
+    capture: {A: '(T-\d{8}-\d{3,})'}
+  - name: B takes A's note as its brief
+    run: $PMOS task new --mode typed/memo --verb draft --inputs "{\"topic\":\"b\",\"brief\":{\"\$from\":\"$A\",\"output\":\"note\"}}"
+    capture: {B: '(T-\d{8}-\d{3,})'}
+    expect:
+      task: {id: $B, fields: {envelope.depends_on: $A}}
+  - name: an output A doesn't declare
+    run: $PMOS task new --mode typed/memo --verb draft --inputs "{\"topic\":\"c\",\"brief\":{\"\$from\":\"$A\",\"output\":\"nope\"}}"
+    expect: {exit: nonzero, output: 'nope'}
+  - name: B can't start before A is done
+    run: $PMOS task move $B running
+    expect: {exit: nonzero}
+  - run: $PMOS task move $A running && $PY $FX/bin/mkresult.py --task $A --submit && $PY $FX/bin/advance.py --task $A --to done
+  - name: B starts with the value resolved
+    run: $PMOS task move $B running
+    expect:
+      task: {id: $B, fields: {inputs_resolved.brief: 'outputs/.*note'}}
+  - run: $PMOS task show $B
+    expect: {stdout: 'outputs/\S*note'}

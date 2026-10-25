@@ -1,0 +1,29 @@
+name: release-comms/release-notify
+version: 0.2.1
+contract: task@1
+author: dima
+summary: "Draft a release's customer email and internal note from its release notes, then send each draft to cos/notify"
+verbs: [draft]
+accepts:
+  release_notes: doc_ref          # usually {"$from": "<pm/release-notes task>", "output": "notes"}
+  audiences: list?                # default: ["internal", "external"]
+returns:
+  draft: doc_ref                  # outputs/<id>/draft.json: one notification per audience, both templates
+  messages: doc_ref               # outputs/<id>/messages.json: the children's messages, merged
+skill: SKILL.md
+default_role: pm/doc-writer
+skills: [domain/customer-impact]
+calls: [cos/notify@^0.2]
+grants: { docs: read, comms: draft }
+approval: before_execute
+risk: high
+merge_child_actions: true
+principles: [pm:cite-customer-claims, cos:external-voice]
+done:
+  must:
+    - code: "python packs/release-comms/modes/release-notify/scripts/check_draft.py {outputs.draft}"
+    - "Every customer-facing change in the notes appears in the external variant"
+    - "Ship dates match the release notes exactly"
+  should:
+    - "Internal variant adds support notes and known risks"
+evals: evals/

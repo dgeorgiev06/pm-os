@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pm-os/channel@1",
+  "title": "Channel (channel.yaml)",
+  "description": "A place a message can be sent: its format, its limits, what a recipient looks like and the pack handler that sends. Lives in packs/<pack>/channels/<name>/channel.yaml.",
+  "type": "object",
+  "required": ["name", "version", "summary", "system", "format", "recipient", "send"],
+  "additionalProperties": false,
+  "properties": {
+    "name": { "type": "string", "pattern": "^[a-z0-9-]+$", "description": "Equals the folder name" },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "summary": { "type": "string", "maxLength": 140 },
+    "system": { "type": "string", "pattern": "^[a-z0-9_-]+$", "description": "The comms system it sends through, e.g. comms" },
+    "format": { "enum": ["plain", "markdown", "slack_mrkdwn"] },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_words": { "type": "integer", "minimum": 1 },
+        "max_chars": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "recipient": {
+      "type": "object",
+      "required": ["type", "pattern"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "description": "What a recipient is, e.g. email address, slack channel id" },
+        "pattern": { "type": "string", "description": "A regular expression the whole recipient must match" },
+        "example": { "type": "string" }
+      }
+    },
+    "send": {
+      "type": "object",
+      "required": ["handler"],
+      "additionalProperties": false,
+      "properties": {
+        "handler": { "type": "string", "pattern": "^[a-z0-9_-]+\\.[a-z0-9_-]+$", "description": "An action name in the pack's actions: (comms.send-email)" }
+      }
+    },
+    "conventions": { "type": "string", "description": "Optional skill ref for the channel's conventions (bare = this pack)" }
+  }
+}

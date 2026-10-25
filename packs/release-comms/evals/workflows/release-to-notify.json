@@ -1,0 +1,27 @@
+{
+  "kind": "golden",
+  "name": "release 2.4 notes become one approval covering an internal and an external notify child",
+  "covers": ["mode:release-comms/release-notify"],
+  "envelope": {
+    "verb": "draft",
+    "mode": "release-comms/release-notify",
+    "inputs": {
+      "release_notes": "packs/release-comms/evals/fixtures/release/notes-2.4.md"
+    },
+    "acceptance": [
+      "one draft.json with an external email and an internal Slack note",
+      "one cos/notify child per audience, each with approval none",
+      "one approval covers every send"
+    ],
+    "risk": "high",
+    "approval": "before_execute"
+  },
+  "fixtures": {
+    "channels.yaml": "packs/release-comms/evals/fixtures/release/channels.yaml"
+  },
+  "expect": [
+    "the parent creates two cos/notify children, the external one at risk high and the internal one at medium",
+    "the parent waits, then merges the children's messages.json and submits needs_approval",
+    "the merged actions are one comms.send per recipient, and nothing is sent before the PM approves"
+  ]
+}

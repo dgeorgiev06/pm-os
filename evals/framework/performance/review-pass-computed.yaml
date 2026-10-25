@@ -1,0 +1,29 @@
+kind: conformance
+name: review-pass-computed
+covers: [script:scripts/pmos.py]
+finding: performance#5
+owner: performance
+severity: medium
+desc: >-
+  The Reviewer records per-line verdicts (`task review --verdicts FILE`, line ids from
+  `task show --checklist`); pmos computes pass as "every core line holds and score >= 4" and stores
+  the lines. A bare `--passed true --score 1` is not trusted.
+steps:
+  - run: $PMOS task new --mode pm/prd --verb draft --inputs '{"goal":"g"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $T running && $PY $FX/bin/mkresult.py --task $T --submit
+  - run: $PMOS task show $T --checklist
+    expect: {stdout: '"core:grounded"'}
+  - name: incomplete verdicts are refused
+    run: $PY $FX/bin/verdicts.py --task $T --drop 1 > v.json && $PMOS task review $T --verdicts v.json
+    expect: {exit: nonzero, output: '(?i)missing|line|verdict'}
+  - name: a failing core line fails review even with score 5
+    run: $PY $FX/bin/verdicts.py --task $T --fail core:grounded --score 5 > v.json && $PMOS task review $T --verdicts v.json
+    expect:
+      task: {id: $T, state: revise, fields: {result.review.lines: 'core:grounded'}}
+  - run: $PMOS task move $T running && $PY $FX/bin/mkresult.py --task $T --submit
+  - name: a claimed pass with score 1 doesn't pass
+    run: $PMOS task review $T --passed true --score 1 --note "looks fine"
+    expect:
+      exit: any
+      task: {id: $T, state: 'in_review|revise'}

@@ -1,0 +1,11 @@
+kind: conformance
+name: unused-roles-removed
+covers: [script:scripts/pmos.py]
+finding: clarity#9
+owner: clarity
+severity: low
+desc: >-
+  Every role in an installed pack is exported or used by a mode (tech-architect, qa-planner and
+  research-analyst in pm are neither today).
+steps:
+  - run: $PY $FX/bin/unused_roles.py

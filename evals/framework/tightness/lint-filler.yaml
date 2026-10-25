@@ -1,0 +1,38 @@
+kind: conformance
+name: lint-filler
+covers: [script:scripts/tightness.py, script:scripts/pmos.py]
+finding: request:tightness
+severity: medium
+failure: true
+desc: >-
+  Filler phrases (pm-os.yaml `lint.filler`, case-insensitive, whole words; `/…/` entries are
+  regexes) fail a file with more than `lint.filler_max` hits: 0 for principles, 2 for anything else.
+  Fenced and inline code doesn't count.
+steps:
+  - name: today's files are within the filler limits
+    run: $PMOS lint
+    expect: {stdout_not: '(?i)filler.*over lint\.filler_max'}
+  - name: one filler phrase fails a principle
+    run: printf '\nMake sure to cite.\n' >> packs/pm/skills/principles/plan-to-capacity/SKILL.md && $PMOS lint
+    expect: {exit: 1, stdout: ["plan-to-capacity/SKILL\\.md:\\d+: filler 'make sure to'", 'plan-to-capacity/SKILL\.md: 1 filler phrase\(s\), over lint\.filler_max \(0\)']}
+  - name: two in a skill are allowed, three fail
+    run: |
+      sed -i '$ d' packs/pm/skills/principles/plan-to-capacity/SKILL.md
+      printf '\nIt is important to be robust.\n' >> packs/pm/skills/domain/prioritization/SKILL.md && $PMOS lint
+    expect: {stdout: "prioritization/SKILL\\.md:\\d+: filler 'robust'", stdout_not: 'prioritization/SKILL\.md: \d+ filler phrase\(s\), over'}
+  - run: printf 'Leverage it.\n' >> packs/pm/skills/domain/prioritization/SKILL.md && $PMOS lint
+    expect: {exit: 1, stdout: 'prioritization/SKILL\.md: 3 filler phrase\(s\), over lint\.filler_max \(2\)'}
+  - name: whole words only, code excluded
+    run: |
+      $PY - <<'PY'
+      p = "packs/pm/skills/domain/prioritization/SKILL.md"
+      t = open(p).read().replace("It is important to be robust.", "Every `robust` item.").replace("Leverage it.", "Leverages.")
+      open(p, "w").write(t)
+      PY
+      $PMOS lint
+    expect: {stdout_not: "prioritization/SKILL\\.md:\\d+: filler"}
+  - name: the list and the limits come from pm-os.yaml
+    run: |
+      $PY $FX/bin/yset.py pm-os.yaml lint.filler '["/every\\b/"]' &&
+      $PY $FX/bin/yset.py pm-os.yaml lint.filler_max '{"principle": 0, "default": 0}' && $PMOS lint
+    expect: {exit: 1, stdout: "prioritization/SKILL\\.md:\\d+: filler 'every'"}

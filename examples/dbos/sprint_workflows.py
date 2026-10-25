@@ -1,8 +1,12 @@
 """
-Example mode workflows for the PM Agent OS on DBOS.
+Example mode workflows for pm-os on DBOS (the phase 3 durable runtime; a design sketch).
 
-  Mode 1  core/sprint-planning  - prioritize next sprint, update roadmap, plan work, create Jira tickets
-  Mode 2  core/sprint-tracking  - track a running sprint until it closes, then feed learnings back
+  Mode 1  pm/sprint-planning  - prioritize next sprint, update roadmap, plan work, create Jira tickets
+  Mode 2  pm/sprint-tracking  - track a running sprint until it closes, then feed learnings back
+
+The pm pack today has pm/sprint-planning (it plans and diffs the roadmap itself and calls
+pm/jira-tickets). This sketch also splits out pm/roadmap-diff and pm/sprint-plan as child modes and
+adds pm/sprint-tracking; those three don't exist yet.
 
 Framework helpers (provided by the pm-os runtime, not by DBOS). Each one is a DBOS step
 or enqueues a child workflow, so every workflow body below stays deterministic:
@@ -17,20 +21,20 @@ or enqueues a child workflow, so every workflow body below stays deterministic:
   write_context(env, key, value)      step: updates the context store
   now(), seconds_until(ts)            steps: clock reads (never read the clock in a workflow body)
 
---- modes/core/sprint-planning/mode.yaml ---------------------------------------------------
-name: core/sprint-planning
+--- packs/pm/modes/sprint-planning/mode.yaml ----------------------------------------------
+name: pm/sprint-planning
 version: 1.0.0
 contract: task@1
 summary: Prioritize the next sprint, update the roadmap, plan the work, create Jira tickets
 accepts: { sprint: string, team: string, goals_hint: string? }
 returns: { sprint_plan: doc_ref, roadmap_diff: diff_ref, tickets: list }
 workflows: [plan_next_sprint]
-calls: [core/roadmap@^1, core/sprint@^1, core/jira@^1, core/sprint-tracking@^1]
+calls: [pm/roadmap-diff@^1, pm/sprint-plan@^1, pm/jira-tickets@^0.2, pm/sprint-tracking@^1]
 grants: { jira: read, roadmap: read, calendar: read }   # writes only via the Operator
 approval: before_execute
 
---- modes/core/sprint-tracking/mode.yaml ---------------------------------------------------
-name: core/sprint-tracking
+--- packs/pm/modes/sprint-tracking/mode.yaml ----------------------------------------------
+name: pm/sprint-tracking
 version: 1.0.0
 contract: task@1
 summary: Track a running sprint daily; flag risks; close it out with a review
@@ -86,9 +90,9 @@ def plan_next_sprint(env: dict) -> dict:
 
     # 3. Fan out: the roadmap diff and the sprint plan only need the ranking,
     #    so they run in parallel as child envelopes (each reviewed on its own)
-    roadmap_h = call_mode(env, "core/roadmap@^1", "draft",
+    roadmap_h = call_mode(env, "pm/roadmap-diff@^1", "draft",
                           {"ranking": ranking, "roadmap": roadmap, "want": "diff"})
-    plan_h = call_mode(env, "core/sprint@^1", "plan",
+    plan_h = call_mode(env, "pm/sprint-plan@^1", "plan",
                        {"ranking": ranking, "velocity": velocity,
                         "capacity": capacity, "sprint": sprint})
     roadmap_diff = roadmap_h.get_result()
@@ -96,7 +100,7 @@ def plan_next_sprint(env: dict) -> dict:
 
     # 4. Ticket drafts need the plan. The gateway runs them as a dry-run and
     #    dedupes against existing tickets, so this returns a diff, not writes.
-    tickets = call_mode(env, "core/jira@^1", "draft",
+    tickets = call_mode(env, "pm/jira-tickets@^0.2", "draft",
                         {"plan": plan, "backlog": backlog, "sprint": sprint}).get_result()
 
     # 5. Gate 2: one approval for everything that will change a system.
@@ -114,7 +118,7 @@ def plan_next_sprint(env: dict) -> dict:
 
     # 7. Start tracking. Fire-and-forget; the workflow id dedupes it, so a
     #    retry of this step never starts a second tracker for the same sprint.
-    call_mode(env, "core/sprint-tracking@^1", "analyze",
+    call_mode(env, "pm/sprint-tracking@^1", "analyze",
               {"sprint": sprint, "team": team, "plan": plan},
               workflow_id=f"track-{team}-{sprint}")
 
@@ -160,7 +164,7 @@ def track_sprint(env: dict) -> dict:
                                  task={"metrics": metrics, "risks": new_risks, "plan": plan},
                                  schema=schemas.RiskResponse)   # cause + proposed actions
             # Proposed fixes (drop a story, swap an owner) go to you via the CoS;
-            # if approved, the CoS sends a new core/jira envelope. The tracker never writes.
+            # if approved, the CoS sends a new pm/jira-tickets envelope. The tracker never writes.
             notify_cos(env, digest=response,
                        level="needs_decision" if response["actions"] else "info")
             already_flagged |= {r["id"] for r in new_risks}

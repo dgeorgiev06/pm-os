@@ -1,0 +1,7 @@
+{
+  "kind": "golden",
+  "name": "a short note",
+  "covers": ["mode:demo/note"],
+  "envelope": { "verb": "draft", "mode": "demo/note", "inputs": { "goal": "note the launch date" }, "risk": "low", "approval": "before_publish" },
+  "expect": ["note.md answers the goal"]
+}

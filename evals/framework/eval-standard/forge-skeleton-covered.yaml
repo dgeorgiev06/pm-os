@@ -1,0 +1,45 @@
+kind: conformance
+name: forge-skeleton-covered
+covers: [script:scripts/pmos.py]
+finding: request:eval@1
+severity: medium
+desc: >-
+  forge's skeletons satisfy the coverage rule: stage-mode writes a golden and a failure case,
+  `--script` adds a script with its conformance case, `--router` makes the mode the pack's router
+  with a workflow case. lint reports coverage gaps, and DIR defaults to --target.
+steps:
+  - run: $PMOS task new --mode forge/new-mode --inputs '{"pack":"pm","name":"evalnote","purpose":"a note"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $T running && $FORGE stage-mode --task $T --pack pm --name evalnote --summary "Eval note" --script build_note
+    expect:
+      files:
+        contains:
+          outputs/$T/staged/pm/modes/evalnote/evals/golden-01.json: '"kind": "golden"'
+          outputs/$T/staged/pm/modes/evalnote/evals/golden-fail.json: '"failure": true'
+          outputs/$T/staged/pm/evals/conformance/evalnote-build-note.yaml: 'script:modes/evalnote/scripts/build_note\.py'
+        exists: [outputs/$T/staged/pm/modes/evalnote/scripts/build_note.py]
+  - run: $PMOS eval --coverage outputs/$T/staged/pm
+    expect: {stdout: 'mode:pm/evalnote', stdout_not: '(?i)\bgaps?:'}
+  - name: lint reports a coverage gap
+    run: rm outputs/$T/staged/pm/modes/evalnote/evals/golden-fail.json && $FORGE lint outputs/$T/staged/pm --target packs/pm
+    expect: {exit: nonzero, stdout: ['(?i)coverage', 'mode:pm/evalnote']}
+  - name: a new pack with a router mode
+    run: |
+      $PMOS task new --mode forge/new-pack --inputs '{"name":"gtm2","summary":"s","purpose":"p"}'
+    capture: {P: '(T-\d{8}-\d{3,})'}
+  - run: |
+      $PMOS task move $P running && $FORGE stage-pack --task $P --name gtm2 --summary "Go to market" &&
+      $FORGE stage-mode --task $P --pack gtm2 --name launch --summary "Launch plan" --into outputs/$P/staged/gtm2 --router
+    expect:
+      files:
+        contains:
+          outputs/$P/staged/gtm2/pack.yaml: ['(?m)^router: launch', 'core: \^0\.6']
+          outputs/$P/staged/gtm2/evals/workflows/launch-01.json: 'router:gtm2/launch'
+  - run: $PMOS eval --coverage outputs/$P/staged/gtm2
+    expect: {stdout: 'router:gtm2/launch', stdout_not: '(?i)\bgaps?:'}
+  - name: lint's DIR defaults to --target
+    run: $FORGE lint --target packs/cos
+    expect: {stdout: 'PASS'}
+  - name: the authoring skill states the rule
+    run: 'true'
+    expect: {files: {contains: {packs/forge/skills/authoring/SKILL.md: ['failure: true', 'evals/conformance', 'evals/workflows', 'pmos eval --coverage']}}}

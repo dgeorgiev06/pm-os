@@ -1,0 +1,12 @@
+kind: conformance
+name: cos-dispatches-queued
+covers: [script:scripts/pmos.py]
+finding: performance#2
+owner: performance
+severity: high
+desc: >-
+  After every subagent returns, the CoS lists queued tasks (new children, re-queued parents) and
+  delegates each, in parallel in the background when they don't depend on each other.
+steps:
+  - run: grep -n "task list --state queued" packs/cos/COS.md
+  - run: grep -niE "parallel|background" packs/cos/COS.md

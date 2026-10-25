@@ -1,0 +1,54 @@
+kind: conformance
+name: done-code-lines-first
+covers: [script:scripts/pmos.py]
+finding: request:done
+severity: high
+failure: true
+desc: >-
+  On `task result`, pmos runs the mode's `code:` lines (repo root, a timeout, output captured,
+  `{outputs.<name>}` / `{task}` / `{outputs_dir}` filled from the result) before any Reviewer is
+  spent. A failure sends the task straight to `revise` (counted as a revision), with the failing
+  line ids and their output as the note; `task show` then lists those ids and the fix first. A
+  passing resubmit goes to `in_review` with the code lines settled.
+steps:
+  - run: $PMOS task new --mode pm/prd --inputs '{"goal":"g"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - name: a PRD that the standard line (check_doc.py) fails
+    run: |
+      $PMOS task move $T running && mkdir -p outputs/$T && printf '# PRD\n\nJust a goal. TODO\n' > outputs/$T/prd.md &&
+      $PY $FX/bin/mkresult.py --task $T --outputs-json "{\"prd\": \"outputs/$T/prd.md\"}" --submit
+    expect:
+      exit: nonzero
+      output: '(?i)revise'
+      task:
+        id: $T
+        state: revise
+        fields: {revisions: '^1$', done_code: '"pass": false', revision_brief: '"standard"'}
+  - name: the note names the line and carries the script's output; no Reviewer ran
+    run: $PMOS task state $T --json
+    expect:
+      stdout: ['"to": "revise"[^}]*standard', 'missing section']
+      task: {id: $T, absent: [result.review]}
+  - name: the Worker's brief starts with what to fix
+    run: $PMOS task show $T > brief.md && head -6 brief.md && $PY $FX/bin/before.py '`standard`' '# pm/prd@' < brief.md
+    expect: {stdout: ['(?i)revise', '`standard`', 'missing section']}
+  - name: fixed, it passes the code lines and reaches review
+    run: |
+      $PMOS task move $T running &&
+      printf '# PRD\n\n## Problem\nx\n\n## Personas\nx\n\n## Requirements\n- R1: x\n\n## Success metrics\nx\n\n## Open questions\nx\n' > outputs/$T/prd.md &&
+      $PY $FX/bin/mkresult.py --task $T --outputs-json "{\"prd\": \"outputs/$T/prd.md\"}" --submit
+    expect:
+      task: {id: $T, state: in_review, fields: {done_code: '"pass": true'}}
+  - name: placeholders are filled from the result (task id, outputs folder, outputs)
+    run: |
+      $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml done.must '[{code: "python scripts/pmos.py path outputs {task} {outputs_dir} {outputs.prd}"}]' &&
+      P=$($PMOS task new --mode pm/prd --inputs '{"goal":"g"}') && $PMOS task move $P running >/dev/null &&
+      $PY $FX/bin/mkresult.py --task $P --submit >/dev/null; $PMOS task state $P --json
+    expect: {stdout: ['"done_code"', '(?i)unrecognized arguments: T-\d{8}-\d{3,} outputs/T-\d{8}-\d{3,} outputs/T-\d{8}-\d{3,}/prd\.md']}
+  - name: a line over its timeout fails
+    run: |
+      $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml done.must '[{code: "python scripts/pmos.py path outputs", timeout: 1}, "x"]' &&
+      $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml done.must.0.code 'python -c "import time; time.sleep(5)"' --str &&
+      Q=$($PMOS task new --mode pm/prd --inputs '{"goal":"g"}') && $PMOS task move $Q running >/dev/null &&
+      $PY $FX/bin/mkresult.py --task $Q --submit; $PMOS task state $Q --json
+    expect: {stdout: ['"state": "revise"', '(?i)timed out']}

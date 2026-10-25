@@ -1,0 +1,15 @@
+kind: conformance
+name: check-plan
+covers: [script:modes/sprint-planning/scripts/check_plan.py, script:modes/sprint-planning/scripts/capacity.py, mode:pm/sprint-planning]
+failure: true
+desc: >-
+  check_plan.py (plan-to-capacity in code) accepts a plan within capacity.py's committed points and
+  exits 1 with "over capacity" when the committed points exceed them, before any Reviewer is spent.
+steps:
+  - run: $PY $PACK/modes/sprint-planning/scripts/capacity.py $FX/velocity.json > cap.json && $PY $PACK/modes/sprint-planning/scripts/check_plan.py $FX/plan-ok.json cap.json
+    expect: {stdout: '"ok": true'}
+  - run: $PY $PACK/modes/sprint-planning/scripts/check_plan.py $FX/plan-over.json cap.json
+    expect: {exit: 1, stderr: 'over capacity: 26 committed points > committed_points 21'}
+  - name: an item without points
+    run: echo '{"committed":[{"summary":"x"}]}' > p.json && $PY $PACK/modes/sprint-planning/scripts/check_plan.py p.json cap.json
+    expect: {exit: 1, stderr: 'without numeric points'}

@@ -1,0 +1,23 @@
+kind: conformance
+name: admission-golden-opt-in
+covers: [script:scripts/pmos.py]
+finding: request:eval@1
+severity: medium
+desc: >-
+  Golden cases cost money, so admission runs them only with --with-golden (through eval.command, in
+  the sandbox); without eval.command, --with-golden is refused.
+setup:
+  copy:
+    packs/x-uncovered: packs/x-uncovered
+    patches/x-uncovered: packs/x-uncovered
+steps:
+  - run: $PY $FX/bin/yset.py pm-os.yaml eval.command "$PY $REPO/$FX/bin/fake_runner.py {prompt_file}" --str
+  - name: no golden run by default
+    run: $PMOS pack add packs/x-uncovered --dry-run
+    expect: {stdout: '(?i)passes admission', stdout_not: '(?i)golden\D*\d+/\d+'}
+  - name: --with-golden runs the golden and workflow cases
+    run: $PMOS pack add packs/x-uncovered --dry-run --with-golden
+    expect: {stdout: ['(?i)passes admission', '(?i)golden\D*3/3']}
+  - name: --with-golden needs eval.command
+    run: $PY $FX/bin/yset.py pm-os.yaml eval.command "" --str && $PMOS pack add packs/x-uncovered --dry-run --with-golden
+    expect: {exit: nonzero, output: 'eval\.command'}

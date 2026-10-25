@@ -1,5 +1,5 @@
 name: forge/new-mode
-version: 0.1.0
+version: 0.2.0
 contract: task@1
 author: dima
 summary: Design a new mode for an installed pack, stage it, check it, and propose it for approval
@@ -18,8 +18,13 @@ calls: []
 grants: { repo: draft }
 approval: before_execute
 risk: medium
-principles: [contract-first, smallest-unit, compose-dont-copy]
-rubric:
-  - The design names the existing modes, roles and principles it reuses
-  - The golden task exercises the mode's main path and one gate or failure case
+principles: [contract-first, smallest-unit, compose-dont-copy, core:tight-instructions]
+done:
+  must:
+    - "The staged pack passed forge.py lint and, unless nested, a dry-run admission"
+    - "Nothing outside outputs/<id>/ changed before approval"
+    - principle: contract-first
+  should:
+    - "The design names the existing modes, roles and principles it reuses"
+    - "The golden task exercises the mode's main path and one gate or failure case"
 evals: evals/

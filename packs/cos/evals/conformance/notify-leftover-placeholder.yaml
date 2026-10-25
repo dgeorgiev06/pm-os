@@ -1,0 +1,12 @@
+kind: conformance
+name: notify-leftover-placeholder
+covers: [mode:cos/notify, script:modes/notify/scripts/build_actions.py]
+failure: true
+desc: A template whose body uses a placeholder it does not declare leaves a placeholder in the text; the check refuses it.
+setup:
+  copy:
+    notify/channels.yaml: channels.yaml
+    notify/draft-broken.json: draft.json
+steps:
+  - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py --check draft.json
+    expect: {exit: nonzero, output: 'leftover placeholder .*typo'}

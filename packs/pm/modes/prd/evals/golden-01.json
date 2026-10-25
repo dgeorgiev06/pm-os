@@ -1,11 +1,17 @@
 {
+  "kind": "golden",
   "name": "staking router PRD from a short brief",
+  "covers": [
+    "mode:pm/prd"
+  ],
   "envelope": {
     "verb": "draft",
     "mode": "pm/prd",
     "inputs": {
       "goal": "PRD for a multi-operator staking router for institutional clients, Solana first",
-      "refs": ["doc:packs/pm/modes/prd/evals/fixtures/router-brief.md"]
+      "refs": [
+        "doc:packs/pm/modes/prd/evals/fixtures/router-brief.md"
+      ]
     },
     "acceptance": [
       "covers custodian and bank personas",
@@ -16,7 +22,7 @@
     "approval": "before_publish"
   },
   "expect": [
-    "check_prd.py passes",
+    "prd.md passes check_doc.py --standard pm:standards/prd, and the standard's judgment lines hold",
     "at least one requirement on operator failover",
     "success metrics include a reliability or uptime measure",
     "no claims about customers that are not in the brief"

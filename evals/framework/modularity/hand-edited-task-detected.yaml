@@ -1,0 +1,16 @@
+kind: conformance
+name: hand-edited-task-detected
+covers: [script:scripts/pmos.py]
+finding: modularity#3
+owner: modularity
+severity: high
+desc: >-
+  pmos keeps a hash of each task file it writes; a task file edited by hand (here, set to approved)
+  is refused instead of being moved on to done.
+steps:
+  - run: $PMOS task new --mode pm/prd --verb draft --inputs '{"goal":"g"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: $PY $FX/bin/yset.py state/tasks/$T.json state approved --str
+  - name: move the hand-edited task to done
+    run: $PMOS task move $T done --by operator
+    expect: {exit: nonzero, output: '(?i)edit|hash|tamper|integrity|modified'}

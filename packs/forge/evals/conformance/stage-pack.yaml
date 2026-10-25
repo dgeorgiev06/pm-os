@@ -1,0 +1,28 @@
+kind: conformance
+name: stage-pack
+covers: [script:scripts/forge.py, mode:forge/new-pack]
+desc: >-
+  `forge.py stage-pack` creates a skeleton pack in staging (pack.yaml on the current core, a role,
+  evals folders); a first mode staged `--into` it with `--router` becomes the router with a
+  workflow case, and `--script` adds a script with its conformance case. The result is covered.
+steps:
+  - run: $PMOS task new --mode forge/new-pack --inputs '{"name":"acme","summary":"Acme","purpose":"p"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $T running && $PY $PACK/scripts/forge.py stage-pack --task $T --name acme --summary "Acme briefs"
+    expect:
+      stdout: '"role": "acme-writer"'
+      files:
+        contains: {outputs/$T/staged/acme/pack.yaml: 'core: \^0\.6'}
+        exists: [outputs/$T/staged/acme/roles.yaml, outputs/$T/staged/acme/evals/conformance, outputs/$T/staged/acme/evals/workflows]
+  - run: |
+      $PY $PACK/scripts/forge.py stage-mode --task $T --pack acme --name brief --summary "Brief" --into outputs/$T/staged/acme --router --script render_brief
+    expect:
+      files:
+        contains:
+          outputs/$T/staged/acme/pack.yaml: ['(?m)^router: brief', 'modes: \[brief\]']
+          outputs/$T/staged/acme/evals/workflows/brief-01.json: ['"router:acme/brief"', '"kind": "golden"']
+          outputs/$T/staged/acme/evals/conformance/brief-render-brief.yaml: ['script:modes/brief/scripts/render_brief\.py', 'kind: conformance']
+  - run: $PMOS eval --coverage outputs/$T/staged/acme
+    expect: {stdout: ['router:acme/brief', 'script:modes/brief/scripts/render_brief\.py', '(?i)no gaps']}
+  - run: $PMOS pack add outputs/$T/staged/acme --dry-run
+    expect: {stdout: ['(?i)passes admission', '(?i)conformance\D*1/1']}

@@ -1,0 +1,76 @@
+kind: conformance
+name: done-block-validated
+covers: [script:scripts/pmos.py]
+finding: request:done
+severity: high
+failure: true
+desc: >-
+  Every mode has a `done:` block (`must` with at least one line, optional `should`) and no
+  `acceptance` or `rubric`; lines are strings, `{code: …}` or `{principle: …}`. `validate` (and so
+  admission) errors on a mode without `done`, an empty `must`, a code line whose script doesn't
+  exist or isn't a covered pack or core script, a placeholder naming an output the mode doesn't
+  return, an unknown principle, and duplicate line ids.
+steps:
+  - name: the schema requires done and drops acceptance and rubric
+    run: |
+      $PY - <<'PY'
+      import glob, json, sys, yaml
+      s = json.load(open("contracts/mode.schema.json"))
+      bad = [k for k in ("acceptance", "rubric") if k in s["properties"]]
+      if "done" not in s["required"] or bad:
+          sys.exit(f"mode.schema.json: done required={'done' in s['required']}, still has {bad}")
+      for f in sorted(glob.glob("packs/*/modes/*/mode.yaml") + glob.glob("evals/framework/fixtures/packs/*/modes/*/mode.yaml")
+                      + glob.glob("packs/*/evals/fixtures/packs/*/modes/*/mode.yaml")):
+          m = yaml.safe_load(open(f)) or {}
+          if not (m.get("done") or {}).get("must") or "acceptance" in m or "rubric" in m:
+              sys.exit(f"{f}: needs done.must and no acceptance/rubric")
+      PY
+  - name: the clean tree validates (role rubric lines stay in roles.yaml)
+    run: $PMOS validate
+    expect: {stdout: '^OK'}
+  - name: a mode without done
+    run: |
+      cp packs/pm/modes/prd/mode.yaml prd.bak &&
+      $PY - <<'PY'
+      import yaml; f = "packs/pm/modes/prd/mode.yaml"; m = yaml.safe_load(open(f)); m.pop("done"); yaml.safe_dump(m, open(f, "w"), sort_keys=False)
+      PY
+      $PMOS validate
+    expect: {exit: nonzero, output: ['packs/pm/modes/prd/mode\.yaml', '(?i)\bdone\b']}
+  - name: an empty must
+    run: cp prd.bak packs/pm/modes/prd/mode.yaml && $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml done.must '[]' && $PMOS validate
+    expect: {exit: nonzero, output: ['packs/pm/modes/prd/mode\.yaml', '(?i)must']}
+  - name: a code line whose script doesn't exist
+    run: |
+      cp prd.bak packs/pm/modes/prd/mode.yaml &&
+      $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml done.must '[{code: "python packs/pm/modes/prd/scripts/nope.py {outputs.prd}"}]' && $PMOS validate
+    expect: {exit: nonzero, output: ['nope\.py', '(?i)not found|does not exist|missing']}
+  - name: a code line whose script is outside the pack's and core's scripts (so no case covers it)
+    run: |
+      cp prd.bak packs/pm/modes/prd/mode.yaml && echo 'print(1)' > context/check.py &&
+      $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml done.must '[{code: "python context/check.py {outputs.prd}"}]' && $PMOS validate
+    expect: {exit: nonzero, output: ['context/check\.py', '(?i)cover']}
+  - name: a placeholder naming an output the mode doesn't return
+    run: |
+      cp prd.bak packs/pm/modes/prd/mode.yaml &&
+      $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml done.must '[{code: "python scripts/check_doc.py --standard pm:standards/prd {outputs.banana}"}]' && $PMOS validate
+    expect: {exit: nonzero, output: ['banana', '(?i)returns']}
+  - name: an unknown principle
+    run: |
+      cp prd.bak packs/pm/modes/prd/mode.yaml &&
+      $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml done.should '[{principle: no-such-rule}]' && $PMOS validate
+    expect: {exit: nonzero, output: ['no-such-rule', '(?i)principle']}
+  - name: two lines with the same id
+    run: |
+      cp prd.bak packs/pm/modes/prd/mode.yaml &&
+      $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml done.should '[{id: twin, text: a}, {id: twin, text: b}]' && $PMOS validate
+    expect: {exit: nonzero, output: ['twin', '(?i)id']}
+  - name: the core and pack versions moved with the contract
+    run: cp prd.bak packs/pm/modes/prd/mode.yaml && $PMOS validate
+    expect:
+      stdout: '^OK'
+      files:
+        contains:
+          pm-os.yaml: '(?m)^version: 0\.6\.0'
+          packs/pm/pack.yaml: ['(?m)^version: 0\.4\.1', 'core: \^0\.6']
+          packs/cos/pack.yaml: ['(?m)^version: 0\.5\.1', 'core: \^0\.6']
+          packs/forge/pack.yaml: ['(?m)^version: 0\.5\.0', 'core: \^0\.6']

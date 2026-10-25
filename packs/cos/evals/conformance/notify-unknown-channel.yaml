@@ -1,0 +1,19 @@
+kind: conformance
+name: notify-unknown-channel
+covers: [mode:cos/notify, script:modes/notify/scripts/build_actions.py]
+failure: true
+desc: >-
+  build refuses a channel that is not in channels.yaml for the audience, an unknown audience, and an
+  entry whose audience has no channel of its kind.
+setup:
+  copy:
+    notify/channels.yaml: channels.yaml
+    notify/draft-internal.json: draft-internal.json
+    notify/draft-no-channel.json: draft-no-channel.json
+steps:
+  - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py build draft-internal.json --audience internal --task T-20261025-902 --out o --channels nope
+    expect: {exit: nonzero, stderr: "unknown channel 'nope'"}
+  - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py build draft-internal.json --audience partners --task T-20261025-902 --out o
+    expect: {exit: nonzero, stderr: "audience 'partners'"}
+  - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py build draft-no-channel.json --audience external --task T-20261025-902 --out o
+    expect: {exit: nonzero, stderr: 'no channels:channel/slack channel for external'}

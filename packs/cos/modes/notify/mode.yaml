@@ -1,0 +1,29 @@
+name: cos/notify
+version: 0.2.0
+contract: task@1
+author: dima
+summary: "Notify one audience from a checked template; propose one comms.send per recipient"
+verbs: [draft]
+accepts:
+  draft: doc_ref          # draft.json: {"notifications": [{"template": path?, "channel"?, "audience"?, "fields": {...}}]}
+  audience: string        # internal | external
+  channels: list?         # names in context/channels.yaml for the audience; default: every channel of the entry's kind
+  send_at: string?        # when to send, passed through to the action payload
+returns:
+  messages: doc_ref       # messages.json: one rendered preview per channel and recipient
+skill: SKILL.md
+default_role: notifier
+skills: []
+calls: []
+grants: { comms: draft, docs: read }
+approval: before_execute
+risk: medium            # a child for the external audience is started at high
+principles: [external-voice, known-recipients, core:usable-summary]
+done:
+  must:
+    - code: "python packs/cos/modes/notify/scripts/build_actions.py --check {outputs.messages}"
+    - principle: known-recipients
+    - "External messages contain nothing from the draft's internal-only section"
+  should:
+    - "Each channel's message fits that channel's conventions"
+evals: evals/

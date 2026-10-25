@@ -1,0 +1,13 @@
+name: demo
+version: 0.1.0
+contract: pack@1
+author: forge-evals
+summary: "Fixture pack for forge's conformance cases"
+requires:
+  core: ^0.6
+depends: []
+exports:
+  modes: [note]
+  roles: [writer]
+  skills: []
+  principles: []

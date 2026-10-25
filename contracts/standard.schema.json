@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pm-os/standard@1",
+  "title": "Document standard (standards/<name>.yaml)",
+  "description": "One document type's outline and rules, as data: the single source for its sections, the rules `scripts/check_doc.py` checks, and the judgment lines a Reviewer scores. A mode applies it with `standard: {ref, output}`; `task show` prints the outline.",
+  "type": "object",
+  "required": ["name", "version", "summary", "sections"],
+  "additionalProperties": false,
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "line": { "type": "string", "minLength": 1, "description": "One sentence (pmos lint: at most lint.budgets.standard_line words, no filler)" }
+  },
+  "properties": {
+    "name": { "$ref": "#/$defs/id", "description": "The file name without .yaml" },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "summary": { "type": "string", "maxLength": 140 },
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "description": "In document order. A section is the first heading that contains its title or an alias (any case); it runs to the next heading of the same or a higher level.",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "required", "contains"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "title": { "type": "string", "minLength": 1 },
+          "aliases": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Other headings accepted for this section" },
+          "required": { "type": "boolean" },
+          "contains": { "$ref": "#/$defs/line", "description": "What the section holds, shown to the Worker" },
+          "numbered": {
+            "type": "object",
+            "required": ["prefix"],
+            "additionalProperties": false,
+            "description": "Items in the section are numbered <prefix>1, <prefix>2, …; contiguous: no gaps",
+            "properties": {
+              "prefix": { "type": "string", "pattern": "^[A-Za-z]+$" },
+              "contiguous": { "type": "boolean", "default": true }
+            }
+          },
+          "fields": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "A table in the section has a column naming each field" },
+          "min_items": { "type": "integer", "minimum": 1, "description": "At least this many list items or table rows" }
+        }
+      }
+    },
+    "forbid": {
+      "type": "array",
+      "description": "Patterns that may not appear anywhere in the document",
+      "items": {
+        "type": "object",
+        "required": ["id", "pattern", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "pattern": { "type": "string", "minLength": 1, "description": "A Python regular expression" },
+          "message": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "judgment": {
+      "type": "array",
+      "description": "Rules code can't check; each becomes a must line (standard-1, …) the Reviewer judges",
+      "items": { "$ref": "#/$defs/line" }
+    }
+  }
+}

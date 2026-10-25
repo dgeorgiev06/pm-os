@@ -1,0 +1,26 @@
+kind: conformance
+name: render-worker-per-tier
+covers: [script:scripts/pmos.py]
+finding: performance#1
+owner: performance
+severity: high
+desc: >-
+  Role tiers reach the model: both adapters render one worker per tier (worker-small, worker-mid,
+  worker-top) with that tier's model, and the walkthrough no longer claims a tier the code didn't use.
+steps:
+  - run: $PMOS render claude-code
+    expect:
+      files:
+        contains:
+          .claude/agents/worker-small.md: '^model:\s*haiku'
+          .claude/agents/worker-mid.md: '^model:\s*sonnet'
+          .claude/agents/worker-top.md: '^model:\s*opus'
+  - run: $PMOS render generic
+    expect:
+      files:
+        exists: [build/generic/worker-small.system.md, build/generic/worker-mid.system.md, build/generic/worker-top.system.md]
+        contains: {build/generic/models.json: '"worker-top"[^}]*claude-opus'}
+  - name: the walkthrough's tier claim
+    run: 'true'
+    expect:
+      files: {not_contains: {docs/walkthrough-sprint-planning.md: '(?i)ranking used the top tier'}}

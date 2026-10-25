@@ -1,0 +1,53 @@
+kind: conformance
+name: done-checklist
+covers: [script:scripts/pmos.py]
+finding: request:done
+severity: high
+desc: >-
+  `task show --checklist` lists the core principles, then the done.must lines (strings, cited
+  principles, the task's --acceptance lines as task-N, and "Follows the PM's instructions" with the
+  text attached), then the must code lines (settled by pmos once a result ran them), then the
+  should lines: done.should, principles the mode or role cites that aren't musts, the role's rubric.
+  Every line has an id and a kind. `task show` prints the mode's definition of done for the Worker,
+  and the envelope keeps only the task's own acceptance lines.
+steps:
+  - run: >-
+      $PMOS task new --mode pm/prd --inputs '{"goal":"g"}' --acceptance "Names the validator set"
+      --instructions "Keep it to two pages"
+    capture: {T: '(T-\d{8}-\d{3,})'}
+    expect: {task: {id: $T, fields: {envelope.acceptance: '^\["Names the validator set"\]$'}}}
+  - name: the order, the ids and the kinds
+    run: |
+      $PMOS task show $T --checklist > cl.json && $PY - <<'PY'
+      import json, sys
+      cl = json.load(open("cl.json"))
+      seq = [(c["id"], c["kind"]) for c in cl]
+      print(seq)
+      kinds = [k for _, k in seq]
+      order = {"core": 0, "must": 1, "code": 2, "should": 3}
+      assert kinds == sorted(kinds, key=order.get), "kinds out of order"
+      ids = dict(seq)
+      want = {"core:grounded": "core", "standard-1": "must", "pm:testable-requirements": "must", "task-1": "must",
+              "pm-instructions": "must", "standard": "code", "pm:cite-customer-claims": "should",
+              "role-rubric-1": "should"}
+      bad = {i: (ids.get(i), k) for i, k in want.items() if ids.get(i) != k}
+      assert not bad, f"wrong or missing lines: {bad}"
+      by = {c["id"]: c for c in cl}
+      assert "two pages" in json.dumps(by["pm-instructions"]), "instructions text not attached"
+      assert "Names the validator set" in by["task-1"]["text"]
+      assert by["standard"].get("settled") is False and "check_doc.py" in by["standard"]["command"]
+      assert len(ids) == len(cl), "duplicate ids"
+      PY
+  - name: the Worker's brief shows the definition of done
+    run: $PMOS task show $T
+    expect: {stdout: ['(?i)definition of done', '`standard-1`', '`standard`', 'check_doc\.py', '`pm:testable-requirements`']}
+  - name: after a result the code line is settled, with its output
+    run: |
+      $PMOS task move $T running && $PY $FX/bin/mkresult.py --task $T --submit &&
+      $PMOS task show $T --checklist
+    expect:
+      stdout: ['"id": "standard"', '"settled": true', 'PASS']
+      task: {id: $T, state: in_review, fields: {done_code: '"id": "standard"'}}
+  - name: --for-review shows the settled line as settled
+    run: $PMOS task show $T --for-review
+    expect: {stdout: ['(?i)settled', '`standard`', '`standard-1`']}

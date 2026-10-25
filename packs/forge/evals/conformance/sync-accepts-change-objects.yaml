@@ -1,0 +1,30 @@
+kind: conformance
+name: sync-accepts-change-objects
+covers: [script:scripts/forge.py, action:repo.sync_pack]
+regression: true
+desc: >-
+  The repo.sync_pack payload carries the `forge.py changes` objects ({path, change}), as the forge skills
+  say. The handler applies exactly those files, and the approved task's pack gets the new mode.
+setup:
+  install: [demo]
+steps:
+  - run: $PMOS task new --mode forge/new-mode --inputs '{"pack":"demo","name":"brief","purpose":"a brief"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $T running && $PY $PACK/scripts/forge.py stage-mode --task $T --pack demo --name brief --summary "Brief"
+  - name: approved, with the change objects as the payload
+    run: |
+      $PY $PACK/scripts/forge.py changes outputs/$T/staged/demo --target packs/demo > changes.json &&
+      $PY - "$T" <<'PY'
+      import json, sys
+      t = sys.argv[1]
+      act = {"system": "repo", "op": "sync_pack", "idempotency_key": t + "-sync",
+             "payload": {"staged": f"outputs/{t}/staged/demo", "target": "packs/demo",
+                         "files": json.load(open("changes.json"))}, "preview": "Add demo/brief"}
+      json.dump(act, open("act.json", "w"))
+      PY
+      $PY $CORE_BIN/mkresult.py --task $T --status needs_approval --submit --action "$(cat act.json)" &&
+      $PY $CORE_BIN/advance.py --task $T --to awaiting_approval && $PMOS task approve $T --by pm && $PMOS action run $T
+    expect:
+      stdout: '"action": "repo.sync_pack"'
+      task: {id: $T, state: done}
+      files: {exists: packs/demo/modes/brief/mode.yaml}

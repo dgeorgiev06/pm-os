@@ -10,24 +10,47 @@ where the work comes from.
    its own modes; ties between packs go local → org → third-party, then to you. It chooses from
    the catalog (each mode's one-line `summary` and `accepts`). `pmos` then checks the choice: the
    mode must be exported, and the inputs must match `accepts`.
-2. **Delegating todos.** The `pm/todo-plan` Worker proposes a mode per todo; you approve the list
-   before any task exists. A todo with no clear match stays yours.
+2. **You delegate a todo.** Only when you direct it: you name the mode, or the CoS picks one from
+   the catalog and asks you if more than one fits ([below](#delegating-a-todo--only-when-you-direct-it)).
+   `cos/todos` plans your list but never delegates.
 3. **Inside a composite mode** (sprint planning creating a ticket task, the router running a plan),
-   the mode's own steps decide, limited to the modes listed in its `calls`, which `pmos` enforces.
+   the mode's own steps decide. A child must be one of the modes in the parent's `calls` list
+   (see [what pmos enforces](../README.md#what-pmos-enforces)).
 
 What keeps it honest: ambiguous cases go to you as a question, not a guess; misroutes show up in
 traces (blocked on inputs, failed review, you redirecting) and the improvement loop sharpens the
 summary that caused them. If routing needs to be more predictable, modes can list a few example
 asks in `mode.yaml` for the CoS to match against.
 
+## How work flows between tasks
+
+What `pmos` checks, rather than leaves to SKILL.md prose:
+
+- **Typed contracts.** `accepts` and `returns` use a closed set of types (`string`, `number`,
+  `integer`, `bool`, `list`, `object`, `doc_ref`, `diff_ref`, `?` for optional); anything else
+  fails admission. A `doc_ref`/`diff_ref` input must be an existing path or a `scheme:` ref.
+- **Results carry outputs.** A `done` or `needs_approval` result has `outputs: {name: value}`
+  matching the mode's `returns`: every required name, no unknown ones, values of the right type.
+- **Wiring.** An input may be `{"$from": "<task id>", "output": "<name>"}`. `pmos` checks the source
+  declares that output, adds it to `depends_on`, and resolves the value into `inputs_resolved` when
+  the task moves to running.
+- **Failure cascades.** When a task fails, its queued or blocked dependents fail too
+  ("dependency X failed"), so a parent waiting on them still wakes.
+- **What flows down.** Children inherit the parent's PM instructions (labelled with where they came
+  from), and every child's `usage.usd` counts against the parent's `max_usd`.
+- **Upgrades.** `pack add --upgrade` re-runs the checks of every pack that depends on the upgraded
+  one and refuses, naming them, unless `--force`. A task whose `mode@version` is no longer installed
+  is still shown from its stored mode directory.
+
 ## Who names a new mode
 
 `name` is an input to `forge/new-mode`, so whoever creates the envelope picks it: you, or the CoS
 from your words. Constraints: lowercase and hyphens, the pack prefix is forced, `forge.py` refuses
 duplicates, and the forge Worker stops if an existing mode already does the job. Your final say is
-the approval preview ("Add mode `pm/todo-plan` to pack pm"). Once installed, a name is part of the
+the approval preview ("Add mode `pm/weekly-update` to pack pm"). Once installed, a name is part of the
 contract (envelopes, `calls`, the router refer to it), so renaming later is a breaking change.
-Planned improvement: forge proposes the name and contract at an early gate (see the proposal).
+Planned improvement: forge proposes the name and contract at an early gate (see the
+[todo-plan proposal](history/todo-plan-proposal.md)).
 
 ## Todos and tasks
 
@@ -42,7 +65,7 @@ Built into the `cos` pack. Two different things, linked:
 | You say | What happens |
 | --- | --- |
 | "Add 'prep demo' due Wednesday, 2h" · "done td-3" · "move td-4 to Friday" | The CoS runs `todos.py` directly. Your words are the approval; no agent runs. |
-| "What's on my plate this week?" | The CoS runs `todos.py sync` and `todos.py plan`, and includes anything on the status board that's waiting on you. |
+| "What's on my plate this week?" | The CoS answers from `todos.py list` or `todos.py plan` and anything on the status board that's waiting on you, and runs `todos.py sync` in the background, reporting what it changes. |
 | "Plan my week; Thursday is all meetings; add the demo prep and push the API reading" | The `cos/todos` mode plans against your free hours and proposes a diff; you approve; the Operator applies it. |
 
 `todos.py plan` fits open todos into free hours (6 per weekday by default, or what you give it), due
@@ -54,7 +77,7 @@ date first, then priority, and lists what doesn't fit instead of dropping it.
 
 1. The CoS uses the mode you named, or picks one from the catalog and asks if more than one fits.
 2. It fills the mode's inputs from the todo and your words, and asks if a required input is missing.
-3. `pmos task new … --todo td-12 --instructions "<your words, verbatim>"` creates the task;
+3. `pmos task new … --origin cos:td-12 --instructions "<your words, verbatim>"` creates the task;
    `todos.py link` marks the todo delegated.
 4. The Worker sees your instructions at the top of `task show` and follows them; the Reviewer's
    checklist gains a line checking them. They never override a principle or an approval gate.

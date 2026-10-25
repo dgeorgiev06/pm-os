@@ -1,0 +1,22 @@
+{
+  "kind": "golden",
+  "name": "x-staking/main fixture case",
+  "covers": [
+    "mode:x-staking/main"
+  ],
+  "envelope": {
+    "verb": "draft",
+    "mode": "x-staking/main",
+    "inputs": {
+      "goal": "x"
+    },
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "low",
+    "approval": "before_publish"
+  },
+  "expect": [
+    "result.json exists"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "kind": "golden",
+  "name": "internal release note goes to the team Slack channel",
+  "covers": ["mode:cos/notify"],
+  "envelope": {
+    "verb": "draft",
+    "mode": "cos/notify",
+    "inputs": {
+      "draft": "packs/cos/evals/fixtures/notify/draft-internal.json",
+      "audience": "internal"
+    },
+    "acceptance": [
+      "one Slack message for the internal audience",
+      "build_actions.py --check passes on the messages"
+    ],
+    "risk": "medium",
+    "approval": "before_execute"
+  },
+  "fixtures": {
+    "channels.yaml": "packs/cos/evals/fixtures/notify/channels.yaml"
+  },
+  "expect": [
+    "the message is rendered from the generic Slack template, with no leftover placeholder",
+    "one comms.send action, to the internal channel listed in channels.yaml (run with PMOS_CHANNELS_FILE set to the fixture)",
+    "every action has an idempotency key and a preview equal to its rendered text",
+    "status needs_approval; no message was sent"
+  ]
+}

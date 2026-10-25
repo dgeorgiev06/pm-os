@@ -1,3 +1,6 @@
+---
+product: staking   # picks the product overlay skills (pack.yaml overlays); `task new --product` overrides; empty = none
+---
 # Product context
 
 Fill this in once; every role that lists it reads it. Keep it under two pages.

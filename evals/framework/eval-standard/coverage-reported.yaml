@@ -1,0 +1,25 @@
+kind: conformance
+name: coverage-reported
+covers: [script:scripts/pmos.py]
+finding: request:eval@1
+severity: medium
+failure: true
+desc: >-
+  `pmos eval --coverage` prints each pack's features and the cases covering them; today nothing
+  lacks a case. Remove pm's conformance cases and both `--coverage` and `validate` name the
+  uncovered scripts and the folder to add cases to.
+steps:
+  - run: $PMOS eval --coverage
+    expect:
+      stdout:
+        - 'script:scripts/pmos\.py'
+        - 'script:modes/sprint-planning/scripts/capacity\.py'
+        - 'standard:pm:prd'
+        - 'action:todos\.apply_diff'
+        - 'action:repo\.sync_pack'
+        - 'router:pm/router'
+        - '(?i)no gaps'
+  - run: rm -r packs/pm/evals/conformance && $PMOS eval --coverage
+    expect: {exit: nonzero, stdout: ['(?i)gap', 'script:modes/sprint-planning/scripts/capacity\.py', 'standard:pm:prd']}
+  - run: $PMOS validate
+    expect: {exit: nonzero, output: ['standard:pm:prd', 'packs/pm/evals/conformance/']}

@@ -1,0 +1,33 @@
+kind: conformance
+name: todos-apply-action
+covers: [action:todos.apply_diff, script:scripts/todos.py, mode:cos/todos]
+failure: true
+desc: >-
+  The `todos.apply_diff` handler: `pmos action run` applies an approved cos/todos diff; the handler
+  refuses a task that isn't approved and a diff outside the task's outputs folder.
+setup:
+  copy: {todos.yaml: t.yaml}
+steps:
+  - run: $PMOS task new --mode cos/todos --inputs '{"request":"add the demo prep"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: |
+      $PMOS task move $T running && mkdir -p outputs/$T &&
+      echo '[{"op": "add", "title": "Prep custodian demo", "due": "2026-10-28", "estimate_h": 2}]' > outputs/$T/diff.json &&
+      $PY $CORE_BIN/mkresult.py --task $T --status needs_approval --submit \
+        --action "{\"system\":\"todos\",\"op\":\"apply_diff\",\"idempotency_key\":\"$T-todos\",\"payload\":{\"diff\":\"outputs/$T/diff.json\"},\"preview\":\"Todos: +1 added\"}" &&
+      $PY $CORE_BIN/advance.py --task $T --to awaiting_approval
+  - name: not approved yet
+    run: |
+      echo "{\"task_id\": \"$T\", \"action\": {\"payload\": {\"diff\": \"outputs/$T/diff.json\"}}}" > act.json &&
+      PMOS_TODOS_FILE=t.yaml $PY $PACK/scripts/todos.py apply-action act.json
+    expect: {exit: nonzero, stderr: 'not approved'}
+  - name: a diff outside the task's outputs
+    run: |
+      cp outputs/$T/diff.json stray.json && echo "{\"task_id\": \"$T\", \"action\": {\"payload\": {\"diff\": \"stray.json\"}}}" > act2.json &&
+      PMOS_TODOS_FILE=t.yaml $PY $PACK/scripts/todos.py apply-action act2.json
+    expect: {exit: nonzero, stderr: 'outputs/'}
+  - run: $PMOS task approve $T --by pm && PMOS_TODOS_FILE=t.yaml $PMOS action run $T
+    expect:
+      stdout: '"action": "todos.apply_diff"'
+      task: {id: $T, state: done}
+      files: {contains: {t.yaml: 'title: Prep custodian demo'}}

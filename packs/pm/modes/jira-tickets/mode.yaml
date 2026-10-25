@@ -1,5 +1,5 @@
 name: pm/jira-tickets
-version: 0.2.0
+version: 0.3.0
 contract: task@1
 author: dima
 summary: Draft Jira tickets from a plan as dry-run actions, deduplicated against existing tickets
@@ -14,11 +14,16 @@ returns:
 skill: SKILL.md
 default_role: jira-curator
 calls: []
-grants: { jira: read }
+grants: { jira: draft }    # proposes create_issue / update_issue actions; only the Operator writes
 approval: before_execute
 risk: medium
 principles: [testable-requirements]
-rubric:
-  - Every action is a create_issue or update_issue with a full payload
-  - Duplicates flagged by dedupe.py are dropped or turned into updates
+done:
+  must:
+    - "Every ticket has acceptance criteria and an estimate"
+    - "No ticket duplicates an existing one: each duplicate dedupe.py flagged is dropped or became an update"
+    - "Every action is a create_issue or update_issue with a full payload, proposed and never written"
+    - principle: testable-requirements
+  should:
+    - "Each preview line gives the action, type, points and summary"
 evals: evals/

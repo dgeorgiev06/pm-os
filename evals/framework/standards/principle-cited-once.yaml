@@ -1,0 +1,31 @@
+kind: conformance
+name: principle-cited-once
+covers: [script:scripts/pmos.py]
+finding: request:standards
+severity: medium
+failure: true
+desc: >-
+  A principle is cited once per task: document-type principles on the mode, voice and style on the
+  role. `validate` (and so admission) fails when a mode and its default role cite the same
+  principle; forge:authoring states the rule; pm/doc-writer is a general writer (no PRD skill,
+  rubric or principle).
+steps:
+  - name: no built-in mode shares a principle with its default role
+    run: $PMOS validate
+    expect:
+      stdout: '(?m)^OK'
+      files:
+        contains: {packs/forge/skills/authoring/SKILL.md: '(?i)document-type principles .*mode.*voice'}
+  - name: pm/doc-writer is a general writer
+    run: $PMOS role show pm/doc-writer
+    expect: {stdout: 'pm/doc-writer', stdout_not: ['(?i)prd', '(?i)staking', 'testable-requirements', 'cite-customer-claims']}
+  - name: the role citing the mode's principle again
+    run: $PY $FX/bin/yset.py packs/pm/roles.yaml roles.doc-writer.principles '[testable-requirements]' && $PMOS validate
+    expect: {exit: nonzero, output: ['pm/prd', 'pm/doc-writer', '(?i)both cite principle pm:testable-requirements']}
+  - name: a done line counts as a citation too
+    run: |
+      $PY $FX/bin/yset.py packs/pm/roles.yaml roles.doc-writer.principles '[]' &&
+      $PY $FX/bin/yset.py packs/pm/roles.yaml roles.jira-curator.principles '[testable-requirements]' &&
+      $PY $FX/bin/yset.py packs/pm/modes/jira-tickets/mode.yaml principles '[]' &&
+      $PY $FX/bin/yset.py packs/pm/modes/jira-tickets/mode.yaml done.should '[{principle: testable-requirements}]' && $PMOS validate
+    expect: {exit: nonzero, output: ['pm/jira-tickets', '(?i)both cite principle pm:testable-requirements']}

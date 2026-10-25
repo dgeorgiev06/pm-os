@@ -1,0 +1,22 @@
+{
+  "kind": "golden",
+  "name": "assemble/bundle fixture case",
+  "covers": [
+    "mode:assemble/bundle"
+  ],
+  "envelope": {
+    "verb": "plan",
+    "mode": "assemble/bundle",
+    "inputs": {
+      "topic": "x"
+    },
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "low",
+    "approval": "before_execute"
+  },
+  "expect": [
+    "result.json exists"
+  ]
+}

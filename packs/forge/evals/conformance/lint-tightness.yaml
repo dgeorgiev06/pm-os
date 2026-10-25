@@ -1,0 +1,17 @@
+kind: conformance
+name: lint-tightness
+covers: [script:scripts/forge.py]
+failure: true
+desc: >-
+  `forge.py lint` runs core's tightness lint (`pmos lint DIR`) on the staged pack: word budgets,
+  mode structure, filler, restated principles and duplicate paragraphs fail it, with the lint's
+  message.
+setup:
+  install: [demo]
+steps:
+  - run: $PY $PACK/scripts/forge.py lint packs/demo
+    expect: {stdout: '^PASS'}
+  - name: an untagged step and filler
+    run: |
+      printf '3. Basically, make sure to leverage it, etc.\n' >> packs/demo/modes/note/SKILL.md && $PY $PACK/scripts/forge.py lint packs/demo
+    expect: {exit: 1, stdout: ['^FAIL', 'modes/note/SKILL\.md:\d+: step 3 has no tag', 'modes/note/SKILL\.md: \d+ filler phrase\(s\), over', '(?i)last step must run']}

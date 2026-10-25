@@ -1,0 +1,35 @@
+kind: conformance
+name: action-system-must-be-granted
+covers: [script:scripts/pmos.py]
+finding: modularity#2
+owner: modularity
+severity: high
+desc: >-
+  `task result` refuses an action whose system the mode isn't granted at draft or write level.
+  pm/prd has docs: draft and jira: read, so comms.send and jira.create_issue are refused and
+  docs.publish is accepted.
+steps:
+  - run: $PMOS task new --mode pm/prd --verb draft --inputs '{"goal":"g"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $T running
+  - name: comms.send (no comms grant)
+    run: >-
+      $PY $FX/bin/mkresult.py --task $T --submit
+      --action '{"system":"comms","op":"send","idempotency_key":"k1","payload":{"to":"#general"},"preview":"post"}'
+    expect: {exit: nonzero, output: '(?i)grant'}
+  - name: todos.apply_diff with a path outside the repo (no todos grant)
+    run: >-
+      $PY $FX/bin/mkresult.py --task $T --submit
+      --action '{"system":"todos","op":"apply_diff","idempotency_key":"k2","payload":{"diff":"/etc/hosts"},"preview":"apply"}'
+    expect: {exit: nonzero, output: '(?i)grant'}
+  - name: jira.create_issue (jira is read-only for pm/prd)
+    run: >-
+      $PY $FX/bin/mkresult.py --task $T --submit
+      --action '{"system":"jira","op":"create_issue","idempotency_key":"k3","payload":{"summary":"x"},"preview":"create"}'
+    expect: {exit: nonzero, output: '(?i)grant'}
+  - name: docs.publish (docs is draft) is still accepted
+    run: >-
+      $PY $FX/bin/mkresult.py --task $T --submit
+      --action '{"system":"docs","op":"publish","idempotency_key":"k4","payload":{"path":"outputs/x.md"},"preview":"publish"}'
+    expect:
+      task: {id: $T, state: in_review}

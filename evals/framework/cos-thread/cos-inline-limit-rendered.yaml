@@ -1,0 +1,27 @@
+kind: conformance
+name: cos-inline-limit-rendered
+covers: [script:scripts/pmos.py]
+finding: request:cos-thread
+severity: high
+failure: true
+desc: >-
+  The CoS answers directly only within `cos.inline_max_tool_calls` (2) quick tool calls on the status
+  board, the catalog, the decisions log, a task's summary or todos.py read commands; anything bigger
+  becomes a task. COS.md holds `{{cos.<key>}}` placeholders, `pmos catalog` fills them from
+  pm-os.yaml, and an unknown placeholder fails validate.
+steps:
+  - run: 'true'
+    expect:
+      files:
+        contains:
+          pm-os.yaml: '(?m)^\s+inline_max_tool_calls: 2\b'
+          packs/cos/COS.md: ['\{\{cos\.inline_max_tool_calls\}\}', 'status\.md', 'catalog', 'decisions\.log', 'todos\.py (list|read)', '(?i)becomes a task|create a task|make it a task']
+          AGENTS.md: '(?i)\b2 quick tool calls'
+  - name: no hard-coded call count in COS.md
+    run: '! grep -niE "\b[0-9]+ (quick )?tool calls?" packs/cos/COS.md'
+  - name: rendered from pm-os.yaml
+    run: $PY $FX/bin/yset.py pm-os.yaml cos.inline_max_tool_calls 3 && $PMOS catalog && $PMOS validate
+    expect: {stdout: '^OK', files: {contains: {AGENTS.md: '(?i)\b3 quick tool calls'}}}
+  - name: an unknown placeholder fails
+    run: printf '\nUse {{cos.no_such_key}} here.\n' >> packs/cos/COS.md && $PMOS validate
+    expect: {exit: 1, output: ['(?i)placeholder', 'cos\.no_such_key']}

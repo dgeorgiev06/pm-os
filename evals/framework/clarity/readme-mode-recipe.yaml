@@ -1,0 +1,21 @@
+kind: conformance
+name: readme-mode-recipe
+covers: [script:scripts/pmos.py]
+finding: clarity#5
+owner: clarity
+severity: medium
+desc: >-
+  Adding a mode by hand is specified: the README's recipe names every field mode.schema.json
+  requires (read from the schema), or a `pmos new mode` scaffold exists.
+steps:
+  - run: |
+      $PMOS new mode --help >/dev/null 2>&1 && exit 0
+      $PY $FX/bin/section.py README.md "adding to a pack|add a mode|by hand" > recipe.md || exit 1
+      $PY - <<'PY'
+      import json, re, sys
+      required = json.load(open("contracts/mode.schema.json"))["required"]
+      text = open("recipe.md").read()
+      missing = [f for f in required if not re.search(rf"`{f}`|\b{f}:", text)]
+      print("required mode.yaml fields the recipe doesn't name:", missing)
+      sys.exit(1 if missing else 0)
+      PY

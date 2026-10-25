@@ -1,0 +1,22 @@
+{
+  "kind": "golden",
+  "name": "assemble/part fixture case",
+  "covers": [
+    "mode:assemble/part"
+  ],
+  "envelope": {
+    "verb": "draft",
+    "mode": "assemble/part",
+    "inputs": {
+      "topic": "x"
+    },
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "low",
+    "approval": "before_publish"
+  },
+  "expect": [
+    "result.json exists"
+  ]
+}

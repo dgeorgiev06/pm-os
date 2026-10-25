@@ -1,0 +1,33 @@
+kind: conformance
+name: doc-claims-backed
+covers: [script:scripts/pmos.py]
+finding: clarity#9
+owner: clarity
+severity: medium
+desc: >-
+  Docs state only what code enforces. Each claim the reviews found false must either be reworded
+  or be made true: calls "which pmos enforces" (routing doc), "children draw down the parent's"
+  budget (architecture), and "three steps are already codified" (README).
+setup:
+  install: [gtm]
+steps:
+  - name: routing doc - calls are enforced
+    run: |
+      grep -qiE 'calls[^.]*pmos[^.]*enforc' docs/routing-and-delegation.md || exit 0
+      P=$($PMOS task new --mode pm/prd --verb draft --inputs '{"goal":"g"}') && $PMOS task move $P running >/dev/null || exit 1
+      if $PMOS task new --parent $P --mode pm/sprint-planning --verb plan --inputs '{"sprint":"S","project":"STK"}'; then
+        echo "routing-and-delegation.md says pmos enforces calls, but a pm/prd parent started pm/sprint-planning"; exit 1
+      fi
+  - name: architecture - children draw down the parent's budget
+    run: |
+      grep -qiE "draw down the parent" docs/architecture.md README.md || exit 0
+      L=$($PMOS task new --mode gtm/launch-pack --verb plan --inputs '{"goal":"x"}' --budget-usd 1.0) && $PMOS task move $L running >/dev/null || exit 1
+      A=$($PMOS task new --parent $L --mode pm/prd --verb draft --inputs '{"goal":"g"}') || exit 1
+      B=$($PMOS task new --parent $L --mode pm/prd --verb draft --inputs '{"goal":"h"}') || exit 1
+      $PMOS task move $L waiting >/dev/null && $PMOS task move $A running >/dev/null && $PY $FX/bin/mkresult.py --task $A --usage '{"usd":0.7}' --submit || exit 1
+      $PMOS task move $B running >/dev/null || exit 1
+      if $PY $FX/bin/mkresult.py --task $B --usage '{"usd":0.5}' --submit; then
+        echo "the docs say children draw down the parent's budget, but two children spent 1.2 of a 1.0 budget"; exit 1
+      fi
+  - name: README - the codified-steps count
+    run: '! grep -ni "three steps are already codified" README.md'

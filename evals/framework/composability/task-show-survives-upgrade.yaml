@@ -1,0 +1,21 @@
+kind: conformance
+name: task-show-survives-upgrade
+covers: [script:scripts/pmos.py]
+finding: composability#3
+owner: composability
+severity: high
+desc: >-
+  An in-flight task pinned to pm/prd@0.4.0 still shows after pm/prd moves to 0.5.0 (task show
+  falls back to the stored mode_dir) instead of "no installed mode matches".
+steps:
+  - name: set aside release-comms, which depends on pm@^0.4 and would block a 0.5 bump in this case
+    run: $PMOS pack remove release-comms
+  - run: $PMOS task new --mode pm/prd --verb draft --inputs '{"goal":"g"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: |
+      $PY $FX/bin/yset.py packs/pm/pack.yaml version 0.5.0 &&
+      $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml version 0.5.0 &&
+      $PY $FX/bin/yset.py packs/pm/modes/router/mode.yaml calls '[pm/prd@^0.5, pm/sprint-planning@^0.3, pm/jira-tickets@^0.3, pm/release-notes@^0.2]' &&
+      $PMOS pack add packs/pm --upgrade --approve-grants
+  - run: $PMOS task show $T
+    expect: {stdout: 'pm/prd'}

@@ -1,0 +1,36 @@
+kind: conformance
+name: send-retry-skips-sent
+covers: [script:scripts/pmos.py]
+failure: true
+desc: >-
+  With two sends on one approved task, a receipt for the first and a retry: the first is sent once
+  (`applied.json` keeps its receipt, and the retry says already applied); the task is done only when the
+  second receipt arrives.
+setup:
+  copy:
+    send/channels.yaml: channels.yaml
+    send/draft.json: draft.json
+steps:
+  - run: $PMOS task new --mode cos/notify --verb draft --inputs '{"draft":"draft.json","audience":"internal"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: |
+      $PMOS task move $T running &&
+      PMOS_CHANNELS_FILE=channels.yaml $PY packs/cos/modes/notify/scripts/build_actions.py build draft.json --audience internal --task $T --out outputs/$T &&
+      PMOS_CHANNELS_FILE=channels.yaml $PY $FX/bin/mkresult.py --task $T --status needs_approval --submit \
+        --outputs-json "{\"messages\": \"outputs/$T/messages.json\"}" \
+        --action "{\"system\":\"comms\",\"op\":\"send\",\"idempotency_key\":\"$T-team-slack-1\",\"payload\":{\"audience\":\"internal\",\"channel\":\"channels:channel/slack\",\"recipient\":\"C0PRODUCT1\",\"text\":\"First note.\"},\"preview\":\"First note.\"}" \
+        --action "{\"system\":\"comms\",\"op\":\"send\",\"idempotency_key\":\"$T-team-slack-2\",\"payload\":{\"audience\":\"internal\",\"channel\":\"channels:channel/slack\",\"recipient\":\"C0PRODUCT1\",\"text\":\"Second note.\"},\"preview\":\"Second note.\"}" &&
+      $PY $FX/bin/advance.py --task $T --to awaiting_approval && $PMOS task approve $T --by pm
+  - run: |
+      $PY $FX/bin/yset.py pm-os.yaml adapters.claude-code.channel_tools '{"channels:channel/slack": ["mcp__slack__post_message"]}'
+  - name: the first receipt is recorded; the second send is still pending
+    run: PMOS_CHANNELS_FILE=channels.yaml $PMOS action run $T --receipt $T-team-slack-1=C-RCPT-1
+    expect: {exit: 2, stdout: 'pending_send'}
+  - name: the retry does not send the first again
+    run: PMOS_CHANNELS_FILE=channels.yaml $PMOS action run $T --receipt $T-team-slack-2=C-RCPT-2
+    expect:
+      exit: 0
+      stdout: 'already applied'
+      task: {id: $T, state: done}
+      files:
+        contains: {'outputs/*/applied.json': 'C-RCPT-2'}

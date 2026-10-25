@@ -1,0 +1,29 @@
+kind: conformance
+name: stage-mode
+covers: [script:scripts/forge.py, mode:forge/new-mode]
+desc: >-
+  `forge.py stage-mode` copies the installed pack to outputs/<id>/staged/, adds a skeleton mode that
+  meets the coverage rule (golden and failure cases) and has a `done:` block, exports it and bumps the pack's minor
+  version; `changes` lists the new files; nothing under packs/ changes.
+setup:
+  install: [demo]
+steps:
+  - run: $PMOS task new --mode forge/new-mode --inputs '{"pack":"demo","name":"brief","purpose":"a brief"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $T running && $PY $PACK/scripts/forge.py stage-mode --task $T --pack demo --name brief --summary "Short brief"
+    expect:
+      stdout: ['"pack_version": "0.2.0"']
+      files:
+        exists: [outputs/$T/staged/demo/modes/brief/mode.yaml, outputs/$T/staged/demo/modes/brief/evals/golden-01.json, outputs/$T/staged/demo/modes/brief/evals/golden-fail.json]
+        contains: {outputs/$T/staged/demo/pack.yaml: 'modes: \[note, brief\]', outputs/$T/staged/demo/modes/brief/mode.yaml: ['(?m)^done:', '(?m)^  must:']}
+        absent: packs/demo/modes/brief
+  - run: $PMOS eval --coverage outputs/$T/staged/demo
+    expect: {stdout: '(?i)no gaps'}
+  - run: $PY $PACK/scripts/forge.py changes outputs/$T/staged/demo --target packs/demo
+    expect: {stdout: ['"path": "pack.yaml"', '"change": "modified"', '"path": "modes/brief/mode.yaml"', '"change": "added"']}
+  - name: the skeleton still has TODO markers
+    run: $PY $PACK/scripts/forge.py lint outputs/$T/staged/demo --target packs/demo
+    expect: {exit: 1, stdout: ['FAIL', 'unresolved TODO']}
+  - name: a dry-run admission of the staged pack
+    run: $PMOS pack add outputs/$T/staged/demo --upgrade --dry-run
+    expect: {stdout: '(?i)passes admission'}

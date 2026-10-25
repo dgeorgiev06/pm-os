@@ -1,0 +1,25 @@
+kind: conformance
+name: lint
+covers: [script:scripts/forge.py]
+failure: true
+desc: >-
+  `forge.py lint` flags `TODO:` markers, a SKILL.md name that doesn't match its mode, and coverage
+  gaps; DIR defaults to --target; with neither it refuses.
+setup:
+  install: [demo]
+steps:
+  - run: $PY $PACK/scripts/forge.py lint --target packs/demo
+    expect: {stdout: '^PASS'}
+  - run: $PY $PACK/scripts/forge.py lint packs/demo
+    expect: {stdout: '^PASS'}
+  - run: $PY $PACK/scripts/forge.py lint
+    expect: {exit: nonzero, stderr: '(?i)DIR|--target'}
+  - name: a wrong skill name and a TODO marker
+    run: |
+      sed -i 's/^description:/name: demo-wrong\ndescription:/' packs/demo/modes/note/SKILL.md &&
+      echo "# TODO: finish" >> packs/demo/modes/note/SKILL.md && $PY $PACK/scripts/forge.py lint packs/demo
+    expect: {exit: 1, stdout: ["frontmatter name should be 'demo-note'", 'unresolved TODO']}
+  - name: a coverage gap
+    run: |
+      rm packs/demo/modes/note/evals/golden-fail.json && $PY $PACK/scripts/forge.py lint packs/demo
+    expect: {exit: 1, stdout: ['(?i)coverage', 'mode:demo/note']}

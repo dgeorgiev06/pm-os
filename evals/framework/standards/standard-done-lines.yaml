@@ -1,0 +1,58 @@
+kind: conformance
+name: standard-done-lines
+covers: [script:scripts/pmos.py]
+finding: request:standards
+severity: high
+desc: >-
+  A mode that declares `standard:` gets its done lines from the standard: the code line `standard`
+  (check_doc.py on the named output) and one must line per judgment line (`standard-1`, …), so
+  mode.yaml keeps only its own judgment lines. `task show` prints the standard's outline (titles,
+  what each section contains, its rules) once, generated. pmos runs the `standard` line at
+  `task result`: a PRD missing a section goes back to revise naming the rule.
+steps:
+  - name: pm/prd's own files state no PRD rule
+    run: 'true'
+    expect:
+      files:
+        not_contains:
+          packs/pm/modes/prd/mode.yaml: ['(?i)check_prd', '(?i)success metrics', '(?i)personas', '(?i)baseline', 'R1']
+          packs/pm/modes/prd/SKILL.md: ['(?i)success metrics', '(?i)personas', '\bR1\b', '(?i)baseline']
+          packs/pm/skills/domain/prd-structure/SKILL.md: ['(?i)success metrics', '(?i)open questions', '\bR1\b', '(?i)baseline', '(?i)check_prd']
+          packs/pm/roles.yaml: ['(?i)success metrics', '(?i)prd-structure']
+        absent: [packs/pm/modes/prd/scripts/check_prd.py]
+  - run: $PMOS task new --mode pm/prd --inputs '{"goal":"g"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - name: the checklist has the derived lines
+    run: |
+      $PMOS task show $T --checklist > cl.json && $PY - <<'PY'
+      import json
+      by = {c["id"]: c for c in json.load(open("cl.json"))}
+      s = by["standard"]
+      assert s["kind"] == "code" and "scripts/check_doc.py --standard pm:standards/prd {outputs.prd}" in s["command"], s
+      assert by["standard-1"]["kind"] == "must" and by["standard-2"]["kind"] == "must", list(by)
+      assert "pm:testable-requirements" in by and "code-1" not in by, list(by)
+      PY
+  - name: task show prints the outline once, from the standard
+    run: $PMOS task show $T > brief.md && cat brief.md && test "$(grep -c 'Problem (required)' brief.md)" = 1
+    expect:
+      stdout:
+        - 'Document standard: pm:standards/prd'
+        - '(?m)^- Problem \(required\): '
+        - '(?m)^- Requirements \(required\): .*numbered R1, R2, … with no gaps'
+        - '(?m)^- Non-goals \(optional\): '
+        - '(?m)^- never: '
+        - '`standard`: `python scripts/check_doc\.py'
+        - '`standard-1`: '
+  - name: the standard line runs at task result; a PRD without its sections goes to revise, naming the rule
+    run: |
+      $PMOS task move $T running && mkdir -p outputs/$T && printf '# PRD\n\n## Problem\nx\n' > outputs/$T/prd.md &&
+      $PY $FX/bin/mkresult.py --task $T --outputs-json "{\"prd\": \"outputs/$T/prd.md\"}" --submit
+    expect:
+      exit: nonzero
+      task: {id: $T, state: revise, fields: {revision_brief: '"standard"', done_code: 'section:personas'}}
+  - name: a PRD that meets the standard passes the line
+    run: |
+      $PMOS task move $T running && cp packs/pm/evals/fixtures/prd-good.md outputs/$T/prd.md &&
+      $PY $FX/bin/mkresult.py --task $T --outputs-json "{\"prd\": \"outputs/$T/prd.md\"}" --submit
+    expect:
+      task: {id: $T, state: in_review, fields: {done_code: '"id": "standard"[^}]*"pass": true'}}

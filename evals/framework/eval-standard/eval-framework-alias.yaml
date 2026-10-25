@@ -1,0 +1,13 @@
+kind: conformance
+name: eval-framework-alias
+covers: [script:scripts/pmos.py, script:scripts/framework_eval.py]
+finding: request:eval@1
+severity: medium
+desc: >-
+  Core is the pack `core` and evals/framework/ is its conformance folder: `pmos eval core --kind
+  conformance` runs those cases, and `pmos eval --framework` still works as its alias.
+steps:
+  - run: $PMOS eval core --kind conformance --case verb-defaults
+    expect: {stdout: '(?m)^core: 1/1 passed'}
+  - run: $PMOS eval --framework clarity --case verb-defaults --json
+    expect: {stdout: '"passed": 1'}

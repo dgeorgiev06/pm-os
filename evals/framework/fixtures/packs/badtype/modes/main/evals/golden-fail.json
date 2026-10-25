@@ -1,0 +1,21 @@
+{
+  "kind": "golden",
+  "name": "badtype/main fixture failure case",
+  "covers": [
+    "mode:badtype/main"
+  ],
+  "failure": true,
+  "envelope": {
+    "verb": "draft",
+    "mode": "badtype/main",
+    "inputs": {},
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "low",
+    "approval": "before_publish"
+  },
+  "expect": [
+    "an unanswerable request is returned as status blocked with one open question"
+  ]
+}

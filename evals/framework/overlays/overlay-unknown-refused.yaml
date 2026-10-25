@@ -1,0 +1,17 @@
+kind: conformance
+name: overlay-unknown-refused
+covers: [script:scripts/pmos.py]
+finding: request:overlays
+severity: medium
+failure: true
+desc: >-
+  A product no installed pack has an overlay for is refused, from the flag or from context, with
+  the list of known products. `validate` checks overlay skill refs like a role's skills.
+steps:
+  - run: $PMOS task new --mode pm/prd --inputs '{"goal":"g"}' --product banana
+    expect: {exit: nonzero, output: ['(?i)product', 'banana', 'staking']}
+  - run: $PY $FX/bin/yset.py context/product.md product banana --front && $PMOS task new --mode pm/prd --inputs '{"goal":"g"}'
+    expect: {exit: nonzero, output: ['(?i)product', 'banana', 'context/product\.md', 'staking']}
+  - name: an overlay naming a missing skill
+    run: $PY $FX/bin/yset.py packs/pm/pack.yaml overlays.staking '[product/no-such]' && $PMOS validate
+    expect: {exit: nonzero, output: ['packs/pm/pack\.yaml', 'overlays', 'pm:product/no-such', '(?i)not found']}

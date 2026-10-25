@@ -1,0 +1,28 @@
+kind: conformance
+name: regression-valid-work-accepted
+covers: [script:scripts/pmos.py]
+finding: modularity#good
+owner: modularity
+severity: high
+regression: true
+desc: >-
+  Guards for the new runtime checks: legitimate work still goes through. A launch-pack parent
+  starts its pm/prd child, a pm/prd result with a docs.publish action is accepted and reaches
+  awaiting_approval after review, and approval pins the actions' hash.
+setup:
+  install: [gtm]
+steps:
+  - run: $PMOS task new --mode gtm/launch-pack --verb plan --inputs '{"goal":"launch"}'
+    capture: {L: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $L running && $PMOS task new --parent $L --mode pm/prd --verb draft --inputs '{"goal":"g"}'
+    capture: {C: '(T-\d{8}-\d{3,})'}
+  - run: >-
+      $PMOS task move $C running && $PY $FX/bin/mkresult.py --task $C --submit
+      --action '{"system":"docs","op":"publish","idempotency_key":"c-pub","payload":{"path":"outputs/x.md"},"preview":"publish"}'
+    expect:
+      task: {id: $C, state: in_review}
+  - run: $PY $FX/bin/advance.py --task $C --to awaiting_approval
+  - run: $PMOS task approve $C --by pm
+    expect:
+      stdout: 'sha'
+      task: {id: $C, state: approved, fields: {approvals.0.actions_sha: '^[0-9a-f]{8,}$'}}

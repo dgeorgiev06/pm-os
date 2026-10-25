@@ -1,0 +1,40 @@
+kind: conformance
+name: slack
+covers: [channel:channels/slack, action:comms.send-slack, script:scripts/send.py]
+failure: true
+desc: >-
+  The slack channel: slack_mrkdwn at most 150 words, a recipient that is a Slack channel id (not a name),
+  **bold** rendered as *bold* and a link as <url|text>, and a send that refuses unmapped and records a receipt.
+setup:
+  files:
+    md.txt: "**Release 2.4** ships. See [notes](https://docs.example.test/2-4)."
+    long.txt: "word word word word word word word word word word word word word word word word word word word word word"
+    act.json: '{"task_id": "T-20261025-921", "action": {"system": "comms", "op": "send", "idempotency_key": "T-20261025-921-slack-1", "payload": {"audience": "internal", "channel": "channels:channel/slack", "recipient": "C0PRODUCT1", "text": "*Release 2.4* ships."}, "preview": "Release 2.4 ships."}}'
+    rcpt.json: '{"task_id": "T-20261025-921", "receipt": "1714000000.000100", "action": {"system": "comms", "op": "send", "idempotency_key": "T-20261025-921-slack-1", "payload": {"audience": "internal", "channel": "channels:channel/slack", "recipient": "C0PRODUCT1", "text": "x"}, "preview": "x"}}'
+    bad.json: '{"task_id": "T-20261025-921", "action": {"system": "comms", "op": "send", "idempotency_key": "T-20261025-921-slack-2", "payload": {"audience": "internal", "channel": "channels:channel/slack", "recipient": "#product-updates", "text": "Hi."}, "preview": "Hi."}}'
+steps:
+  - name: Markdown becomes Slack mrkdwn
+    run: $PMOS channel render channels:channel/slack --text md.txt
+    expect: {stdout: '\*Release 2.4\* ships\. See <https://docs.example.test/2-4\|notes>\.'}
+  - name: more than 150 words is refused
+    run: $PY -c "print('w ' * 151)" > over.txt && $PMOS channel check channels:channel/slack --text over.txt
+    expect: {exit: nonzero, stderr: 'max_words'}
+  - name: a channel name is not a Slack channel id
+    run: $PMOS channel check channels:channel/slack --text md.txt --recipient '#product-updates'
+    expect: {exit: nonzero, stderr: 'recipient'}
+  - name: a Slack channel id passes
+    run: $PMOS channel check channels:channel/slack --text md.txt --recipient C0PRODUCT1
+    expect: {exit: 0}
+  - name: the send refuses while no tool is mapped
+    run: $PY $PACK/scripts/send.py act.json
+    expect: {exit: nonzero, stderr: 'not configured'}
+  - name: a tool is mapped; the send is verified but not sent
+    run: |
+      $PY $CORE_BIN/yset.py pm-os.yaml adapters.claude-code.channel_tools '{"channels:channel/slack": ["mcp__slack__post_message"]}' && $PY $PACK/scripts/send.py act.json
+    expect: {exit: 0, stdout: '"sent": false'}
+  - name: the receipt is recorded
+    run: $PY $PACK/scripts/send.py rcpt.json
+    expect: {exit: 0, stdout: '1714000000.000100'}
+  - name: a channel name is refused by the send
+    run: $PY $PACK/scripts/send.py bad.json
+    expect: {exit: nonzero, stderr: 'recipient'}

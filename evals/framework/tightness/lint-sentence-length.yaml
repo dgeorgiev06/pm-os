@@ -1,0 +1,13 @@
+kind: conformance
+name: lint-sentence-length
+covers: [script:scripts/tightness.py]
+finding: request:tightness
+severity: low
+desc: >-
+  An average sentence over `lint.sentence_avg_max` (22) words is a warning, not an error.
+steps:
+  - name: today's files read in short sentences
+    run: $PMOS lint
+    expect: {stdout_not: '(?i)average sentence'}
+  - run: $PY $CORE_BIN/mktext.py packs/pm/skills/domain/x/SKILL.md 200 --sentence 40 && $PMOS lint
+    expect: {stdout: '(?m)^warn: packs/pm/skills/domain/x/SKILL\.md: average sentence is \d+ words \(lint\.sentence_avg_max 22\)', stdout_not: '(?m)^error:'}

@@ -1,0 +1,26 @@
+{
+  "kind": "golden",
+  "name": "a ref that doesn't exist blocks instead of guessing",
+  "covers": [
+    "mode:forge/review-framework"
+  ],
+  "failure": true,
+  "envelope": {
+    "verb": "review",
+    "mode": "forge/review-framework",
+    "inputs": {
+      "aspect": "modularity",
+      "ref": "no-such-branch"
+    },
+    "acceptance": [
+      "asks which ref to review instead of reviewing something else"
+    ],
+    "risk": "low",
+    "approval": "none"
+  },
+  "expect": [
+    "conformance.py exits non-zero with an error naming 'no-such-branch'",
+    "the result has status blocked and exactly one open question asking which ref or path to review",
+    "no report.md is written, and nothing outside outputs/<id>/ changed"
+  ]
+}

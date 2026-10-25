@@ -1,0 +1,17 @@
+kind: conformance
+name: instructions-inherited
+covers: [script:scripts/pmos.py]
+finding: composability#7
+owner: composability
+severity: medium
+desc: Children inherit the parent's PM instructions, labelled with where they came from.
+setup:
+  install: [gtm]
+steps:
+  - run: $PMOS task new --mode gtm/launch-pack --verb plan --inputs '{"goal":"launch"}' --instructions "Focus on custodians and keep it to a page."
+    capture: {L: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $L running
+  - run: $PMOS task new --parent $L --mode pm/prd --verb draft --inputs '{"goal":"g"}'
+    capture: {C: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task show $C
+    expect: {stdout: 'Focus on custodians'}

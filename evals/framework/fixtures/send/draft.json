@@ -1,0 +1,2 @@
+{"notifications": [{"channel": "channels:channel/slack", "audience": "internal",
+  "fields": {"message": "Release 2.4 ships Oct 30: routing changes are live."}}]}

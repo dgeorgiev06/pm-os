@@ -4,17 +4,10 @@ description: Draft release notes from the Jira tickets closed in a sprint, for c
 ---
 # pm/release-notes — release notes from a closed sprint
 
-Step tags: `[model]` = your judgment · `[code: …]` = run the script, don't do it by hand ·
-`[candidate-code]` = done by you for now, on the list to become a script.
+Inputs: `sprint` · `project` · `audience`: `customers` (default) or `internal`.
 
-## Inputs (from the envelope)
-
-`sprint` and `project` (required) · `audience`: `customers` (default) or `internal`.
-
-## Steps
-
-1. `[code: python scripts/pmos.py task show <id>]` — load the envelope, role (pm/communicator),
-   principles and any revise notes. If revising, start from `outputs/<id>/notes.md`.
+1. `[code: python scripts/pmos.py task show <id>]` — the envelope, role and any revise notes. On a
+   revision, start from `outputs/<id>/notes.md`.
 2. `[candidate-code]` Read the tickets closed in the sprint with read-only Jira tools
    (`project = <project> AND sprint = "<sprint>" AND status = Done`). Save `outputs/<id>/closed.json`
    as a list of `{key, summary, type, labels, description}`.
@@ -24,8 +17,7 @@ Step tags: `[model]` = your judgment · `[code: …]` = run the script, don't do
 4. `[model]` Write `outputs/<id>/notes.md` from `sections.json`: a one-paragraph lead on what changed
    for the reader, then one section per non-empty group. One line per item in the reader's terms,
    ending with the ticket key. For customers, describe only behavior the ticket itself states.
-5. `[model]` Self-check against the envelope's `acceptance` and every principle and rubric line
-   `task show` lists.
-6. `[code: python scripts/pmos.py task result <id> outputs/<id>/result.json]` with `status: "done"`,
-   `artifacts: [{"kind": "doc", "ref": "outputs/<id>/notes.md"}]`, and `actions: []` unless the
-   envelope asks to publish (then one `docs.publish` action with a preview line).
+5. `[code: python scripts/pmos.py task result <id> outputs/<id>/result.json]` with `status: "done"`,
+   `artifacts: [{"kind": "doc", "ref": "outputs/<id>/notes.md"}]`, `outputs: {"notes": "outputs/<id>/notes.md"}`,
+   and `actions: []` unless the envelope asks to publish (then one `docs.publish` action with a
+   preview line).

@@ -1,0 +1,29 @@
+kind: conformance
+name: todos-link-sync
+covers: [script:scripts/todos.py, mode:cos/todos]
+failure: true
+desc: >-
+  `link` records a delegation the PM directed (refused for a task that doesn't exist or a closed
+  todo); `sync` closes the todo when its task is done and hands it back when the task failed.
+setup:
+  copy: {todos.yaml: t.yaml}
+steps:
+  - run: $PMOS task new --mode cos/todos --inputs '{"request":"plan my week"}' --origin cos:td-3
+    capture: {A: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task new --mode cos/todos --inputs '{"request":"plan next week"}' --origin cos:td-4
+    capture: {B: '(T-\d{8}-\d{3,})'}
+  - run: PMOS_TODOS_FILE=t.yaml $PY $PACK/scripts/todos.py link td-3 $A --mode cos/todos --instructions "keep it short"
+    expect: {stdout: 'td-3 delegated to cos/todos as T-'}
+  - run: PMOS_TODOS_FILE=t.yaml $PY $PACK/scripts/todos.py link td-4 $B --mode cos/todos
+  - run: PMOS_TODOS_FILE=t.yaml $PY $PACK/scripts/todos.py link td-1 T-20990101-999 --mode cos/todos
+    expect: {exit: nonzero, stderr: 'no pmos task'}
+  - run: PMOS_TODOS_FILE=t.yaml $PY $PACK/scripts/todos.py link td-3 $B --mode cos/todos
+    expect: {exit: nonzero, stderr: 'delegated'}
+  - name: A done, B failed
+    run: |
+      $PMOS task move $A running && $PY $CORE_BIN/mkresult.py --task $A --submit && $PY $CORE_BIN/advance.py --task $A --to done &&
+      $PMOS task move $B failed --note "fixture"
+  - run: PMOS_TODOS_FILE=t.yaml $PY $PACK/scripts/todos.py sync
+    expect: {stdout: ['td-3 done via T-', 'td-4 blocked: T-\d{8}-\d{3,} failed']}
+  - run: PMOS_TODOS_FILE=t.yaml $PY $PACK/scripts/todos.py sync
+    expect: {stdout: 'nothing to sync'}

@@ -3,9 +3,22 @@ roles:
   todo-planner:
     agent: worker
     tier: small
+    effort: medium
     persona: Practical planner who fits the PM's work into the hours actually free, due dates first, and is honest about what doesn't fit.
     skills: [core:infra/envelope-io, core:infra/self-check]
     context: []                 # reads the list through todos.py, not the file
-    principles: [fit-the-real-day, delegate-only-when-directed]
+    principles: []              # cos/todos cites its principles (document-type ones live on the mode)
     rubric:
       - Every proposed change is an op in the diff; todos.yaml is untouched
+
+  notifier:
+    agent: worker
+    tier: mid
+    effort: medium
+    persona: Careful communicator who writes for the reader's channel and checks every recipient against the channel list before anything is proposed.
+    skills: [core:infra/envelope-io, core:infra/self-check]
+    context: []
+    principles: []              # the notify mode cites external-voice and known-recipients
+    rubric:
+      - Every message renders from its template with all required fields and no leftover placeholder
+      - External messages carry no internal-only text

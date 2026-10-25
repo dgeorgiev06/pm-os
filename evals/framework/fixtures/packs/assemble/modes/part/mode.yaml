@@ -1,0 +1,21 @@
+name: assemble/part
+version: 0.1.0
+contract: task@1
+author: framework-evals
+summary: "Draft one part and propose publishing it"
+verbs: [draft]
+accepts:
+  topic: string
+returns:
+  part: doc_ref
+skill: SKILL.md
+default_role: assembler
+calls: []
+grants: { docs: draft }
+approval: before_publish
+risk: low
+principles: []
+done:
+  must:
+    - "The artifact exists and answers the envelope"
+evals: evals/

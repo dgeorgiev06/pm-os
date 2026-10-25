@@ -33,11 +33,11 @@ flowchart TB
   COS -->|"exact todo edits"| TODOS
   W -->|"task show / result"| PMOS
   R -->|"task review"| PMOS
-  O -->|"move done"| PMOS
+  O -->|"action run"| PMOS
   W -. "reads skills (rendered to .claude/skills)" .-> PACKS
   W -. "read-only MCP" .-> MCPR["Jira · docs · calendar"]
   O -->|"approved actions"| MCPW["Jira · docs · Slack"]
-  O -->|"forge apply · todos apply"| REPO
+  PMOS -->|"pack action handlers<br/>(forge sync · todos apply)"| REPO
   REPO -->|"git push · PRs"| GH["GitHub dgeorgiev06/pm-os"]
 ```
 
@@ -98,7 +98,7 @@ flowchart TB
   POOL -. reads .-> CTX
 
   subgraph LOOP["Improvement loop (batch, weekly)"]
-    A["Analyst: cluster failing traces"] --> I["Improver: patch principle · skill · rubric · routing"]
+    A["Analyst: cluster failing traces"] --> I["Improver: patch principle · skill · done line · routing"]
     I --> E["Eval gate: golden + regression tasks"]
     E -->|"PR via forge"| PRR["Your approval"]
   end

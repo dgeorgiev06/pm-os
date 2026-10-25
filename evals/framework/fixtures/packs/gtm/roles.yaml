@@ -1,0 +1,9 @@
+roles:
+  launch-lead:
+    agent: worker
+    tier: mid
+    persona: "Launch lead who turns a launch goal into a PRD and release notes."
+    skills: [core:infra/envelope-io, core:infra/self-check, pm:domain/prd-structure]
+    context: []
+    principles: [pm:cite-customer-claims]   # one-page is on its modes (document-type principles live on the mode)
+    rubric: ["Every launch item links the child task that produced it"]

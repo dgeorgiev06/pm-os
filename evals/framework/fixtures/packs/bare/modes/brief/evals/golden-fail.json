@@ -1,0 +1,23 @@
+{
+  "kind": "golden",
+  "name": "bare/brief fixture failure case",
+  "covers": [
+    "mode:bare/brief"
+  ],
+  "failure": true,
+  "envelope": {
+    "verb": "draft",
+    "mode": "bare/brief",
+    "inputs": {
+      "goal": "x"
+    },
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "low",
+    "approval": "before_publish"
+  },
+  "expect": [
+    "an unanswerable request is returned as status blocked with one open question"
+  ]
+}

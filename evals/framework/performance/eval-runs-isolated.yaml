@@ -1,0 +1,19 @@
+kind: conformance
+name: eval-runs-isolated
+covers: [script:scripts/pmos.py]
+finding: performance#4
+owner: performance
+severity: high
+desc: >-
+  `pmos eval` gives each case its own outputs folder (PMOS_OUTPUTS_DIR) and distinct task ids, so
+  cases don't collide in the real outputs/.
+steps:
+  - run: $PY $FX/bin/yset.py pm-os.yaml eval.command "$PY $FX/bin/fake_runner.py {prompt_file}" --str
+  - run: $PMOS eval pm/prd pm/release-notes
+    expect:
+      files:
+        contains: {'build/evals/**/output.md': 'outputs_dir=\S'}
+        not_contains: {'build/evals/**/output.md': 'outputs_dir=NONE'}
+        absent: 'outputs/T-*'
+  - name: two cases, two different task ids
+    run: test "$(sort -u build/fake-runner-ids.txt | wc -l)" -eq 2

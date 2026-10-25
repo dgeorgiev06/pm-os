@@ -1,0 +1,20 @@
+{
+  "kind": "golden",
+  "name": "badtype/main fixture case",
+  "covers": [
+    "mode:badtype/main"
+  ],
+  "envelope": {
+    "verb": "draft",
+    "mode": "badtype/main",
+    "inputs": {},
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "low",
+    "approval": "before_publish"
+  },
+  "expect": [
+    "result.json exists"
+  ]
+}

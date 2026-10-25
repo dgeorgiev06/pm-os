@@ -1,0 +1,13 @@
+name: x-cos
+version: 0.1.0
+contract: pack@1
+author: framework-evals
+summary: "Fixture: uses cos's internal todo-planner role"
+requires:
+  core: ^0.6
+depends: [cos@^0.3]
+exports:
+  modes: [x-cos/main]
+  roles: []
+  skills: []
+  principles: []

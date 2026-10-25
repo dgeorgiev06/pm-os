@@ -1,0 +1,22 @@
+{
+  "kind": "golden",
+  "name": "orphan/stray fixture case",
+  "covers": [
+    "mode:orphan/stray"
+  ],
+  "envelope": {
+    "verb": "draft",
+    "mode": "orphan/stray",
+    "inputs": {
+      "goal": "x"
+    },
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "low",
+    "approval": "before_publish"
+  },
+  "expect": [
+    "result.json exists"
+  ]
+}

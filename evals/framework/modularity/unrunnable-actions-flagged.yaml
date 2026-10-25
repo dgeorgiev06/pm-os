@@ -1,0 +1,19 @@
+kind: conformance
+name: unrunnable-actions-flagged
+covers: [script:scripts/pmos.py]
+finding: composability#6
+owner: modularity
+severity: medium
+desc: >-
+  A task with `approval: none` that doesn't roll up to a parent's gate can never get its actions
+  approved, so `task result` refuses actions on it instead of letting them silently go to done.
+setup:
+  install: [typed]
+steps:
+  - run: $PMOS task new --mode typed/note --verb draft --inputs '{"topic":"t"}'
+    capture: {N: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $N running
+  - run: >-
+      $PY $FX/bin/mkresult.py --task $N --submit
+      --action '{"system":"docs","op":"publish","idempotency_key":"n1","payload":{"path":"outputs/x.md"},"preview":"publish"}'
+    expect: {exit: nonzero, output: '(?i)approval|never'}

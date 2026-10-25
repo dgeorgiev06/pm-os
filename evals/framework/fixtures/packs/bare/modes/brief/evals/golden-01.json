@@ -1,0 +1,22 @@
+{
+  "kind": "golden",
+  "name": "bare/brief fixture case",
+  "covers": [
+    "mode:bare/brief"
+  ],
+  "envelope": {
+    "verb": "draft",
+    "mode": "bare/brief",
+    "inputs": {
+      "goal": "x"
+    },
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "low",
+    "approval": "before_publish"
+  },
+  "expect": [
+    "result.json exists"
+  ]
+}

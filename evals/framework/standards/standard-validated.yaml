@@ -1,0 +1,46 @@
+kind: conformance
+name: standard-validated
+covers: [script:scripts/pmos.py]
+finding: request:standards
+severity: high
+failure: true
+desc: >-
+  A pack's `standards/<name>.yaml` must match contracts/standard.schema.json and be named after its
+  file; `exports.standards` names only standards the pack has. A mode's `standard:` must resolve
+  (and be visible) and name a doc_ref output. Every standard needs a passing and a failure-path
+  conformance case covering `standard:<pack>:<name>`. `validate` (and so admission) reports each.
+setup:
+  install: [gtm]
+steps:
+  - name: the schema exists and pm's standard is exported and covered
+    run: $PMOS validate && $PMOS eval --coverage pm
+    expect:
+      stdout: ['(?m)^OK', 'standard:pm:prd']
+      files:
+        exists: [contracts/standard.schema.json, packs/pm/standards/prd.yaml]
+        contains: {packs/pm/pack.yaml: 'standards: \[prd\]', packs/pm/modes/prd/mode.yaml: '(?m)^standard:'}
+  - name: a standard that doesn't match the schema
+    run: cp packs/pm/standards/prd.yaml prd.bak && $PY $FX/bin/yset.py packs/pm/standards/prd.yaml sections '[]' && $PMOS validate
+    expect: {exit: nonzero, output: ['packs/pm/standards/prd\.yaml', '(?i)standard']}
+  - name: a standard named differently from its file
+    run: cp prd.bak packs/pm/standards/prd.yaml && $PY $FX/bin/yset.py packs/pm/standards/prd.yaml name other --str && $PMOS validate
+    expect: {exit: nonzero, output: ['packs/pm/standards/prd\.yaml', '(?i)name']}
+  - name: a mode citing an unknown standard
+    run: |
+      cp prd.bak packs/pm/standards/prd.yaml && cp packs/pm/modes/prd/mode.yaml mode.bak &&
+      $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml standard.ref nope --str && $PMOS validate
+    expect: {exit: nonzero, output: ['pm:standards/nope', '(?i)not found']}
+  - name: a standard on an output that isn't a doc_ref
+    run: cp mode.bak packs/pm/modes/prd/mode.yaml && $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml standard.output banana --str && $PMOS validate
+    expect: {exit: nonzero, output: ['banana', '(?i)output']}
+  - name: exports.standards naming a standard the pack doesn't have
+    run: cp mode.bak packs/pm/modes/prd/mode.yaml && $PY $FX/bin/yset.py packs/pm/pack.yaml exports.standards '[prd, ghost]' && $PMOS validate
+    expect: {exit: nonzero, output: ['ghost', '(?i)standard']}
+  - name: another pack's standard that isn't exported
+    run: |
+      $PY $FX/bin/yset.py packs/pm/pack.yaml exports.standards '[]' &&
+      $PY $FX/bin/yset.py packs/gtm/modes/brief/mode.yaml standard pm:standards/prd --str && $PMOS validate
+    expect: {exit: nonzero, output: ['packs/gtm/modes/brief/mode\.yaml', 'pm:standards/prd|standard .prd.', '(?i)internal|export']}
+  - name: a standard without its cases is a coverage gap
+    run: cp $FX/packs/gtm/modes/brief/mode.yaml packs/gtm/modes/brief/mode.yaml && $PY $FX/bin/yset.py packs/pm/pack.yaml exports.standards '[prd]' && rm packs/pm/evals/conformance/prd-standard*.yaml && $PMOS eval --coverage pm
+    expect: {exit: nonzero, stdout: ['coverage: standard:pm:prd has no passing case', 'coverage: standard:pm:prd has no failure-path case']}

@@ -1,0 +1,21 @@
+kind: conformance
+name: origin-is-generic
+covers: [script:scripts/pmos.py]
+finding: modularity#4
+owner: modularity
+severity: high
+desc: >-
+  `origin` is a free-form {pack, ref} set with `task new --origin PACK:REF`; the core contract has
+  no todo-specific field, pattern or flag.
+steps:
+  - run: $PMOS task new --mode pm/prd --verb draft --inputs '{"goal":"g"}' --origin cos:td-12
+    capture: {T: '(T-\d{8}-\d{3,})'}
+    expect:
+      task: {id: $T, fields: {envelope.origin.pack: '^cos$', envelope.origin.ref: '^td-12$'}}
+  - name: no todo pattern in the task contract
+    run: '! grep -nE "td-|\"todo\"" contracts/task.schema.json'
+  - name: no --todo flag
+    run: $PMOS task new --help
+    expect: {output_not: '--todo'}
+  - name: the CoS manual uses --origin
+    run: grep -n -- "--origin" packs/cos/COS.md

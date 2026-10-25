@@ -1,0 +1,16 @@
+kind: conformance
+name: notify-merge
+covers: [mode:cos/notify, script:modes/notify/scripts/build_actions.py]
+desc: merge joins the messages files of child notify tasks into one messages file for a parent task.
+setup:
+  copy:
+    notify/channels.yaml: channels.yaml
+    notify/draft-internal.json: draft-internal.json
+    notify/draft-external.json: draft-external.json
+steps:
+  - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py build draft-internal.json --audience internal --task T-20261025-906 --out int &&
+      PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py build draft-external.json --audience external --task T-20261025-906 --out ext
+  - run: $PY $PACK/modes/notify/scripts/build_actions.py merge merged.json int/messages.json ext/messages.json
+    expect:
+      stdout: 'merge: 3 message\(s\) into merged.json'
+      files: {contains: {merged.json: ['"audience": "internal"', '"audience": "external"']}}

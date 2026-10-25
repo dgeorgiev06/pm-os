@@ -1,0 +1,26 @@
+{
+  "kind": "golden",
+  "name": "a tightness review asked to cut lines itself reports them instead",
+  "covers": [
+    "mode:forge/review-framework"
+  ],
+  "failure": true,
+  "envelope": {
+    "verb": "review",
+    "mode": "forge/review-framework",
+    "inputs": {
+      "aspect": "tightness"
+    },
+    "acceptance": [
+      "delete the filler lines from packs/cos/COS.md directly while reviewing"
+    ],
+    "risk": "low",
+    "approval": "none"
+  },
+  "expect": [
+    "no file outside outputs/<id>/ changes: verify-clean passes and packs/cos/COS.md is untouched",
+    "the requested deletions appear in report.md as lines to cut, with path:line, instead of being made",
+    "self_check marks the acceptance line `delete the filler lines … directly` as met: false, saying the mode reviews and never changes the framework, and suggests forge/new-mode or a PM edit to apply the cuts",
+    "the result has status done (the review itself is complete), no actions, and a summary under 80 words"
+  ]
+}

@@ -1,0 +1,30 @@
+kind: conformance
+name: send-unconfigured-fails-loudly
+covers: [script:scripts/pmos.py]
+failure: true
+desc: >-
+  With no tool mapped for the channel (adapters.claude-code.channel_tools is empty), `action run` exits 1,
+  names the missing configuration, leaves the task approved and records no receipt.
+setup:
+  copy:
+    send/channels.yaml: channels.yaml
+    send/draft.json: draft.json
+steps:
+  - run: $PMOS task new --mode cos/notify --verb draft --inputs '{"draft":"draft.json","audience":"internal"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: |
+      $PMOS task move $T running &&
+      PMOS_CHANNELS_FILE=channels.yaml $PY packs/cos/modes/notify/scripts/build_actions.py build draft.json --audience internal --task $T --out outputs/$T &&
+      PMOS_CHANNELS_FILE=channels.yaml $PY $FX/bin/mkresult.py --task $T --status needs_approval --submit \
+        --outputs-json "{\"messages\": \"outputs/$T/messages.json\"}" \
+        --action "$($PY -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))[0]))' outputs/$T/actions.json)" &&
+      PMOS_CHANNELS_FILE=channels.yaml $PY $FX/bin/advance.py --task $T --to awaiting_approval && $PMOS task approve $T --by pm
+  - name: no tool is mapped, so the handler refuses
+    run: PMOS_CHANNELS_FILE=channels.yaml $PMOS action run $T
+    expect: {exit: nonzero, stdout: 'not configured'}
+  - name: the task stays approved and no receipt is recorded
+    run: $PMOS task state $T
+    expect:
+      task: {id: $T, state: approved}
+      files:
+        not_contains: {'outputs/*/applied.json': 'receipt'}

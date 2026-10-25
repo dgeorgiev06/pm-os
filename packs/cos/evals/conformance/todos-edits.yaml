@@ -1,0 +1,29 @@
+kind: conformance
+name: todos-edits
+covers: [script:scripts/todos.py]
+failure: true
+desc: >-
+  The CoS's exact edits: add, list, edit, done and drop change context/todos.yaml (here
+  PMOS_TODOS_FILE); bad dates, unknown ids and closing twice are refused; drop never deletes.
+steps:
+  - run: PMOS_TODOS_FILE=t.yaml $PY $PACK/scripts/todos.py add "Prep custodian demo" --due 2026-10-28 --estimate 2 --priority 3
+    expect: {stdout: 'td-1 added: Prep custodian demo \(due 2026-10-28\)'}
+  - run: PMOS_TODOS_FILE=t.yaml $PY $PACK/scripts/todos.py add "Read API docs"
+    expect: {stdout: 'td-2 added'}
+  - run: PMOS_TODOS_FILE=t.yaml $PY $PACK/scripts/todos.py edit td-2 --due 2026-10-30 --notes "skim only"
+    expect: {stdout: 'td-2 updated', files: {contains: {t.yaml: ["due: '2026-10-30'", 'notes: skim only']}}}
+  - run: PMOS_TODOS_FILE=t.yaml $PY $PACK/scripts/todos.py done td-1 --note shipped
+    expect: {stdout: 'td-1 done'}
+  - run: PMOS_TODOS_FILE=t.yaml $PY $PACK/scripts/todos.py drop td-2
+    expect: {stdout: 'td-2 dropped', files: {contains: {t.yaml: ['status: dropped', 'id: td-2']}}}
+  - run: PMOS_TODOS_FILE=t.yaml $PY $PACK/scripts/todos.py list --all --json
+    expect: {stdout: ['"status": "done"', '"status": "dropped"']}
+  - run: PMOS_TODOS_FILE=t.yaml $PY $PACK/scripts/todos.py list
+    expect: {stdout: 'no open todos'}
+  - name: refusals
+    run: PMOS_TODOS_FILE=t.yaml $PY $PACK/scripts/todos.py add "x" --due friday
+    expect: {exit: nonzero, stderr: 'not a date'}
+  - run: PMOS_TODOS_FILE=t.yaml $PY $PACK/scripts/todos.py done td-1
+    expect: {exit: nonzero, stderr: 'already done'}
+  - run: PMOS_TODOS_FILE=t.yaml $PY $PACK/scripts/todos.py edit td-9 --title y
+    expect: {exit: nonzero, stderr: 'no todo td-9'}

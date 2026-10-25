@@ -1,0 +1,19 @@
+kind: conformance
+name: notify-internal-section
+covers: [mode:cos/notify, principle:cos:external-voice, script:modes/notify/scripts/build_actions.py]
+failure: true
+desc: >-
+  An external message cannot carry an internal-only field, and cannot repeat the text of one from another
+  entry of the draft: both are refused.
+setup:
+  copy:
+    notify/channels.yaml: channels.yaml
+    notify/draft-external-notes.json: draft-notes.json
+    notify/draft-leak.json: draft-leak.json
+steps:
+  - name: an external entry sets an internal-only field
+    run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py --check draft-notes.json
+    expect: {exit: nonzero, output: "internal-only field 'support_notes'"}
+  - name: the external text repeats an internal risk
+    run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py --check draft-leak.json
+    expect: {exit: nonzero, output: 'repeats internal-only text'}

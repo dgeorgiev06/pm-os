@@ -1,5 +1,9 @@
 {
+  "kind": "golden",
   "name": "add a stakeholder-update mode to pm",
+  "covers": [
+    "mode:forge/new-mode"
+  ],
   "envelope": {
     "verb": "draft",
     "mode": "forge/new-mode",
@@ -8,7 +12,10 @@
       "name": "stakeholder-update",
       "purpose": "Weekly update for leadership from the status board and decisions log, under 150 words"
     },
-    "acceptance": ["reuses pm/communicator", "passes lint and dry-run admission"],
+    "acceptance": [
+      "reuses pm/communicator",
+      "passes lint and dry-run admission"
+    ],
     "risk": "medium",
     "approval": "before_execute"
   },

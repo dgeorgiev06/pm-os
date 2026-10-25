@@ -1,0 +1,43 @@
+kind: conformance
+name: lint-budgets
+covers: [script:scripts/tightness.py, script:scripts/pmos.py]
+finding: request:tightness
+severity: high
+failure: true
+desc: >-
+  `pmos lint` counts each component's body words (frontmatter and fenced code excluded) against its
+  kind's budget in pm-os.yaml `lint.budgets`: warn at 90%, fail over. A file may raise its budget
+  with `budget:` and `budget_reason:`, up to 1.5x its kind's. A principle's `check` has a budget too.
+steps:
+  - name: today's components are within budget
+    run: $PMOS lint
+    expect: {stdout: ['(?m)^lint: \d+ file\(s\), 0 error', 'packs/pm/modes/prd/SKILL\.md\s+mode\s+\d+/450']}
+  - name: code blocks don't count
+    run: $PY $CORE_BIN/mktext.py packs/pm/skills/domain/x/SKILL.md 300 --code 500 && $PMOS lint
+    expect: {stdout: 'domain/x/SKILL\.md\s+skill\s+300/400', stdout_not: '(?m)^error:'}
+  - name: 90% of the budget warns
+    run: $PY $CORE_BIN/mktext.py packs/pm/skills/domain/x/SKILL.md 380 && $PMOS lint
+    expect: {stdout: ['(?m)^warn: packs/pm/skills/domain/x/SKILL\.md: 380 words, 95% of its budget of 400'], stdout_not: '(?m)^error:'}
+  - name: over the budget fails
+    run: $PY $CORE_BIN/mktext.py packs/pm/skills/domain/x/SKILL.md 430 && $PMOS lint
+    expect: {exit: 1, stdout: ['(?m)^error: packs/pm/skills/domain/x/SKILL\.md: 430 words, over its budget of 400 \(skill', '(?m)^lint: .*[1-9]\d* error']}
+  - name: a justified budget raises it
+    run: $PY $CORE_BIN/mktext.py packs/pm/skills/domain/x/SKILL.md 430 --front budget=500 "--front=budget_reason=a long reference table" && $PMOS lint
+    expect: {stdout: 'domain/x/SKILL\.md\s+skill\s+430/500', stdout_not: '(?m)^error:'}
+  - name: a budget needs a reason
+    run: $PY $CORE_BIN/mktext.py packs/pm/skills/domain/x/SKILL.md 430 --front budget=500 && $PMOS lint
+    expect: {exit: 1, stdout: 'budget_reason'}
+  - name: at most 1.5x the kind's budget
+    run: $PY $CORE_BIN/mktext.py packs/pm/skills/domain/x/SKILL.md 430 --front budget=700 "--front=budget_reason=too much" && $PMOS lint
+    expect: {exit: 1, stdout: ['budget 700', '1\.5']}
+  - name: budgets come from pm-os.yaml
+    run: |
+      rm -r packs/pm/skills/domain/x && $PY $FX/bin/yset.py pm-os.yaml lint.budgets.mode 100 && $PMOS lint
+    expect: {exit: 1, stdout: 'packs/pm/modes/sprint-planning/SKILL\.md: \d+ words, over its budget of 100 \(mode'}
+  - name: a principle's check has its own budget
+    run: |
+      $PY $FX/bin/yset.py pm-os.yaml lint.budgets.mode 450 &&
+      $PY $CORE_BIN/mktext.py packs/pm/skills/principles/wordy/SKILL.md 40 --front kind=principle \
+        "--front=check=one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twentyone twentytwo twentythree twentyfour twentyfive twentysix" &&
+      $PMOS lint
+    expect: {exit: 1, stdout: 'wordy/SKILL\.md: check is 26 words, over its budget of 25'}

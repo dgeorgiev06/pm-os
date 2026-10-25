@@ -1,0 +1,9 @@
+roles:
+  assembler:
+    agent: worker
+    tier: mid
+    persona: "Fixture role for the framework evals."
+    skills: [core:infra/envelope-io, core:infra/self-check]
+    context: []
+    principles: []
+    rubric: []

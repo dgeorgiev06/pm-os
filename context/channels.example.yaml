@@ -1,0 +1,14 @@
+# Where cos/notify sends each audience's messages. Copy to context/channels.yaml (gitignored: the
+# addresses are personal) and fill in the real ones. Recipients come only from this file.
+#
+# Each channel is a registry ref (`pmos channel show`, packs' channels/<name>/channel.yaml). Its format and
+# limits come from the channel; a target must match the channel's recipient pattern.
+internal_only_fields: [risks, support_notes]
+
+audiences:
+  internal:
+    channels:
+      - {name: team-slack, channel: channels:channel/slack, target: "C0PRODUCT1"}      # placeholder Slack channel id
+  external:
+    channels:
+      - {name: customer-email, channel: channels:channel/email, target: [customers@example.com]}   # placeholder address list

@@ -1,0 +1,34 @@
+kind: conformance
+name: regression-admission-refuses-violations
+covers: [script:scripts/pmos.py]
+finding: modularity#good
+owner: modularity
+severity: high
+regression: true
+desc: >-
+  Admission holds the static boundaries: a call to forge without depends, an internal cos role, an
+  unexported pm skill, and a mode without golden evals are all refused with a fix-it message.
+setup:
+  copy:
+    packs/x-forge: packs/x-forge
+    packs/x-cos: packs/x-cos
+    packs/x-staking: packs/x-staking
+    packs/x-noevals: packs/x-noevals
+steps:
+  - run: $PMOS pack add packs/x-forge --approve-grants
+    expect: {exit: nonzero, output: '(?i)depends'}
+  - run: $PMOS pack add packs/x-cos --approve-grants
+    expect: {exit: nonzero, output: '(?i)internal'}
+  - run: $PMOS pack add packs/x-staking --approve-grants
+    expect: {exit: nonzero, output: '(?i)internal'}
+  - run: $PMOS pack add packs/x-noevals --approve-grants
+    expect: {exit: nonzero, output: '(?i)evals'}
+  - name: a cos task can't start pm/prd (cos doesn't depend on pm)
+    run: |
+      C=$($PMOS task new --mode cos/todos --verb plan --inputs '{"request":"plan my week"}') && $PMOS task move $C running >/dev/null &&
+      $PMOS task new --parent $C --mode pm/prd --verb draft --inputs '{"goal":"g"}'
+    expect: {exit: nonzero, output: '(?i)depends|\bcalls?\b|internal'}
+  - name: a pm/prd task can't use cos's internal role
+    run: $PMOS task new --mode pm/prd --verb draft --inputs '{"goal":"g"}' --role cos/todo-planner
+    expect: {exit: nonzero, output: '(?i)internal|depends'}
+  - run: $PMOS validate

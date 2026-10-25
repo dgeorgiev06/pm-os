@@ -1,0 +1,22 @@
+{
+  "kind": "golden",
+  "name": "x-forge/main fixture case",
+  "covers": [
+    "mode:x-forge/main"
+  ],
+  "envelope": {
+    "verb": "plan",
+    "mode": "x-forge/main",
+    "inputs": {
+      "goal": "x"
+    },
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "low",
+    "approval": "none"
+  },
+  "expect": [
+    "result.json exists"
+  ]
+}

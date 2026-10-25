@@ -1,0 +1,21 @@
+name: loop/again
+version: 0.1.0
+contract: task@1
+author: framework-evals
+summary: "Calls itself; pmos must refuse the cycle"
+verbs: [plan]
+accepts:
+  goal: string
+returns:
+  plan: doc_ref
+skill: SKILL.md
+default_role: looper
+calls: [loop/again@^0.1]
+grants: {}
+approval: none
+risk: low
+principles: []
+done:
+  must:
+    - "The artifact exists and answers the envelope"
+evals: evals/

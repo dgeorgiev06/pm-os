@@ -1,0 +1,27 @@
+kind: conformance
+name: regression-state-machine-and-inputs
+covers: [script:scripts/pmos.py]
+finding: modularity#good
+owner: modularity
+severity: high
+regression: true
+desc: >-
+  Illegal transitions, unknown inputs, wrong verbs, over-long instructions and a producer-written
+  review are refused, with messages that say how to fix them.
+steps:
+  - run: $PMOS task new --mode pm/prd --verb draft --inputs '{"goal":"g"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $T done
+    expect: {exit: nonzero, output: '(?i)allowed'}
+  - run: $PMOS task move $T running
+  - run: $PMOS task move $T awaiting_approval
+    expect: {exit: nonzero}
+  - run: $PMOS task new --mode pm/prd --verb draft --inputs '{"goal":"g","goals":"x"}'
+    expect: {exit: nonzero, output: 'accepts'}
+  - run: $PMOS task new --mode pm/prd --verb plan --inputs '{"goal":"g"}'
+    expect: {exit: nonzero, output: '(?i)verb'}
+  - run: $PMOS task new --mode pm/prd --verb draft --inputs '{"goal":"g"}' --instructions "$(printf 'x%.0s' $(seq 2001))"
+    expect: {exit: nonzero, output: '(?i)instructions|2000|long'}
+  - name: a result that reviews itself
+    run: $PY $FX/bin/mkresult.py --task $T --extra-json '{"review":{"passed":true,"score":5}}' --submit
+    expect: {exit: nonzero, output: '(?i)review'}

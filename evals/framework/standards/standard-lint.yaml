@@ -1,0 +1,34 @@
+kind: conformance
+name: standard-lint
+covers: [script:scripts/tightness.py, script:scripts/pmos.py]
+finding: request:standards
+severity: medium
+failure: true
+desc: >-
+  Standards are data, so they have no word budget, but each `contains` and `judgment` line is one
+  sentence of at most 25 words (lint.budgets.standard_line), with no filler phrase, and doesn't copy a
+  principle. `pmos lint` (and so validate and admission) names the file and the line.
+steps:
+  - name: today's standards pass
+    run: $PMOS lint pm
+    expect: {stdout: '(?m)^lint: .* 0 error'}
+  - name: a contains line over 25 words
+    run: |
+      cp packs/pm/standards/prd.yaml prd.bak &&
+      $PY $FX/bin/yset.py packs/pm/standards/prd.yaml sections.0.contains "$($PY -c 'print(" ".join("word%d" % i for i in range(30)) + ".")')" --str && $PMOS lint pm
+    expect: {exit: 1, stdout: 'packs/pm/standards/prd\.yaml: sections\.problem\.contains: 30 words, over lint\.budgets\.standard_line \(25\)'}
+  - name: two sentences in one line
+    run: |
+      cp prd.bak packs/pm/standards/prd.yaml &&
+      $PY $FX/bin/yset.py packs/pm/standards/prd.yaml judgment.0 'Metrics are measured. Owners are named.' --str && $PMOS lint pm
+    expect: {exit: 1, stdout: 'packs/pm/standards/prd\.yaml: judgment\.1: .*one sentence'}
+  - name: a filler phrase
+    run: |
+      cp prd.bak packs/pm/standards/prd.yaml &&
+      $PY $FX/bin/yset.py packs/pm/standards/prd.yaml judgment.0 'Every metric is robust.' --str && $PMOS lint pm
+    expect: {exit: 1, stdout: "packs/pm/standards/prd\\.yaml: judgment\\.1: filler 'robust'"}
+  - name: a line that copies a principle
+    run: |
+      cp prd.bak packs/pm/standards/prd.yaml &&
+      $PY $FX/bin/yset.py packs/pm/standards/prd.yaml judgment.0 'Every requirement or acceptance criterion is a testable statement with a number, state or behavior.' --str && $PMOS lint pm
+    expect: {exit: 1, stdout: 'packs/pm/standards/prd\.yaml: .*restates principle pm:testable-requirements'}

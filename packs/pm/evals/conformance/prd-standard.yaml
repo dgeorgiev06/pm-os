@@ -1,0 +1,7 @@
+kind: conformance
+name: prd-standard
+covers: [standard:pm:prd, mode:pm/prd]
+desc: A PRD with every required section of pm:standards/prd and numbered requirements passes check_doc.py.
+steps:
+  - run: $PY scripts/check_doc.py --standard pm:standards/prd $FX/prd-good.md
+    expect: {stdout: '^PASS pm:standards/prd'}

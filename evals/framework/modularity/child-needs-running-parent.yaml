@@ -1,0 +1,33 @@
+kind: conformance
+name: child-needs-running-parent
+covers: [script:scripts/pmos.py]
+finding: modularity#1
+owner: modularity
+severity: high
+desc: >-
+  Children can only be created under a parent that is `running`. Also covers composability#9
+  (a child created under a parent that is queued or already finished).
+setup:
+  install: [gtm]
+steps:
+  - run: $PMOS task new --mode gtm/launch-pack --verb plan --inputs '{"goal":"launch"}'
+    capture: {Q: '(T-\d{8}-\d{3,})'}
+  - name: child under a queued parent
+    run: $PMOS task new --parent $Q --mode pm/prd --verb draft --inputs '{"goal":"g"}'
+    expect:
+      exit: nonzero
+      output: '(?i)running'
+  - run: $PMOS task new --mode gtm/launch-pack --verb plan --inputs '{"goal":"launch"}'
+    capture: {F: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $F running && $PY $FX/bin/mkresult.py --task $F --status failed --submit
+  - name: child under a finished (failed) parent
+    run: $PMOS task new --parent $F --mode pm/prd --verb draft --inputs '{"goal":"g"}'
+    expect:
+      exit: nonzero
+      output: '(?i)running'
+  - name: a running parent can still create the child
+    run: |
+      R=$($PMOS task new --mode gtm/launch-pack --verb plan --inputs '{"goal":"launch"}') && $PMOS task move $R running >/dev/null &&
+      $PMOS task new --parent $R --mode pm/prd --verb draft --inputs '{"goal":"g"}'
+    expect:
+      output: 'T-\d{8}-\d{3,}'

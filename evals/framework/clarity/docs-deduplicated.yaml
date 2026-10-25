@@ -1,0 +1,18 @@
+kind: conformance
+name: docs-deduplicated
+covers: [script:scripts/pmos.py]
+finding: clarity#6
+owner: clarity
+severity: medium
+desc: >-
+  Each explanation has one home: the core-principle list (quality/README.md), the Building blocks
+  table (README or architecture, not both), and one wording of the step-tag legend.
+steps:
+  - name: the core principle list
+    run: >-
+      $PY $FX/bin/once.py 'grounded, no unapproved side effects, answers the envelope, honest self-check, usable summary'
+      1 README.md docs/architecture.md quality/README.md
+  - name: the Building blocks table
+    run: $PY $FX/bin/once.py '\| *\**Pack\** *\| *(The )?unit you install' 1 README.md docs/architecture.md
+  - name: the step-tag legend
+    run: $PY $FX/bin/legend_check.py

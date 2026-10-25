@@ -1,0 +1,19 @@
+kind: conformance
+name: review-conformance-script
+covers: [script:modes/review-framework/scripts/conformance.py, mode:forge/review-framework]
+failure: true
+desc: >-
+  forge/review-framework's conformance.py refuses an unknown aspect and a ref that is neither a
+  folder nor a git ref (naming it), records the repo's state first, and --verify-clean reports
+  whether the repo changed since; without a prior run it refuses.
+steps:
+  - run: $PY $PACK/modes/review-framework/scripts/conformance.py --task T-20990101-001 --aspect speed
+    expect: {exit: nonzero, stderr: 'aspect must be one of'}
+  - run: $PY $PACK/modes/review-framework/scripts/conformance.py --task T-20990101-001 --aspect modularity --ref no-such-branch
+    expect: {exit: nonzero, stderr: "no-such-branch' is neither a folder nor a git ref"}
+  - run: $PY $PACK/modes/review-framework/scripts/conformance.py --task T-20990101-001 --verify-clean
+    expect: {stdout: '^clean', files: {exists: outputs/T-20990101-001/git-before.json}}
+  - run: $PY $PACK/modes/review-framework/scripts/conformance.py --task T-20990101-002 --verify-clean
+    expect: {exit: nonzero, stderr: 'run with --aspect first'}
+  - run: $PY $PACK/modes/review-framework/scripts/conformance.py --task T-20990101-003
+    expect: {exit: nonzero, stderr: 'give --aspect'}

@@ -1,5 +1,9 @@
 {
+  "kind": "golden",
   "name": "drafts tickets and drops a duplicate",
+  "covers": [
+    "mode:pm/jira-tickets"
+  ],
   "envelope": {
     "verb": "draft",
     "mode": "pm/jira-tickets",
@@ -8,13 +12,20 @@
       "project": "STK",
       "sprint": "2026-S22"
     },
-    "acceptance": ["no duplicate of STK-402", "every ticket has acceptance criteria"],
+    "acceptance": [
+      "no duplicate of STK-402",
+      "every ticket has acceptance criteria"
+    ],
     "risk": "medium",
     "approval": "before_execute"
   },
   "fixtures": {
     "existing.json": [
-      { "key": "STK-402", "summary": "Per-operator exposure report for compliance", "status": "Backlog" }
+      {
+        "key": "STK-402",
+        "summary": "Per-operator exposure report for compliance",
+        "status": "Backlog"
+      }
     ]
   },
   "expect": [

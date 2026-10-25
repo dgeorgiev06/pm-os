@@ -1,0 +1,33 @@
+kind: conformance
+name: done-golden-default-expect
+covers: [script:scripts/pmos.py]
+finding: request:done
+severity: medium
+desc: >-
+  A golden case without `expect` is graded against its mode's `done.must` lines (eval@1 accepts it),
+  and the grader checklist uses the same line ids as `task show --checklist`: must lines, code
+  lines, then the should lines that set the score. Explicit `expect` lines are `expect-N`.
+steps:
+  - name: a golden case without expect validates and renders the mode's must lines
+    run: |
+      $PY - <<'PY'
+      import json; f = "packs/pm/modes/prd/evals/golden-01.json"; c = json.load(open(f)); c.pop("expect"); json.dump(c, open(f, "w"), indent=2)
+      PY
+      $PMOS validate && $PMOS eval pm/prd --kind golden
+    expect:
+      files:
+        contains:
+          'build/evals/pm__prd/golden-01/grader.md':
+            - '(?i)done\.must'
+            - '`standard-1`'
+            - '`pm:testable-requirements`'
+            - '`standard`[^\n]*check_doc\.py'
+            - '`task-1`'
+            - '`pm:cite-customer-claims`'
+            - '`role-rubric-1`'
+        not_contains: {'build/evals/pm__prd/golden-01/grader.md': '`expect-1`'}
+  - name: explicit expect lines get expect-N ids, before the score lines
+    run: $PY $FX/bin/yset.py packs/pm/modes/prd/evals/golden-01.json expect '["check_doc.py passes"]' && $PMOS eval pm/prd --kind golden
+    expect:
+      files:
+        contains: {'build/evals/pm__prd/golden-01/grader.md': ['`expect-1`[^\n]*check_doc\.py passes', '`role-rubric-1`']}

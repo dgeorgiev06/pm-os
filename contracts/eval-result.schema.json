@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pm-os/eval-result@1",
+  "title": "Eval run result (eval-result@1)",
+  "description": "What an eval@1 runner reports for one run: every case's outcome and a per-pack summary. `pmos eval --json` prints it and writes build/evals/results.json.",
+  "type": "object",
+  "required": ["contract", "generated_at", "kind", "targets", "packs", "totals", "cases"],
+  "additionalProperties": false,
+  "$defs": {
+    "counts": {
+      "type": "object",
+      "required": ["cases", "passed", "failed", "skipped"],
+      "additionalProperties": false,
+      "properties": {
+        "cases": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0, "description": "golden cases rendered but not run (no eval.command, or the eval budget was spent)" },
+        "seconds": { "type": "number", "minimum": 0 },
+        "usd": { "type": "number", "minimum": 0 },
+        "kinds": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/counts" }
+        }
+      }
+    }
+  },
+  "properties": {
+    "contract": { "const": "eval-result@1" },
+    "generated_at": { "type": "string" },
+    "runner": { "type": "string", "description": "Which eval@1 runner produced this, e.g. pmos" },
+    "kind": { "enum": ["conformance", "golden", "all"] },
+    "targets": { "type": "array", "items": { "type": "string" } },
+    "packs": { "type": "object", "additionalProperties": { "$ref": "#/$defs/counts" }, "description": "pack -> summary" },
+    "totals": { "$ref": "#/$defs/counts" },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["pack", "name", "kind", "covers", "result", "first_failure", "seconds"],
+        "additionalProperties": false,
+        "properties": {
+          "pack": { "type": "string" },
+          "name": { "type": "string" },
+          "kind": { "enum": ["conformance", "golden"] },
+          "file": { "type": "string" },
+          "covers": { "type": "array", "items": { "type": "string" } },
+          "failure_path": { "type": "boolean", "description": "the case is marked failure: true" },
+          "result": { "enum": ["pass", "fail", "error", "skipped"] },
+          "first_failure": { "type": ["string", "null"], "description": "the first failing expectation (conformance) or grader line / runner error (golden)" },
+          "seconds": { "type": "number", "minimum": 0 },
+          "usd": { "type": ["number", "null"], "description": "golden: summed usage.usd of the case's tasks" },
+          "owner": { "type": ["string", "null"] },
+          "finding": { "type": ["string", "null"] },
+          "regression": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

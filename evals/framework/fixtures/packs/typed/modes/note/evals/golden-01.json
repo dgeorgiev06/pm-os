@@ -1,0 +1,22 @@
+{
+  "kind": "golden",
+  "name": "typed/note fixture case",
+  "covers": [
+    "mode:typed/note"
+  ],
+  "envelope": {
+    "verb": "draft",
+    "mode": "typed/note",
+    "inputs": {
+      "topic": "x"
+    },
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "low",
+    "approval": "none"
+  },
+  "expect": [
+    "result.json exists"
+  ]
+}

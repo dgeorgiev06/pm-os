@@ -1,0 +1,32 @@
+{
+  "kind": "golden",
+  "name": "composability review of the working tree",
+  "covers": [
+    "mode:forge/review-framework"
+  ],
+  "envelope": {
+    "verb": "review",
+    "mode": "forge/review-framework",
+    "inputs": {
+      "aspect": "composability"
+    },
+    "acceptance": [
+      "scores every composability sub-scale 1-5 with a reason",
+      "every issue is marked with its conformance case or judgment-only",
+      "the repo under review is unchanged"
+    ],
+    "risk": "low",
+    "approval": "none"
+  },
+  "expect": [
+    "conformance.json exists and is the output of `pmos eval --framework composability --json` (its cases all have owner composability)",
+    "report.md has a Verdict section answering \"Is it composable? Can packs be easily composed to create different workflows and outputs?\" with a 1-5 score and a one-line reason for each of: composing modes into workflows, reusing roles/skills/principles across packs, data flow between modes, and new outputs without writing a new mode",
+    "report.md ranks its top issues by severity (High, then Medium, then Low), and every issue cites at least one path:line",
+    "every issue ends with `Coverage:` naming a case from conformance.json with its pass/fail result, or `judgment-only`; no named case is missing from conformance.json",
+    "the Conformance section's pass/fail counts match conformance.json exactly",
+    "report.md has Quick wins and What's already good sections",
+    "report.md includes a judgment, with evidence, of what it would take to add a new workflow from existing modes without writing a new mode",
+    "git status of the repo under review is the same before and after (verify-clean passed); nothing outside outputs/<id>/ was written",
+    "the result has status done, no actions, and a summary under 80 words with the scores"
+  ]
+}

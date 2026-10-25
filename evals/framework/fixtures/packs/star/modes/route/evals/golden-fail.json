@@ -1,0 +1,23 @@
+{
+  "kind": "golden",
+  "name": "star/route fixture failure case",
+  "covers": [
+    "mode:star/route"
+  ],
+  "failure": true,
+  "envelope": {
+    "verb": "plan",
+    "mode": "star/route",
+    "inputs": {
+      "goal": "x"
+    },
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "medium",
+    "approval": "none"
+  },
+  "expect": [
+    "an unanswerable request is returned as status blocked with one open question"
+  ]
+}

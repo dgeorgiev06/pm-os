@@ -1,6 +1,6 @@
 # pm-os core config. Harness- and model-neutral: nothing here assumes one vendor.
 framework: pm-os
-version: 0.2.0          # core version; packs declare `requires.core` against it
+version: 0.6.0          # core version; packs declare `requires.core` against it
 contract: task@1
 
 paths:
@@ -15,6 +15,16 @@ paths:
 
 cos_pack: cos           # which installed pack supplies the Chief of Staff (AGENTS.md is generated from it)
 
+# Systems whose actions reach people outside pmos. An approved task with an action on one of them is not
+# done until each such action has a receipt from its handler or from the Operator's tool (`pmos action run --receipt`).
+external_systems: [comms]
+
+# How the CoS keeps the PM's thread free. `pmos catalog` writes these numbers into AGENTS.md
+# (COS.md says {{cos.inline_max_seconds}}); `pmos stats` reports replies over the call limit.
+cos:
+  inline_max_seconds: 10      # a command not known to finish within this runs in a background shell
+  inline_max_tool_calls: 2    # answer directly only within this many quick read calls; else it becomes a task
+
 precedence: [local, org, third-party]   # how the CoS breaks ties between matching modes
 
 # Model tiers are the ONLY place model ids live. Each adapter picks a provider.
@@ -23,10 +33,26 @@ tiers:
   openai:    { small: "", mid: "", top: "" }   # fill in the ids you use
   google:    { small: "", mid: "", top: "" }
 
+# Effort maps the neutral levels to each provider's reasoning parameter. Like `tiers`, this is the
+# only place vendor-specific names live; the values are examples, change them to what you use.
+effort_map:
+  anthropic: { param: effort,           low: low, medium: medium, high: high, max: max }
+  openai:    { param: reasoning_effort, low: low, medium: medium, high: high, max: high }
+  google:    { param: thinking_level,   low: low, medium: medium, high: high, max: high }
+
+# Risk scaling: envelope risk high raises a task's effort one level, low lowers it one, within
+# these bounds. It never applies on top of an explicit `task new --effort`.
+effort:
+  min: low
+  max: max
+
 defaults:
   budget: { max_usd: 2.0, max_minutes: 30 }
   max_revisions: 2
   max_call_depth: 3
+  effort: medium          # low | medium | high | max, when no task flag, mode, role or agent sets one
+  dispatch: background    # background | foreground: how the CoS runs a subagent, when nothing else sets it
+  code_timeout_seconds: 120   # a mode's done.must code line, run at `task result`, fails after this (per-line `timeout:` overrides)
 
 # Adapters turn the neutral sources into one harness's native config (`pmos render <adapter>`).
 adapters:
@@ -34,6 +60,11 @@ adapters:
     provider: anthropic
     model_field: alias              # "alias" writes small/mid/top as haiku/sonnet/opus; "id" writes full ids
     aliases: { small: haiku, mid: sonnet, top: opus }
+    supports_effort: false          # true: write `effort:` (from effort_map) into subagent frontmatter
+    supports_background: false      # true: write a background field into subagent frontmatter
+    background_field: background    # that field's name, if the harness has one
+    lock_cos: false                 # true: .claude/settings.json denies file edits (outside outputs/) and write-granted
+                                    # MCP tools, allowing pmos and the pack scripts. Blocks the PM's edits in that session too.
     agents_dir: .claude/agents
     skills_dir: .claude/skills
     # Map framework grants to this harness's tool names. This is what enforces the
@@ -45,9 +76,12 @@ adapters:
       shell:pmos: [Bash]
       jira:read: []          # e.g. mcp__jira__search_issues, mcp__jira__get_issue
       jira:write: []         # e.g. mcp__jira__create_issue, mcp__jira__update_issue
-      comms:send: []         # e.g. mcp__slack__post_message
+      comms:send: []         # set to your Slack/email MCP tool names, e.g. [mcp__slack__post_message]; empty = comms.send is refused
       repo:write: [Write, Edit]
-      todos:write: [Bash]    # the Operator applies todo diffs with packs/cos/scripts/todos.py
+    # Channels (packs' channels/<name>/channel.yaml) send through the MCP tools mapped here, by channel ref or by its
+    # system. A channel with no entry is refused: `action run` says `not configured` and the task stays approved.
+    channel_tools: {}       # e.g. {"channels:channel/slack": [mcp__slack__post_message], "channels:channel/email": [mcp__gmail__send_message]}
+      # Actions with a pack handler (pack.yaml `actions:`) run through `pmos action run` (shell:pmos).
   generic:
     provider: anthropic
     out_dir: build/generic   # one system prompt per agent + models.json, for any SDK or API
@@ -56,3 +90,52 @@ eval:
   # Any non-interactive command that reads a prompt file and prints the answer to stdout.
   # {prompt_file} is replaced with the path. Leave empty to only render prompts.
   command: ""   # e.g. "claude -p < {prompt_file}"  or  "my-runner --model mid {prompt_file}"
+  # Grades each run: {grader_file} (grader.md) and {output_file} (the run's output.md) are replaced with
+  # paths. It must print JSON {"passed": bool, "lines": [{"line": ..., "pass": bool}]}, saved as score.json;
+  # build/evals/summary.json gets the pass rate. Run it on the reviewer's tier. Empty = no grading.
+  grader_command: ""   # e.g. "claude -p --model sonnet \"$(cat {grader_file})\" < {output_file}"
+  # Golden runs cost money: one `pmos eval` run stops starting golden cases once their summed
+  # usage.usd reaches this (each case also runs under defaults.budget.max_usd).
+  max_usd: 10.0
+  # Seconds per case for the estimate `pmos eval` prints first, until build/evals/results.json has real ones.
+  typical_seconds: { conformance: 3, golden: 300 }
+
+# `pmos lint` (also run by validate, `pack add` and forge.py lint): component text stays tight.
+lint:
+  budgets:                    # body words, frontmatter and fenced code excluded; warn at warn_at, fail over
+    principle: 120
+    principle_check: 25
+    skill: 400
+    mode: 450
+    agent: 500
+    cos: 1000                 # COS.md plus every installed cos_section
+    standard_line: 25         # each contains/judgment line of a document standard (standards/*.yaml): one sentence
+  warn_at: 0.9
+  max_raise: 1.5              # a file may set `budget:` with `budget_reason:`, up to this times its kind's budget
+  step_max_words: 60          # per numbered step of a mode SKILL.md
+  sentence_avg_max: 22        # warn above this average
+  copy_words: 8               # this many consecutive words of a principle = a restatement; cite it instead
+  duplicate: { min_words: 15, shingle: 4, similarity: 0.6 }   # near-duplicate paragraphs across component files
+  filler_max: { principle: 0, default: 2 }
+  filler:                     # whole words, any case; /…/ is a regex
+    - it is important to
+    - it's important to
+    - make sure to
+    - be sure to
+    - in order to
+    - please note
+    - note that
+    - robust
+    - seamless
+    - comprehensive
+    - leverage
+    - delve
+    - various
+    - etc.
+    - should probably
+    - feel free to
+    - as needed
+    - in a timely manner
+    - very
+    - really
+    - basically

@@ -1,0 +1,21 @@
+kind: conformance
+name: router-star-calls
+covers: [script:scripts/pmos.py]
+finding: composability#1
+owner: modularity
+severity: medium
+desc: >-
+  Routers that plan dynamically declare `calls: ["*"]`: any mode visible to the router's pack may
+  be a child, and the depends/exports visibility rules still apply.
+steps:
+  - name: a pack whose router declares calls ["*"] is admitted
+    run: cp -r $FX/packs/star packs/star && $PMOS pack add packs/star --approve-grants
+  - run: $PMOS task new --mode star/route --verb plan --inputs '{"goal":"g"}'
+    capture: {R: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $R running
+  - name: an exported mode of a pack in depends
+    run: $PMOS task new --parent $R --mode pm/prd --verb draft --inputs '{"goal":"g"}'
+    expect: {output: 'T-\d{8}-\d{3,}'}
+  - name: forge is not in star's depends, so "*" doesn't reach it
+    run: $PMOS task new --parent $R --mode forge/new-mode --verb draft --inputs '{"pack":"pm","name":"x","purpose":"y"}'
+    expect: {exit: nonzero, output: '(?i)depends'}

@@ -1,0 +1,30 @@
+name: forge/review-framework
+version: 0.2.1
+contract: task@1
+author: dima
+summary: "Re-run one framework review of pm-os (conformance evals plus judgment) and report it in the original reviews' shape"
+verbs: [review]
+accepts:
+  aspect: string        # clarity | performance | modularity | composability | tightness
+  ref: string?          # a git ref or a path to review; default: the working tree
+returns:
+  report: doc_ref       # outputs/<id>/report.md, shaped like evals/framework/findings/<aspect>.md
+  conformance: doc_ref  # outputs/<id>/conformance.json, from `pmos eval --framework <aspect> --json`
+                        # (tightness also writes outputs/<id>/lint.json, `pmos lint --json`)
+skill: SKILL.md
+default_role: framework-reviewer
+roles: [core/reviewer]  # the reviewing stance is the core reviewer's, reused rather than copied
+calls: []
+grants: { repo: read }  # reads the tree under review; writes only its own outputs/<id>/
+approval: none          # a read-only report: no actions, nothing to approve
+risk: low
+principles: [core:grounded, core:honest-self-check]   # always-on core principles, named because the report leans on them
+done:
+  must:
+    - code: "python packs/forge/modes/review-framework/scripts/conformance.py --task {task} --verify-clean"
+    - "Every sub-scale of the aspect is scored 1-5 with a one-line reason"
+    - "Every issue cites file:line evidence and is marked with the conformance case that covers it, or judgment-only"
+    - "Conformance results are quoted from conformance.json, not re-judged"
+  should:
+    - "Tightness: every file in lint.json is scored 1-5, with the exact lines to cut for any file under 5"
+evals: evals/

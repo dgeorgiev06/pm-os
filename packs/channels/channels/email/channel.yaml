@@ -1,0 +1,13 @@
+name: email
+version: 0.1.0
+summary: "Plain text to one email address"
+system: comms
+format: plain
+limits:
+  max_chars: 10000
+recipient:
+  type: email address
+  pattern: '[^@\s]+@[^@\s]+\.[^@\s]+'
+  example: customers@example.com
+send:
+  handler: comms.send-email

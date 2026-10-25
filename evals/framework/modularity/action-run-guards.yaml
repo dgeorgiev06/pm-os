@@ -1,0 +1,27 @@
+kind: conformance
+name: action-run-guards
+covers: [script:scripts/pmos.py]
+finding: modularity#2
+owner: modularity
+severity: high
+desc: >-
+  `pmos action run <id>` executes a task's actions only when the task is `approved` and its
+  actions still hash to the `actions_sha` recorded at approval.
+steps:
+  - name: the command exists
+    run: $PMOS action run --help
+  - run: $PMOS task new --mode pm/prd --verb draft --inputs '{"goal":"g"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: >-
+      $PMOS task move $T running && $PY $FX/bin/mkresult.py --task $T --submit
+      --action '{"system":"docs","op":"publish","idempotency_key":"pub","payload":{"path":"outputs/x.md","destination":"wiki"},"preview":"publish"}'
+  - run: $PY $FX/bin/advance.py --task $T --to awaiting_approval
+  - name: not approved yet
+    run: $PMOS action run $T
+    expect: {exit: nonzero, output: '(?i)approved'}
+  - run: $PMOS task approve $T --by pm
+  - name: the approved actions are changed afterwards
+    run: $PY $FX/bin/yset.py state/tasks/$T.json result.actions.0.payload.destination evil --str
+  - name: action run notices the change
+    run: $PMOS action run $T
+    expect: {exit: nonzero, output: '(?i)sha|hash|changed|edit|tamper|integrity|modified'}

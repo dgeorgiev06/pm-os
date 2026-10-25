@@ -11,9 +11,84 @@
     "accepts",
     "returns",
     "default_role",
-    "approval"
+    "approval",
+    "done"
   ],
   "additionalProperties": false,
+  "$defs": {
+    "type": {
+      "type": "string",
+      "pattern": "^(string|number|integer|bool|boolean|list|object|doc_ref|diff_ref)\\??$",
+      "description": "The closed type vocabulary, optionally ending in ? (optional)"
+    },
+    "done_line": {
+      "description": "One line of the definition of done. A string is judged by the Reviewer; {code} is run by pmos on `task result` (repo root; {outputs.<name>}, {inputs.<name>}, {task} and {outputs_dir} are filled in; exit 0 = holds); {principle} cites a principle (bare = this pack). Ids default to must-N / should-N (strings), code-N, or the principle's ref.",
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object",
+          "required": [
+            "text"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "id": {
+              "$ref": "#/$defs/line_id"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "code"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string",
+              "minLength": 1
+            },
+            "id": {
+              "$ref": "#/$defs/line_id"
+            },
+            "timeout": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3600,
+              "description": "seconds; default defaults.code_timeout_seconds in pm-os.yaml"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "principle"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "principle": {
+              "type": "string",
+              "minLength": 1
+            },
+            "id": {
+              "$ref": "#/$defs/line_id"
+            }
+          }
+        }
+      ]
+    },
+    "line_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9:_-]*$"
+    }
+  },
   "properties": {
     "name": {
       "type": "string",
@@ -49,15 +124,16 @@
     },
     "accepts": {
       "type": "object",
-      "description": "field -> type. A trailing ? marks optional (e.g. goals_hint: string?)",
+      "description": "field -> type. A trailing ? marks optional (e.g. goals_hint: string?). doc_ref / diff_ref inputs must be an existing path or a scheme: ref. An input value may instead be {\"$from\": \"<task id>\", \"output\": \"<name>\"}: pmos checks the source declares that output, adds it to depends_on, and resolves it into the task's inputs_resolved when the task moves to running.",
       "additionalProperties": {
-        "type": "string"
+        "$ref": "#/$defs/type"
       }
     },
     "returns": {
       "type": "object",
+      "description": "output name -> type. A done or needs_approval result must carry every non-optional name in result.outputs, and no other names.",
       "additionalProperties": {
-        "type": "string"
+        "$ref": "#/$defs/type"
       }
     },
     "skill": {
@@ -74,11 +150,19 @@
       },
       "description": "Other roles this mode uses"
     },
-    "calls": {
+    "skills": {
       "type": "array",
       "items": {
+        "type": "string"
+      },
+      "description": "Skills this mode's work needs (bare = this pack, <pack>:<path> otherwise); `task show` lists them after the role's, deduped"
+    },
+    "calls": {
+      "type": "array",
+      "description": "Modes this one may start as children, version-pinned; [\"*\"] = any mode visible to its pack (routers)",
+      "items": {
         "type": "string",
-        "pattern": "^[a-z0-9-]+/[a-z0-9-]+(@[~^]?[0-9]+(\\.[0-9]+){0,2})?$"
+        "pattern": "^(\\*|[a-z0-9-]+/[a-z0-9-]+(@[~^]?[0-9]+(\\.[0-9]+){0,2})?)$"
       }
     },
     "grants": {
@@ -106,12 +190,6 @@
         "high"
       ]
     },
-    "rubric": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
     "evals": {
       "type": "string",
       "default": "evals/"
@@ -121,7 +199,79 @@
       "items": {
         "type": "string"
       },
-      "description": "Principles this mode cites: bare = this pack, <pack>:<name> otherwise"
+      "description": "Principles the Worker reads as guidance and the Reviewer scores as should lines: bare = this pack, <pack>:<name> otherwise. Cite one in done.must to make it blocking. Document-type principles live on the mode, voice and style on the role: a mode and its default role never cite the same one"
+    },
+    "standard": {
+      "description": "The document standard (standards/<name>.yaml) an output follows: {ref, output}, or a ref when returns has exactly one doc_ref. pmos adds the done.must code line `standard` (scripts/check_doc.py on that output) and one must line per judgment line (standard-1, …), and `task show` prints the outline",
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object",
+          "required": [
+            "ref",
+            "output"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "ref": {
+              "type": "string",
+              "minLength": 1,
+              "description": "<name> or standards/<name> (this pack), or <pack>:standards/<name>"
+            },
+            "output": {
+              "type": "string",
+              "minLength": 1,
+              "description": "a doc_ref name in returns"
+            }
+          }
+        }
+      ]
+    },
+    "done": {
+      "type": "object",
+      "required": [
+        "must"
+      ],
+      "additionalProperties": false,
+      "description": "The definition of done. must: every line holds or the review fails; code lines run first, at `task result`. should: the share that holds sets the score (5 x held / total; 4 or more passes).",
+      "properties": {
+        "must": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/done_line"
+          }
+        },
+        "should": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/done_line"
+          }
+        }
+      }
+    },
+    "merge_child_actions": {
+      "type": "boolean",
+      "description": "At this mode's result, pmos appends the actions of its done children whose approval rolled up to it"
+    },
+    "effort": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ],
+      "description": "How hard the model reasons (tier picks the model). Resolved per task: task new --effort > mode > role > agent > defaults.effort; risk high/low then moves it one level, clamped by effort.min/max"
+    },
+    "dispatch": {
+      "enum": [
+        "background",
+        "foreground"
+      ],
+      "description": "How the CoS runs the subagent: background (start it, return to the PM, report when it lands) or foreground (wait). Resolved like effort: task new --dispatch > mode > role > agent > defaults.dispatch"
     }
   }
 }

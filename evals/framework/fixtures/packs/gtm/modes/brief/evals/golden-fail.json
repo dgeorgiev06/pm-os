@@ -1,0 +1,23 @@
+{
+  "kind": "golden",
+  "name": "gtm/brief fixture failure case",
+  "covers": [
+    "mode:gtm/brief"
+  ],
+  "failure": true,
+  "envelope": {
+    "verb": "draft",
+    "mode": "gtm/brief",
+    "inputs": {
+      "goal": "x"
+    },
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "low",
+    "approval": "before_publish"
+  },
+  "expect": [
+    "an unanswerable request is returned as status blocked with one open question"
+  ]
+}

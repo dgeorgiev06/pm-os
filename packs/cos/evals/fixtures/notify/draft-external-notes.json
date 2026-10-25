@@ -1,0 +1,4 @@
+{"notifications": [
+  {"template": "packs/cos/evals/fixtures/notify/templates/external-with-notes.md",
+   "fields": {"body": "Routing and reporting changes are live.", "support_notes": "Restart the sync worker if reports lag."}}
+]}

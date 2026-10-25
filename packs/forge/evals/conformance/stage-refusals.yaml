@@ -1,0 +1,20 @@
+kind: conformance
+name: stage-refusals
+covers: [script:scripts/forge.py, mode:forge/new-mode, mode:forge/new-pack]
+failure: true
+desc: >-
+  forge refuses bad names, a mode that already exists, a pack that isn't installed (stage-mode),
+  `core`, and a pack that already exists (stage-pack).
+setup:
+  install: [demo]
+steps:
+  - run: $PY $PACK/scripts/forge.py stage-mode --task T-20990101-001 --pack demo --name Bad_Name --summary s
+    expect: {exit: nonzero, stderr: 'lowercase'}
+  - run: $PY $PACK/scripts/forge.py stage-mode --task T-20990101-001 --pack demo --name note --summary s
+    expect: {exit: nonzero, stderr: 'already exists'}
+  - run: $PY $PACK/scripts/forge.py stage-mode --task T-20990101-002 --pack nope --name x --summary s
+    expect: {exit: nonzero, output: 'not installed'}
+  - run: $PY $PACK/scripts/forge.py stage-pack --task T-20990101-003 --name core --summary s
+    expect: {exit: nonzero, stderr: "not 'core'"}
+  - run: $PY $PACK/scripts/forge.py stage-pack --task T-20990101-003 --name demo --summary s
+    expect: {exit: nonzero, stderr: 'already exists'}

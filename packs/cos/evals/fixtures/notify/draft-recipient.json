@@ -1,0 +1,4 @@
+{"notifications": [
+  {"channel": "channels:channel/slack", "audience": "internal", "recipient": "someone@example.test",
+   "fields": {"message": "Release 2.4 ships 2026-10-30."}}
+]}

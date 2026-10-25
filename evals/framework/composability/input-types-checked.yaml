@@ -1,0 +1,27 @@
+kind: conformance
+name: input-types-checked
+covers: [script:scripts/pmos.py]
+finding: composability#4
+owner: composability
+severity: high
+desc: >-
+  `accepts` types come from a closed vocabulary (typos are refused at admission), and doc_ref
+  inputs must be an existing path or a scheme ref.
+setup:
+  install: [typed]
+steps:
+  - name: dco_ref / whatever are not types
+    run: cp -r $FX/packs/badtype packs/badtype && $PMOS pack add packs/badtype --approve-grants
+    expect: {exit: nonzero, output: '(?i)type'}
+  - name: a list for a doc_ref
+    run: $PMOS task new --mode typed/memo --verb draft --inputs '{"topic":"t","brief":[1,2]}'
+    expect: {exit: nonzero, output: 'brief'}
+  - name: a path that doesn't exist
+    run: $PMOS task new --mode typed/memo --verb draft --inputs '{"topic":"t","brief":"nope/missing.md"}'
+    expect: {exit: nonzero, output: 'brief'}
+  - name: an existing path
+    run: $PMOS task new --mode typed/memo --verb draft --inputs '{"topic":"t","brief":"context/product.md"}'
+    expect: {output: 'T-\d{8}-\d{3,}'}
+  - name: a scheme ref
+    run: $PMOS task new --mode typed/memo --verb draft --inputs '{"topic":"t","brief":"doc:packs/pm/modes/prd/evals/fixtures/router-brief.md"}'
+    expect: {output: 'T-\d{8}-\d{3,}'}

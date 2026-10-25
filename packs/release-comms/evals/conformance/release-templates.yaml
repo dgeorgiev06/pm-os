@@ -1,0 +1,30 @@
+kind: conformance
+name: release-templates
+covers: [mode:release-comms/release-notify, script:modes/release-notify/scripts/check_draft.py]
+failure: true
+desc: >-
+  The release templates' field rules hold: a good draft passes cos/notify's checks; a headline over 12
+  words, an empty change list, a ship date that is not a date, a missing ship date, and an internal
+  support note in the external email are each refused, naming the field.
+setup:
+  copy:
+    release/channels.yaml: channels.yaml
+    release/draft-good.json: draft-good.json
+    release/draft-headline.json: draft-headline.json
+    release/draft-changes.json: draft-changes.json
+    release/draft-date.json: draft-date.json
+    release/draft-no-date.json: draft-no-date.json
+    release/draft-external-notes.json: draft-external-notes.json
+steps:
+  - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/release-notify/scripts/check_draft.py draft-good.json
+    expect: {stdout: 'ok: draft-good.json: 2 notification'}
+  - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/release-notify/scripts/check_draft.py draft-headline.json
+    expect: {exit: nonzero, output: 'field .headline. is 15 words, over max_words \(12\)'}
+  - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/release-notify/scripts/check_draft.py draft-changes.json
+    expect: {exit: nonzero, output: "field 'changes' needs at least 1 item"}
+  - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/release-notify/scripts/check_draft.py draft-date.json
+    expect: {exit: nonzero, output: "field 'ship_date' is not a date"}
+  - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/release-notify/scripts/check_draft.py draft-no-date.json
+    expect: {exit: nonzero, output: "required field 'ship_date' is missing"}
+  - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/release-notify/scripts/check_draft.py draft-external-notes.json
+    expect: {exit: nonzero, output: 'support_notes'}

@@ -1,0 +1,19 @@
+kind: conformance
+name: router-children
+covers: [mode:pm/router, router:pm/router, mode:pm/prd, mode:pm/jira-tickets]
+failure: true
+desc: >-
+  pm/router starts only the modes in its calls: a PRD child, then a tickets child wired to the
+  PRD's output with $from (which makes it depend on the PRD); a mode outside its calls is refused.
+steps:
+  - run: $PMOS task new --mode pm/router --inputs '{"goal":"Ship operator failover","project":"STK"}'
+    capture: {R: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $R running && $PMOS task new --parent $R --mode pm/prd --inputs '{"goal":"Operator failover PRD"}'
+    capture: {P: '(T-\d{8}-\d{3,})'}
+  - run: |
+      $PMOS task new --parent $R --mode pm/jira-tickets --inputs "{\"plan\": {\"\$from\": \"$P\", \"output\": \"prd\"}, \"project\": \"STK\"}"
+    capture: {J: '(T-\d{8}-\d{3,})'}
+    expect: {task: {id: $J, fields: {envelope.depends_on: '"T-\d{8}-\d{3,}"', envelope.parent: '^T-'}}}
+  - name: a mode outside the router's calls
+    run: $PMOS task new --parent $R --mode pm/router --inputs '{"goal":"again"}'
+    expect: {exit: nonzero, output: '(?i)\bcalls\b'}

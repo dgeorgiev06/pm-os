@@ -1,0 +1,21 @@
+name: x-staking/main
+version: 0.1.0
+contract: task@1
+author: framework-evals
+summary: "Role cites an internal skill of pm"
+verbs: [draft]
+accepts:
+  goal: string
+returns:
+  doc: doc_ref
+skill: SKILL.md
+default_role: writer
+calls: []
+grants: { docs: draft }
+approval: before_publish
+risk: low
+principles: []
+done:
+  must:
+    - "The artifact exists and answers the envelope"
+evals: evals/

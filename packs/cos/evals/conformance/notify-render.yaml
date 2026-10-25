@@ -1,0 +1,36 @@
+kind: conformance
+name: notify-render
+covers: [mode:cos/notify, script:modes/notify/scripts/build_actions.py]
+desc: >-
+  build renders the generic Slack message for the internal audience and the generic email for the
+  external one into messages.json and actions.json: one comms.send action per recipient, unique
+  idempotency keys, and a preview that names the recipient and is the rendered text.
+setup:
+  copy:
+    notify/channels.yaml: channels.yaml
+    notify/draft-internal.json: draft-internal.json
+    notify/draft-external.json: draft-external.json
+steps:
+  - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py --check draft-internal.json
+    expect: {stdout: 'ok: draft-internal.json'}
+  - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py build draft-internal.json --audience internal --task T-20261025-901 --out out-int
+    expect: {stdout: 'build: 1 comms.send action\(s\) for internal', files: {exists: [out-int/messages.json, out-int/actions.json]}}
+  - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py build draft-external.json --audience external --task T-20261025-901 --out out-ext
+    expect:
+      stdout: 'build: 2 comms.send action\(s\) for external'
+      files:
+        contains:
+          out-ext/actions.json: ['"idempotency_key": "T-20261025-901-customer-email-1"', '"idempotency_key": "T-20261025-901-customer-email-2"', '"recipient": "partners@example.test"', '"system": "comms"']
+          out-ext/messages.json: ['"contract": "notify-messages@1"', 'Subject: Release 2.4 is out']
+  - name: previews name the recipient and are the rendered text, one action per message
+    run: |
+      $PY - <<'PY'
+      import json, sys
+      acts = json.load(open("out-ext/actions.json"))
+      msgs = json.load(open("out-ext/messages.json"))["messages"]
+      keys = [a["idempotency_key"] for a in acts]
+      ok = len(set(keys)) == len(keys) == len(msgs) == 2 and all(a["preview"] == f"to {m['recipient']}: {m['text']}" for a, m in zip(acts, msgs))
+      print("previews match" if ok else "mismatch")
+      sys.exit(0 if ok else 1)
+      PY
+    expect: {stdout: 'previews match'}

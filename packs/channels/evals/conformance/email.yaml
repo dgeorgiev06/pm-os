@@ -1,0 +1,43 @@
+kind: conformance
+name: email
+covers: [channel:channels/email, action:comms.send-email, script:scripts/send.py]
+failure: true
+desc: >-
+  The email channel: plain text up to 10000 characters, a recipient that is an address, Markdown
+  rendered as plain text, and a send that refuses until a tool is mapped and records the tool's receipt.
+setup:
+  files:
+    short.txt: "Subject: Routing\n\nRouting rules are live."
+    md.txt: "**Bold** and [docs](https://docs.example.test)"
+    act.json: '{"task_id": "T-20261025-920", "action": {"system": "comms", "op": "send", "idempotency_key": "T-20261025-920-email-1", "payload": {"audience": "external", "channel": "channels:channel/email", "recipient": "customers@example.test", "text": "Subject: Routing\n\nRouting rules are live."}, "preview": "Subject: Routing"}}'
+    bad.json: '{"task_id": "T-20261025-920", "action": {"system": "comms", "op": "send", "idempotency_key": "T-20261025-920-email-2", "payload": {"audience": "external", "channel": "channels:channel/email", "recipient": "not-an-address", "text": "Hi."}, "preview": "Hi."}}'
+    rcpt.json: '{"task_id": "T-20261025-920", "receipt": "msg-7f3a", "action": {"system": "comms", "op": "send", "idempotency_key": "T-20261025-920-email-1", "payload": {"audience": "external", "channel": "channels:channel/email", "recipient": "customers@example.test", "text": "Hi."}, "preview": "Hi."}}'
+steps:
+  - name: a short plain message passes the channel's checks
+    run: $PMOS channel check channels:channel/email --text short.txt
+    expect: {exit: 0}
+  - name: a message over max_chars is refused
+    run: $PY -c "print('x' * 10001)" > long.txt && $PMOS channel check channels:channel/email --text long.txt
+    expect: {exit: nonzero, stderr: 'max_chars'}
+  - name: a recipient that is not an address is refused
+    run: $PMOS channel check channels:channel/email --text short.txt --recipient not-an-address
+    expect: {exit: nonzero, stderr: 'recipient'}
+  - name: an address passes
+    run: $PMOS channel check channels:channel/email --text short.txt --recipient ops@example.test
+    expect: {exit: 0}
+  - name: Markdown is rendered as plain text
+    run: $PMOS channel render channels:channel/email --text md.txt
+    expect: {stdout: 'Bold and docs \(https://docs.example.test\)', stdout_not: '\*\*'}
+  - name: the send refuses while no tool is mapped
+    run: $PY $PACK/scripts/send.py act.json
+    expect: {exit: nonzero, stderr: 'not configured'}
+  - name: a tool is mapped; the send is verified but not sent
+    run: |
+      $PY $CORE_BIN/yset.py pm-os.yaml adapters.claude-code.channel_tools '{"channels:channel/email": ["mcp__gmail__send_message"]}' && $PY $PACK/scripts/send.py act.json
+    expect: {exit: 0, stdout: '"sent": false'}
+  - name: a receipt from the tool is recorded
+    run: $PY $PACK/scripts/send.py rcpt.json
+    expect: {exit: 0, stdout: 'msg-7f3a'}
+  - name: a recipient outside the pattern is refused
+    run: $PY $PACK/scripts/send.py bad.json
+    expect: {exit: nonzero, stderr: 'recipient'}

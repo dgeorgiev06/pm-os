@@ -1,0 +1,23 @@
+{
+  "kind": "golden",
+  "name": "assemble/bundle fixture failure case",
+  "covers": [
+    "mode:assemble/bundle"
+  ],
+  "failure": true,
+  "envelope": {
+    "verb": "plan",
+    "mode": "assemble/bundle",
+    "inputs": {
+      "topic": "x"
+    },
+    "acceptance": [
+      "answers the envelope"
+    ],
+    "risk": "low",
+    "approval": "before_execute"
+  },
+  "expect": [
+    "an unanswerable request is returned as status blocked with one open question"
+  ]
+}

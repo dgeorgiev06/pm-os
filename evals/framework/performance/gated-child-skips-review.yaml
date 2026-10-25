@@ -1,0 +1,19 @@
+kind: conformance
+name: gated-child-skips-review
+covers: [script:scripts/pmos.py]
+finding: performance#7
+owner: performance
+severity: medium
+desc: >-
+  A child with approval none whose parent is reviewed and gated goes straight to done; its work is
+  reviewed once, inside the parent, not twice.
+steps:
+  - run: $PMOS task new --mode pm/sprint-planning --verb plan --inputs '{"sprint":"2026-S22","project":"STK"}'
+    capture: {S: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $S running
+  - run: $PMOS task new --parent $S --mode pm/jira-tickets --verb draft --approval none --inputs '{"plan":"outputs/plan.json","project":"STK"}'
+    capture: {J: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $S waiting
+  - run: $PMOS task move $J running && $PY $FX/bin/mkresult.py --task $J --submit
+    expect:
+      task: {id: $J, state: done}

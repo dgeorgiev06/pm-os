@@ -1,0 +1,21 @@
+kind: conformance
+name: overlay-absent-when-none
+covers: [script:scripts/pmos.py]
+finding: request:overlays
+severity: medium
+desc: >-
+  With no product (no flag, an empty `product:` in context), a task gets no overlay. The overlay is
+  chosen by data only: pm/prd's SKILL.md and pm/doc-writer no longer name the staking skill.
+steps:
+  - name: the staking skill is named only as data
+    run: 'true'
+    expect:
+      files:
+        not_contains: {packs/pm/modes/prd/SKILL.md: '(?i)staking', packs/pm/roles.yaml: 'staking-prd'}
+  - run: $PY $FX/bin/yset.py context/product.md product '' --front && $PMOS task new --mode pm/prd --inputs '{"goal":"g"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+    expect: {task: {id: $T, fields: {overlay_skills: '^\[\]$'}}}
+  - run: $PMOS task state $T --json
+    expect: {stdout: '"product": null'}
+  - run: $PMOS task show $T
+    expect: {stdout: '(?i)## Skills', stdout_not: ['(?i)\[overlay', 'staking-prd', '(?m)^- product: ']}

@@ -6,39 +6,57 @@ description: The pm-os conventions for authoring packs, modes, roles, skills and
 
 ## Names
 
-| Thing | Name | File |
-| --- | --- | --- |
-| Pack | `acme` (lowercase, hyphens) | `packs/acme/pack.yaml` |
-| Mode | `acme/brief` | `packs/acme/modes/brief/mode.yaml`; `SKILL.md` frontmatter `name: acme-brief` |
-| Role | `acme/briefer` | entry `briefer` in `packs/acme/roles.yaml` |
-| Skill | `acme:domain/brief-style` | `packs/acme/skills/domain/brief-style/SKILL.md`, `name: acme-domain-brief-style` |
-| Principle | `acme:one-page` | `packs/acme/skills/principles/one-page/SKILL.md`, `name: acme-principles-one-page`, `kind: principle`, `check: "…"` |
-
-Inside a pack a bare name means that pack. Core items are `core:…`; another pack's are `<pack>:…`
-and need that pack in `depends` and the item in its `exports`.
+Pack `acme`; mode `acme/brief` (`modes/brief/`); role `acme/briefer`; skill
+`acme:domain/brief-style`; principle `acme:one-page` (`skills/principles/one-page/SKILL.md`, with
+`kind: principle` and a one-line `check`); standard `acme:standards/brief`. Bare names mean this
+pack; others are `core:…` or `<pack>:…` (`<pack>/…` for modes and roles), used as
+`forge:compose-dont-copy` says.
 
 ## A mode
 
-- `mode.yaml`: `name`, `version`, `contract: task@1`, a one-line `summary` (the CoS reads it),
-  `verbs`, `accepts` (field: type, trailing `?` = optional), `returns`, `default_role`, `calls`
-  (modes it may start as children, version-pinned), `grants` (system: read | draft | write),
-  `approval` (none | before_publish | before_execute), `risk`, `principles`, `rubric`, `evals`.
-- `SKILL.md`: numbered steps, each tagged `[model]`, `[code: <command>]` or `[candidate-code]`.
-  Start with `pmos task show <id>`; end with `pmos task result <id> outputs/<id>/result.json`.
-- A gate that needs the PM mid-way: submit `status: "blocked"` with one open question, and track the
-  stage in `outputs/<id>/progress.json`. Children: `pmos task new --parent <id> …`, then
-  `pmos task move <id> waiting`; pmos re-queues the parent when they finish.
-- Every external change is an `action` (system, op, idempotency_key, payload, preview). Never write.
-- At least one golden task in `evals/` with `envelope`, optional `fixtures`, and `expect` lines.
+- `mode.yaml` (`contracts/mode.schema.json`): a one-line `summary` (the CoS routes on it); `accepts`
+  and `returns` typed from the schema's closed list (`?` = optional); `calls`, version-pinned
+  (`["*"]`: any visible mode); `grants` (`read | draft | write`); `approval`; `skills`;
+  `principles`. `effort`/`dispatch` only to differ from the role.
+- Document-type principles and skills go on the mode, voice and style on the role; `validate`
+  refuses one cited by both.
+- A document's outline and rules are a standard (`contracts/standard.schema.json`); `standard:
+  {ref, output}` adds its `check_doc.py` and judgment lines to `done`.
+- `done:`: every `must` line holds or the review fails; `should` lines set the score.
+  `code: "python packs/<pack>/modes/<mode>/scripts/x.py {outputs.<name>}"` runs before review;
+  `principle: <ref>` makes one blocking.
+- `SKILL.md`: numbered steps, each tagged `[model]`, `[code: <command>]` or `[candidate-code]`, the
+  first `pmos task show <id>`, the last `pmos task result <id> outputs/<id>/result.json`.
+- A gate: a `blocked` result with one question (stage in `outputs/<id>/progress.json`); children:
+  `task new --parent <id>`, then `task move <id> waiting`.
+- External changes are actions on systems granted at `draft` or `write`.
+- Export it or put it in a mode's `calls`, or nothing can start it.
 
-## A pack
+## Tight text
 
-`pack.yaml`: `name`, `version`, `contract: pack@1`, `summary`, `requires: {core: ^0.2}`,
-`depends`, optional `router` (an exported mode for goal-level asks), and `exports` for modes, roles,
-skills and principles. Unexported items are internal to the pack.
+Meet `core:tight-instructions`; `pmos lint` checks it per `lint:` in `pm-os.yaml`.
 
-## Versions and grants
+## Evals (eval@1)
 
-Bump the mode's version and the pack's version on any change. A change that widens grants (a new
-system, or read → draft → write) must be re-approved by the PM with
-`pmos pack add <path> --upgrade --approve-grants`; until then pmos refuses to run that mode.
+Each case has `kind` and `covers` (the pack's `mode:`, `script:`, `action:`, `standard:`,
+`router:` or `principle:` refs). Admission requires:
+
+| Feature | Needs | Where |
+| --- | --- | --- |
+| an exported mode | a golden case and a failure-path case (`failure: true`) | `modes/<mode>/evals/*.json` |
+| a script (`scripts/`, `modes/*/scripts/`), `actions:` handler or standard | a conformance case (a standard: one passing, one `failure: true`) | `evals/conformance/*.yaml` |
+| the router | a workflow case | `evals/workflows/*.json` |
+
+Fixtures: `evals/fixtures/`; cases assume only core and `depends` (steps get `$PACK`, `$FX`,
+`$CORE_BIN`). Check with `pmos eval --coverage <staged pack>`.
+
+## Packs, versions, grants
+
+`pack.yaml` (`contracts/pack.schema.json`): `requires: {core: ^0.6}`, `depends`, `exports`, and
+optionally `router`, `actions` (`<system>.<op>: <script> [args]`), `overlays` (product → skills) and
+`cos_section`.
+
+Bump every changed mode's and pack's version; `pmos pack add --upgrade` refuses otherwise.
+Wider grants need the PM's `--approve-grants`.
+
+Channels: `forge.py stage-channel`.
