@@ -1,5 +1,5 @@
 name: cos
-version: 0.5.0
+version: 0.5.1
 contract: pack@1
 author: dima
 summary: Chief of Staff — talks to the PM, routes to packs and modes, keeps the todo list, batches approvals, posts digests

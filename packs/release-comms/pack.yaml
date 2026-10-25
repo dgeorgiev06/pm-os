@@ -1,5 +1,5 @@
 name: release-comms
-version: 0.2.0
+version: 0.2.1
 contract: pack@1
 author: dima
 summary: "Release notifications: customer and internal messages from release notes, checked and approved before send"

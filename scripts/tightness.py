@@ -250,10 +250,14 @@ def lint(targets: list[dict], context: list[dict], cfg: dict | None = None, cos_
     if cos_files:
         by_file = {c["file"]: c for c in context + targets}
         words = sum(count_words("\n".join(parsed[f][3])) for f in cos_files if f in by_file)
-        budget = budgets["cos"]
-        manual = {"files": cos_files, "words": words, "budget": budget, "errors": [], "warnings": []}
+        manual = {"files": cos_files, "words": words, "errors": [], "warnings": []}
+        # the manual's budget: COS.md may declare `budget:` with `budget_reason:` (the same rules as any file)
+        cos_meta = parsed[cos_files[0]][0] if cos_files[0] in parsed else {}
+        budget, source = _budget({"kind": "cos", "file": cos_files[0]}, cos_meta, budgets, s,
+                                 manual["errors"].append)
+        manual["budget"] = budget
         name = "CoS manual (" + " + ".join(cos_files) + ")"
-        _check_budget(name, "", words, budget, "lint.budgets.cos", s["warn_at"], manual["errors"].append,
+        _check_budget(name, "", words, budget, source, s["warn_at"], manual["errors"].append,
                       manual["warnings"].append)
         if not any(t["kind"] == "cos" and t["file"] in cos_files for t in targets):
             manual["errors"], manual["warnings"] = [], []   # reported only when a manual file is linted

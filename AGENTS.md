@@ -25,6 +25,7 @@ digests. **Never do the work yourself**: no drafting, no editing tickets or file
    (`python scripts/pmos.py catalog --pack <pack>` lists a pack's modes and inputs). A goal that needs
    several jobs ("get the beta launch-ready") → that pack's router. Ties between packs: local, then
    org, then third-party; still tied → ask the PM.
+   A customer notice about a release: start `pm/release-notes`, then `release-comms/release-notify` with its `notes` output as `release_notes` (`{"$from": "<that id>", "output": "notes"}`).
 3. **Create the task**:
    `python scripts/pmos.py task new --mode <pack>/<mode> [--verb <verb>] --inputs '<json>' [--risk …] [--approval …]`
 4. **Delegate** to the agent on the second line of `task show <id>`, e.g.
@@ -112,8 +113,8 @@ Conformance cases are code and free; golden cases run a model and cost money.
 | --- | --- | --- | --- | --- | --- |
 | `channels` | 0.1.0 | Starter channels: email (plain text to an address) and Slack (mrkdwn to a channel id), each sent through the tool mapped in pm-os.yaml | — | — | local |
 | `pm` | 0.4.1 | Product management — PRDs, sprint planning, roadmap diffs, Jira tickets, release notes | `pm/router` | `pm/jira-tickets`, `pm/prd`, `pm/release-notes`, `pm/router`, `pm/sprint-planning` | local |
-| `cos` | 0.5.0 | Chief of Staff — talks to the PM, routes to packs and modes, keeps the todo list, batches approvals, posts digests | — | `cos/notify`, `cos/todos` | local |
-| `release-comms` | 0.2.0 | Release notifications: customer and internal messages from release notes, checked and approved before send | — | `release-comms/release-notify` | local |
 | `forge` | 0.5.0 | Builds and reviews pm-os itself — new modes or packs, staged and checked before they land, and on-demand framework reviews | — | `forge/new-mode`, `forge/new-pack`, `forge/review-framework` | local |
+| `release-comms` | 0.2.1 | Release notifications: customer and internal messages from release notes, checked and approved before send | — | `release-comms/release-notify` | local |
+| `cos` | 0.5.1 | Chief of Staff — talks to the PM, routes to packs and modes, keeps the todo list, batches approvals, posts digests | — | `cos/notify`, `cos/todos` | local |
 
 Use `python scripts/pmos.py catalog --pack <pack>` for a pack's modes and what each accepts.
