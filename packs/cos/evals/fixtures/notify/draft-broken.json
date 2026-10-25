@@ -1,0 +1,4 @@
+{"notifications": [
+  {"template": "packs/cos/evals/fixtures/notify/templates/broken-placeholder.md",
+   "fields": {"message": "Release 2.4 ships 2026-10-30."}}
+]}

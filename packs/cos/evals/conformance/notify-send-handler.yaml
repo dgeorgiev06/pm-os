@@ -1,0 +1,29 @@
+kind: conformance
+name: notify-send-handler
+covers: [action:comms.send, script:modes/notify/scripts/build_actions.py]
+failure: true
+desc: >-
+  The comms.send handler: it refuses while pm-os.yaml maps no comms tool; once one is mapped it records a
+  verified send, and it refuses a recipient that is not in channels.yaml.
+setup:
+  copy:
+    notify/channels.yaml: channels.yaml
+  files:
+    act.json: '{"task_id": "T-20261025-905", "action": {"system": "comms", "op": "send", "idempotency_key": "T-20261025-905-customer-email-1", "payload": {"channel": "customer-email", "kind": "email", "recipient": "customers@example.test", "text": "Subject: Release 2.4 is out\n\nRouting changes are live.", "send_at": null}, "preview": "Subject: Release 2.4 is out"}}'
+    list.json: '[{"system": "comms", "op": "send"}]'
+    bad.json: '{"task_id": "T-20261025-905", "action": {"system": "comms", "op": "send", "idempotency_key": "T-20261025-905-customer-email-2", "payload": {"channel": "customer-email", "kind": "email", "recipient": "evil@example.test", "text": "Routing changes are live.", "send_at": null}, "preview": "Routing changes are live."}}'
+steps:
+  - name: a plain actions list is not an action file
+    run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py send list.json
+    expect: {exit: nonzero, stderr: 'not an action file'}
+  - run: |
+      PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py send act.json
+    expect: {exit: nonzero, stderr: 'comms.send is not configured'}
+  - name: a comms tool is mapped
+    run: |
+      sed -i 's/comms:send: \[\]/comms:send: [mcp__slack__post_message]/' pm-os.yaml &&
+      PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py send act.json
+    expect: {stdout: 'recorded: comms.send T-20261025-905-customer-email-1'}
+  - run: |
+      PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py send bad.json
+    expect: {exit: nonzero, stderr: "unknown recipient 'evil@example.test'"}

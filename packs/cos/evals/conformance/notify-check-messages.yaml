@@ -1,0 +1,22 @@
+kind: conformance
+name: notify-check-messages
+covers: [mode:cos/notify, script:modes/notify/scripts/build_actions.py]
+failure: true
+desc: >-
+  --check also accepts a messages file (the messages output): a built file passes; a placeholder or an
+  unknown recipient added afterwards is refused.
+setup:
+  copy:
+    notify/channels.yaml: channels.yaml
+    notify/draft-external.json: draft-external.json
+steps:
+  - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py build draft-external.json --audience external --task T-20261025-904 --out out
+    expect: {exit: 0}
+  - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py --check out/messages.json
+    expect: {stdout: 'ok: out/messages.json'}
+  - name: a placeholder slipped into a message
+    run: sed -i 's/Routing/{{routing}} Routing/' out/messages.json && PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py --check out/messages.json
+    expect: {exit: nonzero, output: 'placeholder'}
+  - name: a recipient that is not in channels.yaml
+    run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py build draft-external.json --audience external --task T-20261025-904 --out out && sed -i 's/partners@example.test/evil@example.test/' out/messages.json && PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py --check out/messages.json
+    expect: {exit: nonzero, output: "unknown recipient 'evil@example.test'"}

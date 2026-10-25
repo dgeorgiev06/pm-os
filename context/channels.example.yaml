@@ -1,0 +1,14 @@
+# Where cos/notify sends each audience's messages. Copy to context/channels.yaml (gitignored: the
+# addresses are personal) and fill in the real ones. Recipients come only from this file.
+#
+# internal_only_fields: fields a template may set only for internal messages. An external message that
+# sets one, or repeats the text of one, is refused by build_actions.py --check.
+internal_only_fields: [risks, support_notes]
+
+audiences:
+  internal:
+    channels:
+      - {name: team-slack, kind: slack, target: "#product-updates"}      # placeholder Slack channel
+  external:
+    channels:
+      - {name: customer-email, kind: email, target: [customers@example.com]}   # placeholder address list

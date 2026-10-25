@@ -15,3 +15,8 @@
 {"ts": "2026-10-25T13:20:33+00:00", "pack": "pm", "version": "0.4.0", "grants": {"docs": "draft", "jira": "draft", "roadmap": "draft"}}
 {"ts": "2026-10-25T13:20:39+00:00", "pack": "cos", "version": "0.3.1", "grants": {"calendar": "read", "todos": "draft"}}
 {"ts": "2026-10-25T13:20:53+00:00", "pack": "forge", "version": "0.4.0", "grants": {"repo": "draft"}}
+{"ts": "2026-10-25T13:51:02+00:00", "pack": "cos", "version": "0.4.0", "grants": {"calendar": "read", "comms": "draft", "docs": "read", "todos": "draft"}}
+{"ts": "2026-10-25T13:54:07+00:00", "pack": "release-comms", "version": "0.1.0", "grants": {"comms": "draft", "docs": "read"}}
+{"ts": "2026-10-25T13:55:08+00:00", "pack": "forge", "version": "0.4.1", "grants": {"repo": "draft"}}
+{"ts": "2026-10-25T13:55:54+00:00", "pack": "cos", "version": "0.4.1", "grants": {"calendar": "read", "comms": "draft", "docs": "read", "todos": "draft"}}
+{"ts": "2026-10-25T13:56:01+00:00", "pack": "release-comms", "version": "0.1.1", "grants": {"comms": "draft", "docs": "read"}}

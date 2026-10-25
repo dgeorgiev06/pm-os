@@ -1,0 +1,26 @@
+{
+  "kind": "golden",
+  "name": "release 2.4 notes give a customer email with the routing and report fixes",
+  "covers": ["mode:release-comms/release-notify"],
+  "envelope": {
+    "verb": "draft",
+    "mode": "release-comms/release-notify",
+    "inputs": {
+      "release_notes": "packs/release-comms/evals/fixtures/release/notes-2.4.md"
+    },
+    "acceptance": ["both audiences drafted", "ship date copied exactly"],
+    "risk": "high",
+    "approval": "before_execute"
+  },
+  "fixtures": {
+    "notes-2.4.md": "packs/release-comms/evals/fixtures/release/notes-2.4.md",
+    "channels.yaml": "packs/release-comms/evals/fixtures/release/channels.yaml"
+  },
+  "expect": [
+    "draft.json has one external-email entry and one internal-slack entry, both templates from the release-comms pack",
+    "ship_date is 2026-10-30 in both entries, exactly as the notes state it",
+    "the external email lists the routing rules and the report fix, and no internal ticket or runbook",
+    "the internal note carries the sync refactor as a known risk and the restart step as support notes",
+    "check_draft.py passes on draft.json"
+  ]
+}

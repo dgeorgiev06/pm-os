@@ -191,3 +191,31 @@ owner's interface (`mktext.py` writes a component file with a known word count f
 has an `outputs` property; `advance.py` reviews with `--verdicts` when `task review --help` lists
 it, and with `--passed true --score 5` otherwise; `verdicts.py` adds `evidence` (and `fix` on failed lines) and skips settled lines, and `mkresult.py`'s placeholder documents have the sections a PRD check wants, so done.must code lines pass on them. So a case owned by one review keeps working
 while another review's contract changes.
+
+## Notifications — cos 0.4.1, release-comms 0.1.1 (pack interfaces)
+
+These are pack interfaces (cases in `packs/cos/evals/conformance/notify-*.yaml`,
+`packs/release-comms/evals/conformance/`); core is unchanged.
+
+| # | Interface | Shape and rules | Cases |
+| --- | --- | --- | --- |
+| NT1 | `cos/notify` | accepts `draft` (doc_ref), `audience` (internal \| external), `channels` (list?), `send_at` (string?); returns `messages` (doc_ref); grants `comms: draft`, `docs: read`; approval before_execute; risk medium (a child for external is started at high); default_role `cos/notifier`; principles `external-voice`, `known-recipients`, `core:usable-summary`. | notify-render, notify-required-field, notify-unknown-channel, goldens (notify) |
+| NT2 | Draft | `draft.json` = `{"notifications": [{"template": path?, "channel"?, "audience"?, "fields": {…}}]}`. No template: `templates/generic-<channel>.md`, which needs `channel` and `audience`. Any other key is refused; a recipient key is refused (`unknown key 'recipient'`). | notify-known-recipients |
+| NT3 | Template | `modes/<mode>/templates/*.md`, YAML front matter: `audience` (internal \| external \| any), `channel` (slack \| email), `max_words`, `fields` (`{type, required?, min?, max_words?}`, types string number integer bool list date). Body: `{{name}}` (a required field), `{{#name}}…{{/name}}` (rendered only when the field is set); a list renders as `- ` lines. A leftover placeholder or an over-long message is refused. | notify-leftover-placeholder, notify-max-words, release-templates |
+| NT4 | `context/channels.yaml` | `internal_only_fields: [...]` and `audiences: {<aud>: {channels: [{name, kind, target}]}}`; `target` a string or a list. Gitignored; `context/channels.example.yaml` is committed. `PMOS_CHANNELS_FILE` overrides the path. The only source of recipients. | notify-unknown-channel, notify-known-recipients |
+| NT5 | `build_actions.py --check FILE` | A draft or a messages file. Every problem is printed, naming its entry or field; exit 1 on any. | notify-render, notify-check-messages |
+| NT6 | `build_actions.py build DRAFT --audience A --task ID --out DIR [--channels a,b] [--send-at S]` | Writes `DIR/messages.json` (`notify-messages@1`) and `DIR/actions.json`: one `comms.send` per channel and recipient, key `<task>-<channel>-<n>`, preview = the rendered text. Prints `build: N comms.send action(s) for <aud>`. | notify-render |
+| NT7 | `build_actions.py merge OUT IN…` | Joins the messages files of child tasks. | notify-merge |
+| NT8 | Internal-only text | An external entry may not set an `internal_only_fields` field, and an external text may not repeat a value of one from another entry (`repeats internal-only text`). | notify-internal-section |
+| NT9 | `comms.send` handler | `pack.yaml` `actions: {comms.send: modes/notify/scripts/build_actions.py send}`. It verifies the action (channel and recipient in channels.yaml, no placeholder) and refuses `comms.send is not configured` while `adapters.claude-code.grants_to_tools` `comms:send` is empty. Once a tool is mapped it records the verified send and exits 0. It does not call the tool: the Operator sends with the mapped tool, then runs `pmos action run`. | notify-send-handler |
+| NT10 | `release-comms/release-notify` | accepts `release_notes` (doc_ref), `audiences` (list?); returns `draft`, `messages`; default_role `pm/doc-writer`; calls `cos/notify@^0.1`; `merge_child_actions: true`; risk high; approval before_execute; principles `pm:cite-customer-claims`, `cos:external-voice`. A blocked result with one question when the notes have no ship date. | release-templates, golden-release-2-4, golden-missing-dates, release-to-notify (workflow) |
+| NT11 | release-comms scripts | `modes/release-notify/scripts/check_draft.py DRAFT` runs cos's `build_actions.py --check` (through `pmos pack path cos`). `scripts/send.py ACTION` is the `comms.send` handler of this pack: a merged child action is run by its parent's pack, so this forwards it to cos's `send`. | release-templates, send-forwarder |
+
+| # | Interface (forge 0.4.1) | Shape and rules | Cases |
+| --- | --- | --- | --- |
+| F1 | `repo.sync_pack` payload `files` | The `forge.py changes` objects (`{path, change}`), as the forge skills write them; the handler applies exactly those paths. An empty approved list copies nothing (`--files` with no values too). Before 0.4.1 a list of objects crashed the handler. | sync-accepts-change-objects (regression), apply-and-sync |
+
+Core cases touched by these packs: `one-version-rule`, `regression-forge-stages-and-dry-runs`,
+`task-show-survives-upgrade`, `regression-grant-widening-refused` and `regression-removal-guards` now
+set `release-comms` aside first (its `depends: pm@^0.4` would block their 0.5.0 fixture bump, which is
+the C2 check working as designed); `done-block-validated` pins cos 0.4.1 and forge 0.4.1.

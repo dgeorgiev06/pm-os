@@ -1,0 +1,28 @@
+{
+  "kind": "golden",
+  "name": "external release email goes to each partner address",
+  "covers": ["mode:cos/notify"],
+  "envelope": {
+    "verb": "draft",
+    "mode": "cos/notify",
+    "inputs": {
+      "draft": "packs/cos/evals/fixtures/notify/draft-external.json",
+      "audience": "external"
+    },
+    "acceptance": [
+      "one email per external address in channels.yaml",
+      "the message says what changed for the reader and that no action is needed"
+    ],
+    "risk": "high",
+    "approval": "before_execute"
+  },
+  "fixtures": {
+    "channels.yaml": "packs/cos/evals/fixtures/notify/channels.yaml"
+  },
+  "expect": [
+    "the email starts with the Subject line of the generic email template",
+    "two comms.send actions, one for each address in the customer-email channel, and no other recipient",
+    "the text names no internal-only field and no internal project or person",
+    "risk is high for the external audience"
+  ]
+}

@@ -72,7 +72,7 @@ adapters:
       shell:pmos: [Bash]
       jira:read: []          # e.g. mcp__jira__search_issues, mcp__jira__get_issue
       jira:write: []         # e.g. mcp__jira__create_issue, mcp__jira__update_issue
-      comms:send: []         # e.g. mcp__slack__post_message
+      comms:send: []         # set to your Slack/email MCP tool names, e.g. [mcp__slack__post_message]; empty = comms.send is refused
       repo:write: [Write, Edit]
       # Actions with a pack handler (pack.yaml `actions:`) run through `pmos action run` (shell:pmos).
   generic:

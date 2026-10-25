@@ -12,20 +12,31 @@ packs:
     jira: draft
     roadmap: draft
   installed_at: '2026-10-25T13:20:29+00:00'
-- name: cos
-  version: 0.3.1
-  path: packs/cos
-  source: local
-  enabled: true
-  grants_approved:
-    calendar: read
-    todos: draft
-  installed_at: '2026-10-25T13:20:33+00:00'
 - name: forge
-  version: 0.4.0
+  version: 0.4.1
   path: packs/forge
   source: local
   enabled: true
   grants_approved:
     repo: draft
-  installed_at: '2026-10-25T13:20:39+00:00'
+  installed_at: '2026-10-25T13:54:49+00:00'
+- name: cos
+  version: 0.4.1
+  path: packs/cos
+  source: local
+  enabled: true
+  grants_approved:
+    calendar: read
+    comms: draft
+    docs: read
+    todos: draft
+  installed_at: '2026-10-25T13:55:46+00:00'
+- name: release-comms
+  version: 0.1.1
+  path: packs/release-comms
+  source: local
+  enabled: true
+  grants_approved:
+    comms: draft
+    docs: read
+  installed_at: '2026-10-25T13:55:57+00:00'

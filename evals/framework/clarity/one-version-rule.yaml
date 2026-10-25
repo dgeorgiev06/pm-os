@@ -8,6 +8,8 @@ desc: >-
   One version rule, enforced by pmos: an upgrade must raise the pack's version (so widening grants
   without a bump is refused, as the README says).
 steps:
+  - name: set aside release-comms, which depends on pm@^0.4 and would block a 0.5 bump in this case
+    run: $PMOS pack remove release-comms
   - name: same version
     run: $PMOS pack add packs/pm --upgrade --approve-grants
     expect: {exit: nonzero, output: '(?i)version'}

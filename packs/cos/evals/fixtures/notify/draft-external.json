@@ -1,0 +1,5 @@
+{"notifications": [
+  {"template": "packs/cos/modes/notify/templates/generic-email.md", "audience": "external",
+   "fields": {"subject": "Release 2.4 is out",
+              "body": "Routing and reporting changes are live from 30 October. No action is needed. Questions: support@example.test."}}
+]}

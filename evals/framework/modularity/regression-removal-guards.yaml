@@ -11,6 +11,8 @@ desc: >-
 setup:
   install: [gtm]
 steps:
+  - name: set aside release-comms, which depends on pm@^0.4 and would block a 0.5 bump in this case
+    run: $PMOS pack remove release-comms
   - run: $PMOS pack remove pm
     expect: {exit: nonzero, output: 'gtm'}
   - run: $PMOS pack remove cos

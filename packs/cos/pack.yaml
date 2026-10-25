@@ -1,5 +1,5 @@
 name: cos
-version: 0.3.1
+version: 0.4.1
 contract: pack@1
 author: dima
 summary: Chief of Staff — talks to the PM, routes to packs and modes, keeps the todo list, batches approvals, posts digests
@@ -9,8 +9,9 @@ depends: []
 cos: COS.md                # this pack supplies the Chief of Staff; AGENTS.md is generated from it
 actions:                   # handlers `pmos action run` calls for approved actions
   todos.apply_diff: scripts/todos.py apply-action
+  comms.send: modes/notify/scripts/build_actions.py send
 exports:
-  modes: [todos]
+  modes: [todos, notify]
   roles: []
   skills: []
-  principles: [delegate-only-when-directed, fit-the-real-day]
+  principles: [delegate-only-when-directed, fit-the-real-day, external-voice, known-recipients]

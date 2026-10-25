@@ -1,0 +1,7 @@
+{"notifications": [
+  {"template": "packs/cos/evals/fixtures/notify/templates/internal-risks.md", "audience": "internal",
+   "fields": {"message": "Release 2.4 ships 2026-10-30.", "risks": ["the Acme sync job lags two hours"]}},
+  {"template": "packs/cos/modes/notify/templates/generic-email.md", "audience": "external",
+   "fields": {"subject": "Release 2.4 is out",
+              "body": "Heads up: the Acme sync job lags two hours this week."}}
+]}

@@ -1,0 +1,12 @@
+kind: conformance
+name: notify-required-field
+covers: [mode:cos/notify, script:modes/notify/scripts/build_actions.py]
+failure: true
+desc: A draft whose entry leaves out a required template field is refused, and the error names the field.
+setup:
+  copy:
+    notify/channels.yaml: channels.yaml
+    notify/draft-missing-body.json: draft.json
+steps:
+  - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py --check draft.json
+    expect: {exit: nonzero, output: "required field 'body'"}

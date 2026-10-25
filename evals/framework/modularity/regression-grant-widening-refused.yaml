@@ -9,6 +9,8 @@ desc: >-
   A mode that widens its grants beyond its pack's approval is refused by validate and task new,
   and the upgrade asks for --approve-grants again.
 steps:
+  - name: set aside release-comms, which depends on pm@^0.4 and would block a 0.5 bump in this case
+    run: $PMOS pack remove release-comms
   - run: $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml grants.jira write
   - run: $PMOS validate
     expect: {exit: nonzero, output: 'approve-grants'}

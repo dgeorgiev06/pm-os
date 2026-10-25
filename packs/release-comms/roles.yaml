@@ -1,0 +1,2 @@
+# No roles of its own: release-notify runs as pm/doc-writer (compose-dont-copy).
+roles: {}

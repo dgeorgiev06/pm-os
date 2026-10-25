@@ -72,5 +72,5 @@ steps:
         contains:
           pm-os.yaml: '(?m)^version: 0\.5\.0'
           packs/pm/pack.yaml: ['(?m)^version: 0\.4\.0', 'core: \^0\.5']
-          packs/cos/pack.yaml: ['(?m)^version: 0\.3\.1', 'core: \^0\.5']
-          packs/forge/pack.yaml: ['(?m)^version: 0\.4\.0', 'core: \^0\.5']
+          packs/cos/pack.yaml: ['(?m)^version: 0\.4\.1', 'core: \^0\.5']
+          packs/forge/pack.yaml: ['(?m)^version: 0\.4\.1', 'core: \^0\.5']

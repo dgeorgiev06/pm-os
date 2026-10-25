@@ -484,7 +484,7 @@ def cmd_apply(a, task_id: str | None = None) -> int:
     staged = Path(a.staged).resolve()
     check_staged(staged, task_id)
     target = check_target(a.target)
-    wanted = set(a.files) if a.files else None
+    wanted = set(a.files) if a.files is not None else None   # an empty approved list copies nothing
     applied = []
     for item in changed_files(staged, target):
         if wanted is not None and item["path"] not in wanted:
@@ -502,8 +502,9 @@ def cmd_sync_action(a) -> int:
     payload = (spec.get("action") or {}).get("payload") or {}
     if not payload.get("staged") or not payload.get("target"):
         return fail("a repo.sync_pack payload needs 'staged' and 'target'")
-    args = argparse.Namespace(staged=str(ROOT / payload["staged"]), target=payload["target"],
-                              files=payload.get("files"))
+    files = payload.get("files")   # the approved changes: {"path", "change"} objects from `forge.py changes`
+    paths = None if files is None else [f["path"] if isinstance(f, dict) else str(f) for f in files]
+    args = argparse.Namespace(staged=str(ROOT / payload["staged"]), target=payload["target"], files=paths)
     return cmd_apply(args, task_id=spec.get("task_id") or "?")
 
 

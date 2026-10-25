@@ -1,0 +1,12 @@
+kind: conformance
+name: notify-max-words
+covers: [mode:cos/notify, script:modes/notify/scripts/build_actions.py]
+failure: true
+desc: "A message over its template's max_words (generic Slack, 120) is refused, and the error says how long it is."
+setup:
+  copy:
+    notify/channels.yaml: channels.yaml
+    notify/draft-over-limit.json: draft.json
+steps:
+  - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py --check draft.json
+    expect: {exit: nonzero, output: 'over max_words'}

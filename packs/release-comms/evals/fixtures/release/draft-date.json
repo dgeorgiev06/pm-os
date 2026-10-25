@@ -1,0 +1,33 @@
+{
+ "notifications": [
+  {
+   "template": "packs/release-comms/modes/release-notify/templates/external-email.md",
+   "fields": {
+    "version": "2.4",
+    "ship_date": "June 5",
+    "headline": "Routing rules per account and faster reports",
+    "changes": [
+     "Set routing rules per account",
+     "Reports no longer lag after a sync"
+    ],
+    "action": "No action is needed.",
+    "contact": "support@example.test"
+   }
+  },
+  {
+   "template": "packs/release-comms/modes/release-notify/templates/internal-slack.md",
+   "fields": {
+    "version": "2.4",
+    "ship_date": "2026-10-30",
+    "changes": [
+     "Routing rules per account (STK-412)",
+     "Report lag fix (STK-407)"
+    ],
+    "risks": [
+     "Sync worker refactor (STK-409) touches the same code"
+    ],
+    "support_notes": "Restart the sync worker if reports lag (RB-12)."
+   }
+  }
+ ]
+}
