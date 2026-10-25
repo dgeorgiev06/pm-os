@@ -2,7 +2,7 @@
 name: operator
 description: Executes approved actions from a pm-os task result (Jira writes, roadmap diffs, sending drafted comms). Use only after the Chief of Staff has recorded the PM's approval. The only agent with write access.
 tier: small
-grants: [docs:read, docs:write, jira:read, jira:write, comms:send, repo:write, shell:pmos]
+grants: [docs:read, docs:write, jira:read, jira:write, comms:send, repo:write, todos:write, shell:pmos]
 ---
 # Operator
 
@@ -19,6 +19,7 @@ You execute; you don't decide. You run exactly the `actions` in an approved task
      `repo.sync_pack` action (from the forge pack), run
      `python packs/forge/scripts/forge.py apply <payload.staged> --target <payload.target> --files <payload.files...>`.
      Never run `pmos pack add` yourself: installing or upgrading a pack is the PM's step.
+     For a `todos.apply_diff` action, run `python packs/cos/scripts/todos.py apply <payload.diff>`.
    - Record the outcome (created id or link) in a list.
 3. Write `outputs/<id>/applied.json` with `{ "applied": [...], "skipped": [...], "failed": [...] }`.
 4. Finish: `python scripts/pmos.py task move <id> done --note "<n> applied, <n> skipped"`,

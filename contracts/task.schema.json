@@ -4,34 +4,115 @@
   "title": "Task envelope",
   "description": "The only way work moves in pm-os. Immutable once queued; state lives beside it.",
   "type": "object",
-  "required": ["id", "verb", "mode", "inputs", "risk", "approval", "reply_to"],
+  "required": [
+    "id",
+    "verb",
+    "mode",
+    "inputs",
+    "risk",
+    "approval",
+    "reply_to"
+  ],
   "additionalProperties": false,
   "properties": {
-    "id": { "type": "string", "pattern": "^T-[0-9]{8}-[0-9]{3,}$" },
-    "verb": { "enum": ["plan", "draft", "analyze", "execute", "review"] },
+    "id": {
+      "type": "string",
+      "pattern": "^T-[0-9]{8}-[0-9]{3,}$"
+    },
+    "verb": {
+      "enum": [
+        "plan",
+        "draft",
+        "analyze",
+        "execute",
+        "review"
+      ]
+    },
     "mode": {
       "type": "string",
       "description": "author/name, optionally pinned: core/prd or core/prd@^1",
       "pattern": "^[a-z0-9-]+/[a-z0-9-]+(@[~^]?[0-9]+(\\.[0-9]+){0,2})?$"
     },
-    "workflow": { "type": "string" },
-    "role": { "type": "string" },
-    "inputs": { "type": "object" },
-    "acceptance": { "type": "array", "items": { "type": "string" } },
-    "risk": { "enum": ["low", "medium", "high"] },
-    "approval": { "enum": ["none", "before_publish", "before_execute"] },
+    "workflow": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string"
+    },
+    "inputs": {
+      "type": "object"
+    },
+    "acceptance": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "risk": {
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "approval": {
+      "enum": [
+        "none",
+        "before_publish",
+        "before_execute"
+      ]
+    },
     "budget": {
       "type": "object",
       "properties": {
-        "max_usd": { "type": "number", "minimum": 0 },
-        "max_minutes": { "type": "number", "minimum": 0 }
+        "max_usd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "max_minutes": {
+          "type": "number",
+          "minimum": 0
+        }
       },
       "additionalProperties": false
     },
-    "depends_on": { "type": "array", "items": { "type": "string" } },
-    "parent": { "type": ["string", "null"] },
-    "depth": { "type": "integer", "minimum": 0 },
-    "reply_to": { "type": "string" },
-    "created_at": { "type": "string" }
+    "depends_on": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "parent": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "depth": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "reply_to": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "instructions": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "The PM's own instructions for this task, passed through verbatim. The Worker follows them; the Reviewer checks them."
+    },
+    "origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "todo": {
+          "type": "string",
+          "pattern": "^td-[0-9]+$"
+        }
+      },
+      "description": "Where the task came from, e.g. the todo it was delegated from"
+    }
   }
 }

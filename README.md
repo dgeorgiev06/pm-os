@@ -20,9 +20,11 @@ Harness-specific config is **generated** by `pmos render <adapter>` and never ha
 
 Also in this repo:
 
-- [`docs/PM-Agent-OS-Architecture.pdf`](docs/PM-Agent-OS-Architecture.pdf) — the design: architecture
-  diagram, Chief of Staff, workflow manager and state, modes, agents and roles, review loop, build plan.
-  It predates packs and principles; this README is current where they differ.
+- [`docs/`](docs/README.md) — the design and its reasoning: [architecture](docs/architecture.md),
+  [decisions](docs/decisions.md), a [sprint-planning walkthrough](docs/walkthrough-sprint-planning.md),
+  [phase 0 and the build plan](docs/phase-0-and-build-plan.md),
+  [routing and delegation](docs/routing-and-delegation.md), the [DBOS runtime](docs/runtime-dbos.md),
+  and [proposals](docs/proposals/todo-plan.md).
 - [`examples/dbos/sprint_workflows.py`](examples/dbos/sprint_workflows.py) — two modes on a durable
   runtime (DBOS): `plan_next_sprint` and `track_sprint`.
 
@@ -67,7 +69,7 @@ Built-in packs:
 
 | Pack | What it does |
 | --- | --- |
-| `cos` | The Chief of Staff manual; `AGENTS.md` is generated from it |
+| `cos` | The Chief of Staff manual (`AGENTS.md` is generated from it) and your todo list: `todos.py` for exact edits, `cos/todos` for planning, delegation only when you direct it |
 | `pm` | PRDs, sprint planning, roadmap diffs, Jira tickets, release notes, and the `pm/router` |
 | `forge` | Builds pm-os itself: `forge/new-mode` adds a mode to a pack, `forge/new-pack` creates a pack |
 

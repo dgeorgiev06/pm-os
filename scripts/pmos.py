@@ -10,7 +10,7 @@ framework the same way. Later, the same functions become steps in a durable work
   pmos pack remove NAME
   pmos catalog [--pack NAME]            write state/catalog.md + AGENTS.md; --pack prints one pack's modes
   pmos role show PACK/ROLE              a role's persona, skills, principles, context, rubric
-  pmos task new --mode PACK/MODE --verb V --inputs JSON [...]
+  pmos task new --mode PACK/MODE --verb V --inputs JSON [--instructions TEXT] [--todo td-N] [...]
   pmos task show ID [--for-review] [--json]
   pmos task move ID STATE [--note TEXT] [--by WHO]
   pmos task result ID RESULT.json
@@ -858,7 +858,7 @@ def trace(task: dict, event: str, **fields) -> None:
     record = {
         "ts": now(), "event": event, "task_id": env["id"], "mode": env["mode"], "pack": task.get("pack"),
         "mode_version": task.get("mode_version"), "role": task.get("role"),
-        "parent": env.get("parent"), **fields,
+        "parent": env.get("parent"), "todo": task.get("todo"), **fields,
     }
     with open(traces / f"{dt.date.today():%Y-%m}.jsonl", "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -984,6 +984,10 @@ def cmd_task_new(args) -> int:
     }
     if args.workflow:
         envelope["workflow"] = args.workflow
+    if args.instructions:
+        envelope["instructions"] = args.instructions
+    if args.todo:
+        envelope["origin"] = {"todo": args.todo}
     validate_against(envelope, "task", "envelope")
     for dep in envelope["depends_on"]:
         load_task(dep)
@@ -992,6 +996,7 @@ def cmd_task_new(args) -> int:
         "envelope": envelope,
         "state": "queued",
         "pack": pack,
+        "todo": args.todo,
         "mode_name": man["name"],
         "mode_version": man["version"],
         "mode_dir": rel(mode["dir"]),
@@ -1032,6 +1037,13 @@ def cmd_task_show(args) -> int:
         "## Envelope",
         "```json", json.dumps(env, indent=2, ensure_ascii=False), "```",
         "",
+    ]
+    if env.get("instructions"):
+        out += ["## Instructions from the PM (follow these; they come from the PM directly)", "",
+                *[f"> {line}" for line in env["instructions"].splitlines()], ""]
+    if env.get("origin", {}).get("todo"):
+        out += [f"Delegated from todo {env['origin']['todo']}.", ""]
+    out += [
         f"## Mode (pack: {task.get('pack')})",
         f"- skill: {rel(mode['dir'] / man.get('skill', 'SKILL.md'))}",
         f"- approval: {env['approval']} · risk: {env['risk']}",
@@ -1072,6 +1084,9 @@ def cmd_task_show(args) -> int:
             out.append(f"- [ ] [mode rubric] {r}")
         for r in role.get("rubric", []):
             out.append(f"- [ ] [role rubric] {r}")
+        if env.get("instructions"):
+            out.append("- [ ] [pm instructions] The result follows the PM's instructions above, "
+                       "or the self-check says why it couldn't")
         if task.get("result"):
             out += ["", "## Producer self-check"]
             out += [f"- {'met' if s['met'] else 'NOT met'}: {s['criterion']}" + (f" · {s['note']}" if s.get("note") else "")
@@ -1211,10 +1226,11 @@ def write_board() -> None:
         lines.append("Nothing waiting on you.")
     lines += ["", "## Open", ""]
     if open_tasks:
-        lines += ["| Task | Mode | Role | State | Parent | Updated |", "| --- | --- | --- | --- | --- | --- |"]
+        lines += ["| Task | Mode | Role | State | From | Updated |", "| --- | --- | --- | --- | --- | --- |"]
         for t in open_tasks:
+            origin = t['envelope'].get('parent') or t.get('todo') or ''
             lines.append(f"| {t['envelope']['id']} | {t['mode_name']} | {t['role']} | {t['state']} | "
-                         f"{t['envelope'].get('parent') or ''} | {t.get('updated_at', '')} |")
+                         f"{origin} | {t.get('updated_at', '')} |")
     else:
         lines.append("No open tasks.")
     lines += ["", "## Recently finished", ""]
@@ -1462,6 +1478,8 @@ def build_parser() -> argparse.ArgumentParser:
     n.add_argument("--reply-to", default="cos")
     n.add_argument("--by", default="cos")
     n.add_argument("--note")
+    n.add_argument("--instructions", help="the PM's own instructions, verbatim; the Worker follows them")
+    n.add_argument("--todo", help="the todo this task was delegated from, e.g. td-12")
     n.set_defaults(fn=cmd_task_new)
 
     s = t.add_parser("show")
