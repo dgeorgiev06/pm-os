@@ -46,6 +46,8 @@ adapters:
       jira:read: []          # e.g. mcp__jira__search_issues, mcp__jira__get_issue
       jira:write: []         # e.g. mcp__jira__create_issue, mcp__jira__update_issue
       comms:send: []         # e.g. mcp__slack__post_message
+      repo:write: [Write, Edit]
+      todos:write: [Bash]    # the Operator applies todo diffs with packs/cos/scripts/todos.py
   generic:
     provider: anthropic
     out_dir: build/generic   # one system prompt per agent + models.json, for any SDK or API

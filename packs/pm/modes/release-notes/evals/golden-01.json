@@ -1,0 +1,20 @@
+{
+  "name": "customer notes leave out internal work",
+  "envelope": {
+    "verb": "draft",
+    "mode": "pm/release-notes",
+    "inputs": { "sprint": "2026-S22", "project": "STK", "audience": "customers" },
+    "acceptance": ["no internal-only tickets", "every line ends with its ticket key"],
+    "risk": "low",
+    "approval": "before_publish"
+  },
+  "fixtures": {
+    "closed.json": "packs/pm/modes/release-notes/evals/fixtures/closed.json"
+  },
+  "expect": [
+    "group_tickets.py drops STK-405 (spike) and STK-409 (refactor)",
+    "STK-407 appears under fixes",
+    "the lead paragraph describes routing and reporting changes in customer terms",
+    "no claim goes beyond what the ticket descriptions state"
+  ]
+}

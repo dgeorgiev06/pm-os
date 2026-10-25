@@ -1,14 +1,14 @@
 name: pm
-version: 0.1.0
+version: 0.2.0
 contract: pack@1
 author: dima
-summary: Product management — PRDs, sprint planning, roadmap diffs, Jira tickets
+summary: Product management — PRDs, sprint planning, roadmap diffs, Jira tickets, release notes
 requires:
   core: ^0.2
 depends: []
 router: pm/router          # entry for goal-level asks ("get the router beta launch-ready")
 exports:
-  modes: [pm/router, pm/prd, pm/sprint-planning, pm/jira-tickets]
+  modes: [pm/router, pm/prd, pm/sprint-planning, pm/jira-tickets, pm/release-notes]
   roles: [doc-writer, sprint-planner, roadmap-strategist, jira-curator]
   skills: [domain/prd-structure, domain/prioritization, domain/sprint-planning, domain/jira-conventions]
   principles: [plan-to-capacity, testable-requirements, explicit-trade-offs, cite-customer-claims]

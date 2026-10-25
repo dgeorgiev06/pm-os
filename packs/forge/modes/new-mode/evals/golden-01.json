@@ -1,0 +1,21 @@
+{
+  "name": "add a stakeholder-update mode to pm",
+  "envelope": {
+    "verb": "draft",
+    "mode": "forge/new-mode",
+    "inputs": {
+      "pack": "pm",
+      "name": "stakeholder-update",
+      "purpose": "Weekly update for leadership from the status board and decisions log, under 150 words"
+    },
+    "acceptance": ["reuses pm/communicator", "passes lint and dry-run admission"],
+    "risk": "medium",
+    "approval": "before_execute"
+  },
+  "expect": [
+    "design.md reuses the existing pm/communicator role instead of adding a role",
+    "staged pm pack version is bumped one minor version",
+    "forge.py lint passes and `pmos pack add … --upgrade --dry-run` passes",
+    "one sync_pack action; nothing under packs/ changed"
+  ]
+}

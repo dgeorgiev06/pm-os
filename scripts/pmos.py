@@ -6,11 +6,11 @@ framework the same way. Later, the same functions become steps in a durable work
 
   pmos validate                         check core, every installed pack, and their references
   pmos pack list                        installed packs
-  pmos pack add PATH [--source S] [--approve-grants] [--upgrade]
+  pmos pack add PATH [--source S] [--approve-grants] [--upgrade] [--dry-run]
   pmos pack remove NAME
   pmos catalog [--pack NAME]            write state/catalog.md + AGENTS.md; --pack prints one pack's modes
   pmos role show PACK/ROLE              a role's persona, skills, principles, context, rubric
-  pmos task new --mode PACK/MODE --verb V --inputs JSON [...]
+  pmos task new --mode PACK/MODE --verb V --inputs JSON [--instructions TEXT] [--todo td-N] [...]
   pmos task show ID [--for-review] [--json]
   pmos task move ID STATE [--note TEXT] [--by WHO]
   pmos task result ID RESULT.json
@@ -365,6 +365,31 @@ def resolve_role(ref: str, owner: str) -> dict:
     return role
 
 
+def approved_grants(pack: str) -> dict[str, str]:
+    entry = packs()[pack].get("entry") or {}
+    return entry.get("grants_approved") or {}
+
+
+def grant_excess(mode: dict) -> dict[str, tuple[str, str | None]]:
+    """system -> (requested, approved) for every grant a mode asks for beyond its pack's approval."""
+    if mode["pack"] == CORE:
+        return {}
+    approved = approved_grants(mode["pack"])
+    out = {}
+    for system, level in (mode["manifest"].get("grants") or {}).items():
+        if GRANT_LEVEL.get(level, 0) > GRANT_LEVEL.get(approved.get(system), 0):
+            out[system] = (level, approved.get(system))
+    return out
+
+
+def grant_excess_message(mode: dict) -> str:
+    excess = grant_excess(mode)
+    parts = ", ".join(f"{s}: {req} (approved: {appr or 'none'})" for s, (req, appr) in excess.items())
+    pack = mode["pack"]
+    return (f"mode {mode['manifest']['name']} requests grants its pack's approval doesn't cover: {parts}. "
+            f"Bump {pack}'s version and run `pmos pack add {rel(packs()[pack]['dir'])} --upgrade --approve-grants`.")
+
+
 def principles_for(mode: dict, role: dict) -> list[tuple[str, str, dict]]:
     """(group, id, principle) for core 'always' principles, then the mode's, then the role's."""
     principles = all_principles()
@@ -385,8 +410,9 @@ def principles_for(mode: dict, role: dict) -> list[tuple[str, str, dict]]:
 
 
 # --------------------------------------------------------------------------- validate
-def check_pack(name: str) -> tuple[list[str], list[str]]:
-    """Errors and warnings for one installed pack (including core)."""
+def check_pack(name: str, check_grants: bool = True) -> tuple[list[str], list[str]]:
+    """Errors and warnings for one installed pack (including core). Admission passes
+    check_grants=False, because grants are approved after the structural checks pass."""
     errors, warnings = [], []
     p = packs()[name]
     man = p["manifest"]
@@ -406,6 +432,10 @@ def check_pack(name: str) -> tuple[list[str], list[str]]:
                 errors.append(f"{where_pack}: depends on {dep}@{spec}, installed is {packs()[dep]['manifest']['version']}")
         if man.get("cos") and not (p["dir"] / man["cos"]).exists():
             errors.append(f"{where_pack}: cos file {man['cos']} missing")
+        installed_version = (p.get("entry") or {}).get("version")
+        if check_grants and installed_version and installed_version != man.get("version"):
+            warnings.append(f"{where_pack}: version is {man.get('version')} but packs.yaml recorded "
+                            f"{installed_version}; run `pmos pack add {rel(p['dir'])} --upgrade`")
 
     # skills and principles
     for sid, path in skills.items():
@@ -508,6 +538,8 @@ def check_pack(name: str) -> tuple[list[str], list[str]]:
         evals_dir = m["dir"] / mm.get("evals", "evals/")
         if not list(evals_dir.glob("*.json")):
             errors.append(f"{where}: no golden tasks in {rel(evals_dir)} (no evals, no registration)")
+        if check_grants and grant_excess(m):
+            errors.append(f"{where}: {grant_excess_message(m)}")
 
     # exports must exist
     if name != CORE:
@@ -619,10 +651,7 @@ def cmd_pack_add(args) -> int:
     _CACHE.pop("packs", None)
     for k in ("skills", "roles", "modes"):
         _CACHE.pop(k, None)
-    try:
-        errors, warnings = check_pack(name)
-    finally:
-        pass
+    errors, warnings = check_pack(name, check_grants=False)
     for w in warnings:
         print(f"warn: {w}")
     if errors:
@@ -635,6 +664,14 @@ def cmd_pack_add(args) -> int:
     requested = mode_grants(name)
     previously = (existing or {}).get("grants_approved") or {}
     widened = {k: v for k, v in requested.items() if GRANT_LEVEL.get(v, 0) > GRANT_LEVEL.get(previously.get(k), 0)}
+    if args.dry_run:
+        clear_cache()
+        print(f"Dry run: pack '{name}' {man['version']} passes admission. Grants it would hold:")
+        for k, v in requested.items():
+            print(f"  - {k}: {v}" + ("  (new or wider; needs --approve-grants)" if k in widened else ""))
+        if not requested:
+            print("  (none)")
+        return 0
     if widened and not args.approve_grants:
         clear_cache()
         print(f"Pack '{name}' {man['version']} passed admission and requests these grants:")
@@ -821,7 +858,7 @@ def trace(task: dict, event: str, **fields) -> None:
     record = {
         "ts": now(), "event": event, "task_id": env["id"], "mode": env["mode"], "pack": task.get("pack"),
         "mode_version": task.get("mode_version"), "role": task.get("role"),
-        "parent": env.get("parent"), **fields,
+        "parent": env.get("parent"), "todo": task.get("todo"), **fields,
     }
     with open(traces / f"{dt.date.today():%Y-%m}.jsonl", "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -897,6 +934,8 @@ def cmd_task_new(args) -> int:
     from_pack = parent.get("pack") if parent else None     # None = the CoS: exported modes only
     mode = resolve_mode(args.mode, from_pack=from_pack)
     man, pack = mode["manifest"], mode["pack"]
+    if grant_excess(mode):
+        raise PmosError(grant_excess_message(mode))
     inputs = parse_inputs(args.inputs)
     check_inputs(inputs, man.get("accepts", {}), man["name"])
     if man.get("verbs") and args.verb not in man["verbs"]:
@@ -945,6 +984,10 @@ def cmd_task_new(args) -> int:
     }
     if args.workflow:
         envelope["workflow"] = args.workflow
+    if args.instructions:
+        envelope["instructions"] = args.instructions
+    if args.todo:
+        envelope["origin"] = {"todo": args.todo}
     validate_against(envelope, "task", "envelope")
     for dep in envelope["depends_on"]:
         load_task(dep)
@@ -953,6 +996,7 @@ def cmd_task_new(args) -> int:
         "envelope": envelope,
         "state": "queued",
         "pack": pack,
+        "todo": args.todo,
         "mode_name": man["name"],
         "mode_version": man["version"],
         "mode_dir": rel(mode["dir"]),
@@ -993,6 +1037,13 @@ def cmd_task_show(args) -> int:
         "## Envelope",
         "```json", json.dumps(env, indent=2, ensure_ascii=False), "```",
         "",
+    ]
+    if env.get("instructions"):
+        out += ["## Instructions from the PM (follow these; they come from the PM directly)", "",
+                *[f"> {line}" for line in env["instructions"].splitlines()], ""]
+    if env.get("origin", {}).get("todo"):
+        out += [f"Delegated from todo {env['origin']['todo']}.", ""]
+    out += [
         f"## Mode (pack: {task.get('pack')})",
         f"- skill: {rel(mode['dir'] / man.get('skill', 'SKILL.md'))}",
         f"- approval: {env['approval']} · risk: {env['risk']}",
@@ -1033,6 +1084,9 @@ def cmd_task_show(args) -> int:
             out.append(f"- [ ] [mode rubric] {r}")
         for r in role.get("rubric", []):
             out.append(f"- [ ] [role rubric] {r}")
+        if env.get("instructions"):
+            out.append("- [ ] [pm instructions] The result follows the PM's instructions above, "
+                       "or the self-check says why it couldn't")
         if task.get("result"):
             out += ["", "## Producer self-check"]
             out += [f"- {'met' if s['met'] else 'NOT met'}: {s['criterion']}" + (f" · {s['note']}" if s.get("note") else "")
@@ -1172,10 +1226,11 @@ def write_board() -> None:
         lines.append("Nothing waiting on you.")
     lines += ["", "## Open", ""]
     if open_tasks:
-        lines += ["| Task | Mode | Role | State | Parent | Updated |", "| --- | --- | --- | --- | --- | --- |"]
+        lines += ["| Task | Mode | Role | State | From | Updated |", "| --- | --- | --- | --- | --- | --- |"]
         for t in open_tasks:
+            origin = t['envelope'].get('parent') or t.get('todo') or ''
             lines.append(f"| {t['envelope']['id']} | {t['mode_name']} | {t['role']} | {t['state']} | "
-                         f"{t['envelope'].get('parent') or ''} | {t.get('updated_at', '')} |")
+                         f"{origin} | {t.get('updated_at', '')} |")
     else:
         lines.append("No open tasks.")
     lines += ["", "## Recently finished", ""]
@@ -1395,6 +1450,7 @@ def build_parser() -> argparse.ArgumentParser:
     pa.add_argument("--source", default="local", choices=["local", "org", "third-party"])
     pa.add_argument("--approve-grants", action="store_true")
     pa.add_argument("--upgrade", action="store_true")
+    pa.add_argument("--dry-run", action="store_true", help="run admission and show grants without installing")
     pa.set_defaults(fn=cmd_pack_add)
     pr = pk.add_parser("remove")
     pr.add_argument("name")
@@ -1422,6 +1478,8 @@ def build_parser() -> argparse.ArgumentParser:
     n.add_argument("--reply-to", default="cos")
     n.add_argument("--by", default="cos")
     n.add_argument("--note")
+    n.add_argument("--instructions", help="the PM's own instructions, verbatim; the Worker follows them")
+    n.add_argument("--todo", help="the todo this task was delegated from, e.g. td-12")
     n.set_defaults(fn=cmd_task_new)
 
     s = t.add_parser("show")
