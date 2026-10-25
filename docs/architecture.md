@@ -23,6 +23,7 @@ flowchart TB
   O -->|done| PMOS
   subgraph PACKS[Installed packs]
     direction LR
+    COSP["cos<br/>todos"]
     PMP["pm<br/>prd · sprint-planning · jira-tickets<br/>release-notes · router"]
     FORGE["forge<br/>new-mode · new-pack"]
     OTHER["third-party packs"]

@@ -69,7 +69,7 @@ Built-in packs:
 
 | Pack | What it does |
 | --- | --- |
-| `cos` | The Chief of Staff manual; `AGENTS.md` is generated from it |
+| `cos` | The Chief of Staff manual (`AGENTS.md` is generated from it) and your todo list: `todos.py` for exact edits, `cos/todos` for planning, delegation only when you direct it |
 | `pm` | PRDs, sprint planning, roadmap diffs, Jira tickets, release notes, and the `pm/router` |
 | `forge` | Builds pm-os itself: `forge/new-mode` adds a mode to a pack, `forge/new-pack` creates a pack |
 

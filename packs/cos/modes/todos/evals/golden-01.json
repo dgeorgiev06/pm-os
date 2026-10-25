@@ -1,0 +1,25 @@
+{
+  "name": "plan three busy days honestly",
+  "envelope": {
+    "verb": "plan",
+    "mode": "cos/todos",
+    "inputs": {
+      "request": "Plan Mon–Wed. Add: prep custodian demo, 2h, due Wednesday. Thursday doesn't matter.",
+      "days": 3,
+      "hours": { "2026-10-26": 2, "2026-10-27": 3, "2026-10-28": 1 }
+    },
+    "acceptance": ["demo prep added and scheduled before Wednesday ends", "overflow listed"],
+    "risk": "low",
+    "approval": "before_execute"
+  },
+  "fixtures": {
+    "todos.yaml": "packs/cos/modes/todos/evals/fixtures/todos.yaml"
+  },
+  "expect": [
+    "diff.json has exactly one add (custodian demo prep, 2h, due 2026-10-28) and nothing else",
+    "no day exceeds its free hours (2, 3, 1)",
+    "td-4 (2h, no due date, low priority) is listed as overflow with a suggestion",
+    "td-3 is suggested as a delegation candidate (pm/release-notes) but no task is created",
+    "status needs_approval with one todos.apply_diff action"
+  ]
+}

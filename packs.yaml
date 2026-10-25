@@ -2,13 +2,6 @@
 # A pack appears here only after admission (valid manifests, evals present, exports respected)
 # and after its grants were approved with --approve-grants.
 packs:
-- name: cos
-  version: 0.1.0
-  path: packs/cos
-  source: local
-  enabled: true
-  grants_approved: {}
-  installed_at: '2026-10-24T18:30:00+00:00'
 - name: pm
   version: 0.2.0
   path: packs/pm
@@ -27,3 +20,12 @@ packs:
   grants_approved:
     repo: draft
   installed_at: '2026-10-24T18:38:46+00:00'
+- name: cos
+  version: 0.2.0
+  path: packs/cos
+  source: local
+  enabled: true
+  grants_approved:
+    calendar: read
+    todos: draft
+  installed_at: '2026-10-24T19:03:21+00:00'

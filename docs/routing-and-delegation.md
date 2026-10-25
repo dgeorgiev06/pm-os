@@ -31,24 +31,36 @@ Planned improvement: forge proposes the name and contract at an early gate (see 
 
 ## Todos and tasks
 
-Two different things, linked:
+Built into the `cos` pack. Two different things, linked:
 
-- **Todos** are your list: what has to get done, by when. Your todo list is a system of record.
+- **Todos** are your list: what has to get done, by when. They live in `context/todos.yaml`
+  (personal, not committed), managed by `packs/cos/scripts/todos.py`.
 - **Tasks** are `pmos` work orders for agents.
 
-How a todo is delegated:
+### Managing todos
 
-1. **Classify.** `pm/todo-plan` checks each todo against the catalog. "Draft release notes for
-   S22" maps to `pm/release-notes`; "call the custodian" maps to nothing and stays yours.
-2. **Propose, don't act.** The plan lists the delegations next to your days; you approve them with
-   everything else.
-3. **The CoS creates the tasks** on your yes (`pmos task new` per todo) and each todo records its
-   task id. Nothing starts before you approve.
-4. **Only your review time is planned.** A delegated todo spends your hours on reviewing the
-   result, not doing the work.
+| You say | What happens |
+| --- | --- |
+| "Add 'prep demo' due Wednesday, 2h" · "done td-3" · "move td-4 to Friday" | The CoS runs `todos.py` directly. Your words are the approval; no agent runs. |
+| "What's on my plate this week?" | The CoS runs `todos.py sync` and `todos.py plan`, and includes anything on the status board that's waiting on you. |
+| "Plan my week; Thursday is all meetings; add the demo prep and push the API reading" | The `cos/todos` mode plans against your free hours and proposes a diff; you approve; the Operator applies it. |
 
-It also runs the other way: anything waiting on you on the status board (an approval gate, a
-blocked question) comes back into your plan as a short todo, so agent work and your own work share
-one list. A delegated todo shows its task's state live; when the task finishes, the next plan
-proposes closing the todo. `pmos` itself never edits your todo list, because only approved actions
-change a system of record.
+`todos.py plan` fits open todos into free hours (6 per weekday by default, or what you give it), due
+date first, then priority, and lists what doesn't fit instead of dropping it.
+
+### Delegating a todo — only when you direct it
+
+> **You:** Delegate td-12 to pm/release-notes. Focus on what custodians will notice; keep it to a page.
+
+1. The CoS uses the mode you named, or picks one from the catalog and asks if more than one fits.
+2. It fills the mode's inputs from the todo and your words, and asks if a required input is missing.
+3. `pmos task new … --todo td-12 --instructions "<your words, verbatim>"` creates the task;
+   `todos.py link` marks the todo delegated.
+4. The Worker sees your instructions at the top of `task show` and follows them; the Reviewer's
+   checklist gains a line checking them. They never override a principle or an approval gate.
+5. While the result waits for your approval, the todo shows **WAITING ON YOU** and costs only
+   your review time in the plan. When the task finishes, `todos.py sync` closes the todo; if it
+   fails, the todo comes back to you.
+
+The CoS and `cos/todos` may *suggest* delegating ("td-3 could go to pm/release-notes if you say
+so"); neither delegates unasked. That rule is the principle `cos:delegate-only-when-directed`.
