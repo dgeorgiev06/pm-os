@@ -1,0 +1,74 @@
+kind: conformance
+name: done-verdicts
+covers: [script:scripts/pmos.py]
+finding: request:done
+severity: high
+failure: true
+desc: >-
+  `task review --verdicts` needs a verdict `{id, pass, evidence, fix?}` for every line that isn't
+  settled: `evidence` (where in the artifact) on every verdict, `fix` (what must change) on every
+  failed line, and none for a settled code line. pmos computes the outcome: every core and must
+  line holds and the score (5 × the share of should lines that hold) is at least 4. On `revise`,
+  `task show` lists exactly the failed line ids with their fix first.
+steps:
+  - run: $PMOS task new --mode pm/prd --inputs '{"goal":"g"}' --acceptance "Names the validator set"
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $T running && $PY $FX/bin/mkresult.py --task $T --submit
+  - name: a verdict without evidence is refused
+    run: |
+      $PY $FX/bin/verdicts.py --task $T > v.json &&
+      $PY $FX/bin/yset.py v.json lines.0.evidence '' --str && $PMOS task review $T --verdicts v.json
+    expect: {exit: nonzero, output: '(?i)evidence', task: {id: $T, state: in_review}}
+  - name: a failed line without a fix is refused
+    run: |
+      $PY $FX/bin/verdicts.py --task $T --fail must-1 > v.json &&
+      $PY - <<'PY'
+      import json; v = json.load(open("v.json"))
+      for l in v["lines"]:
+          l.pop("fix", None)
+      json.dump(v, open("v.json", "w"))
+      PY
+      $PMOS task review $T --verdicts v.json
+    expect: {exit: nonzero, output: '(?i)\bfix\b', task: {id: $T, state: in_review}}
+  - name: a verdict on a settled code line is refused
+    run: |
+      $PY $FX/bin/verdicts.py --task $T > v.json && $PY - <<'PY'
+      import json; v = json.load(open("v.json"))
+      v["lines"].append({"id": "code-1", "pass": True, "evidence": "ran it"})
+      json.dump(v, open("v.json", "w"))
+      PY
+      $PMOS task review $T --verdicts v.json
+    expect: {exit: nonzero, output: '(?i)settled', task: {id: $T, state: in_review}}
+  - name: a missing verdict is refused
+    run: $PY $FX/bin/verdicts.py --task $T --drop 1 > v.json && $PMOS task review $T --verdicts v.json
+    expect: {exit: nonzero, output: '(?i)missing', task: {id: $T, state: in_review}}
+  - name: a failed must line fails the review, whatever the should lines say
+    run: |
+      $PY $FX/bin/verdicts.py --task $T --fail task-1 > v.json && $PMOS task review $T --verdicts v.json
+    expect:
+      output: '(?i)failed'
+      task: {id: $T, state: revise, fields: {result.review.score: '^5(\.0)?$', result.review.passed: '^false$', revision_brief: 'task-1'}}
+  - name: the revision brief lists exactly the failed lines, with their fix, first
+    run: |
+      $PMOS task show $T > brief.md && $PY $FX/bin/before.py task-1 '# pm/prd@' < brief.md &&
+      $PY - <<'PY'
+      import re
+      head = open("brief.md").read().split("# pm/prd@")[0]
+      ids = re.findall(r"`([a-z0-9:-]+)`", head)
+      assert ids == ["task-1"], ids
+      assert "framework-eval fix" in head, head
+      PY
+  - name: one failed should line of four scores 3.75, so the review fails
+    run: |
+      $PMOS task move $T running && $PY $FX/bin/mkresult.py --task $T --submit &&
+      $PY $FX/bin/verdicts.py --task $T --fail should-2 > v.json && $PMOS task review $T --verdicts v.json
+    expect: {task: {id: $T, state: revise, fields: {result.review.score: '^3\.75$'}}}
+  - name: every line holds, so it passes and goes to approval
+    run: |
+      $PMOS task move $T running && $PY $FX/bin/mkresult.py --task $T --submit &&
+      $PY $FX/bin/verdicts.py --task $T > v.json && $PMOS task review $T --verdicts v.json
+    expect:
+      task:
+        id: $T
+        state: awaiting_approval
+        fields: {result.review.score: '^5(\.0)?$', result.review.lines.0.evidence: '.', result.review.lines: '"id": "code-1"[^}]*"settled": true'}

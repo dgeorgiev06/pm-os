@@ -61,9 +61,11 @@ Submits `needs_approval` with the roadmap action; pmos appends the four ticket a
 
 ## 8. Reviewer run — T-101
 
-Fresh context, covering the ticket actions too. It gives a verdict on every checklist line,
-including the core principles, `plan-to-capacity`, `testable-requirements` for the tickets and the
-gate-1 rubric line. Every line passes and the score is 4.5, so pmos passes it → `awaiting_approval`.
+Fresh context, covering the ticket actions too. `check_plan.py` already ran as a `done.must` code
+line at stage C's `task result`, so that line is settled. The Reviewer gives every other line a
+verdict with evidence: the core principles, the must lines (gate 1, `plan-to-capacity`, the ticket
+child's lines such as `T-102:must-1`) and the should lines. Every line holds, so the score is 5 and
+pmos passes it → `awaiting_approval`.
 
 ## 9. Gate 2 — one approval for everything
 

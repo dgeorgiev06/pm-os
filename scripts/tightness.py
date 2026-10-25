@@ -10,7 +10,7 @@ pmos finds the files (`pmos lint`, `pmos validate`, `pmos pack add`, and `forge.
 `pmos lint DIR`); this module only reads text. A component is a dict:
   {"file": "packs/pm/modes/prd/SKILL.md", "kind": principle|skill|mode|agent|cos|role|manifest,
    "pack": "pm", "id": "pm:testable-requirements" (principles and roles), "text": "..."}
-`role` and `manifest` components (roles.yaml personas and rubrics, mode.yaml rubric and acceptance)
+`role` and `manifest` components (roles.yaml personas and rubrics, mode.yaml done lines)
 are only checked for copied principles.
 """
 from __future__ import annotations

@@ -19,9 +19,9 @@ steps:
         contains:
           build/generic/models.json:
             - '"operator": \{[^}]*"effort": "low"'
-            - '"reviewer": \{[^}]*"effort": "medium"'
-            - '"pm/jira-curator": \{[^}]*"effort": "low"[^}]*"provider_param": "effort"'
-            - '"pm/roadmap-strategist": \{[^}]*"effort": "high"'
+            - '"reviewer": \{[^}]*"effort": "high"'
+            - '"pm/jira-curator": \{[^}]*"effort": "medium"[^}]*"provider_param": "effort"'
+            - '"pm/roadmap-strategist": \{[^}]*"effort": "medium"'
   - name: another provider's parameter, from effort_map
     run: $PY $FX/bin/yset.py pm-os.yaml adapters.generic.provider openai --str && $PMOS render generic
     expect: {files: {contains: {build/generic/models.json: '"provider_param": "reasoning_effort"'}}}
@@ -35,4 +35,4 @@ steps:
       files:
         contains:
           .claude/agents/operator.md: '(?m)^effort: low$'
-          .claude/agents/reviewer.md: '(?m)^effort: medium$'
+          .claude/agents/reviewer.md: '(?m)^effort: high$'

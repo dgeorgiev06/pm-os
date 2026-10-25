@@ -1,5 +1,5 @@
 name: pm/release-notes
-version: 0.1.3
+version: 0.2.0
 contract: task@1
 author: dima
 summary: Draft release notes from the tickets closed in a sprint, for customers or for internal teams
@@ -17,11 +17,10 @@ grants: { jira: read, docs: draft }
 approval: before_publish
 risk: low
 principles: [cite-customer-claims]
-rubric:
-  - Every item links its ticket key
-  - Customer notes leave out internal-only work (spikes, refactors, tooling)
-  - Leads with what changed for the reader, not with ticket titles
-acceptance:             # the envelope's default when the CoS passes no --acceptance
-  - "Only customer-facing changes for the chosen audience"
-  - "Every line ends with its ticket key"
+done:
+  must:
+    - "Customer notes leave out internal-only work (spikes, refactors, tooling)"
+    - "Every item ends with its ticket key"
+  should:
+    - "Leads with what changed for the reader, not with ticket titles"
 evals: evals/

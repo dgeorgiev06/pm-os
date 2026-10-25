@@ -1,6 +1,6 @@
 # pm-os core config. Harness- and model-neutral: nothing here assumes one vendor.
 framework: pm-os
-version: 0.3.1          # core version; packs declare `requires.core` against it
+version: 0.4.0          # core version; packs declare `requires.core` against it
 contract: task@1
 
 paths:
@@ -48,6 +48,7 @@ defaults:
   max_call_depth: 3
   effort: medium          # low | medium | high | max, when no task flag, mode, role or agent sets one
   dispatch: background    # background | foreground: how the CoS runs a subagent, when nothing else sets it
+  code_timeout_seconds: 120   # a mode's done.must code line, run at `task result`, fails after this (per-line `timeout:` overrides)
 
 # Adapters turn the neutral sources into one harness's native config (`pmos render <adapter>`).
 adapters:

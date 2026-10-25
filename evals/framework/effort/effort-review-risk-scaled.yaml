@@ -4,8 +4,8 @@ covers: [script:scripts/pmos.py]
 finding: request:effort
 severity: medium
 desc: >-
-  Review depth is risk-scaled: the reviewer's effort (core/reviewer, medium) follows the task's
-  risk, is stored on the task as review_effort and printed by `task show --for-review`.
+  Review depth is risk-scaled: the reviewer's effort (core/reviewer, high) runs one level lower for a
+  low-risk task and never rises above high, is stored on the task as review_effort and printed by `task show --for-review`.
 steps:
   - run: $PMOS task new --mode pm/prd --inputs '{"goal":"g"}' --risk high
     capture: {H: '(T-\d{8}-\d{3,})'}
@@ -14,11 +14,11 @@ steps:
     expect: {stdout: '(?i)review effort: high'}
   - run: $PMOS task new --mode pm/release-notes --inputs '{"sprint":"S","project":"STK"}'
     capture: {L: '(T-\d{8}-\d{3,})'}
-    expect: {task: {id: $L, fields: {review_effort: '^low$'}}}
+    expect: {task: {id: $L, fields: {review_effort: '^medium$'}}}
   - name: even when the worker's effort was set explicitly
     run: $PMOS task new --mode pm/prd --inputs '{"goal":"g"}' --effort max
     capture: {M: '(T-\d{8}-\d{3,})'}
-    expect: {task: {id: $M, fields: {effort: '^max$', review_effort: '^medium$'}}}
+    expect: {task: {id: $M, fields: {effort: '^max$', review_effort: '^high$'}}}
   - name: the architecture doc's lever is now real
     run: 'true'
     expect: {files: {contains: {docs/architecture.md: '(?i)risk-scaled review depth[^|]*\|[^\n]*effort|risk-scaled review depth \(effort'}}}

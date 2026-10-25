@@ -12,11 +12,12 @@ returns:
   outcome: doc_ref
 skill: SKILL.md
 default_role: launch-lead
-calls: [pm/prd@^0.2, pm/release-notes@^0.1]
+calls: [pm/prd@^0.3, pm/release-notes@^0.2]
 grants: {}
 approval: none
 risk: medium
 principles: [one-page]
-rubric:
-  - "The artifact exists and answers the envelope"
+done:
+  must:
+    - "The artifact exists and answers the envelope"
 evals: evals/

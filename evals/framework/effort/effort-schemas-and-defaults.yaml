@@ -6,8 +6,8 @@ severity: medium
 failure: true
 desc: >-
   `effort: low | medium | high | max` is in the roles, mode and agent schemas, and the built-in
-  defaults are set: CoS medium, operator low, jira-curator and todo-planner low, doc-writer and
-  program-manager medium, roadmap-strategist and framework-reviewer high, reviewer medium.
+  defaults are set: CoS medium, operator low, every Worker role medium (jira-curator, todo-planner,
+  doc-writer, program-manager, roadmap-strategist), framework-reviewer and reviewer high.
 steps:
   - run: 'true'
     expect:
@@ -17,12 +17,12 @@ steps:
           contracts/mode.schema.json: '"effort"'
           contracts/agent.schema.json: ['"effort"', '"max"']
           agents/operator.md: '(?m)^effort: low$'
-          agents/reviewer.md: '(?m)^effort: medium$'
+          agents/reviewer.md: '(?m)^effort: high$'
           packs/cos/agents/cos.md: '(?m)^effort: medium$'
           pm-os.yaml: ['(?m)^\s+effort: medium', '(?m)^effort:', '(?m)^\s+min: low', '(?m)^\s+max: max']
   - run: |
-      for r in pm/jira-curator:low cos/todo-planner:low pm/doc-writer:medium pm/program-manager:medium \
-               pm/roadmap-strategist:high forge/framework-reviewer:high core/reviewer:medium; do
+      for r in pm/jira-curator:medium cos/todo-planner:medium pm/doc-writer:medium pm/program-manager:medium \
+               pm/roadmap-strategist:medium forge/framework-reviewer:high core/reviewer:high; do
         $PMOS role show ${r%:*} | head -1 | grep -E "effort: ${r#*:}\)" || { echo "role ${r%:*} is not ${r#*:}"; exit 1; }
       done
   - name: an unknown level in a role is refused

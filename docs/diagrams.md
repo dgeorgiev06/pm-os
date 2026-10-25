@@ -98,7 +98,7 @@ flowchart TB
   POOL -. reads .-> CTX
 
   subgraph LOOP["Improvement loop (batch, weekly)"]
-    A["Analyst: cluster failing traces"] --> I["Improver: patch principle · skill · rubric · routing"]
+    A["Analyst: cluster failing traces"] --> I["Improver: patch principle · skill · done line · routing"]
     I --> E["Eval gate: golden + regression tasks"]
     E -->|"PR via forge"| PRR["Your approval"]
   end

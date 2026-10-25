@@ -66,14 +66,18 @@
         "notes": { "type": "array", "items": { "type": "string" } },
         "lines": {
           "type": "array",
-          "description": "Per-line verdicts; pmos computes passed from them (every core line holds, score >= 4)",
+          "description": "Per-line verdicts; pmos computes passed from them (every core and must line holds, and the score from the should lines is >= 4)",
           "items": {
             "type": "object",
             "required": ["id", "pass"],
             "properties": {
               "id": { "type": "string" },
+              "kind": { "enum": ["core", "must", "code", "should"] },
               "group": { "type": "string" },
               "pass": { "type": "boolean" },
+              "evidence": { "type": "string", "description": "Where in the artifact (section, heading, line); for a code line, its output" },
+              "fix": { "type": "string", "description": "What must change; on every failed line" },
+              "settled": { "type": "boolean", "description": "A code line pmos ran at task result; no Reviewer verdict" },
               "note": { "type": "string" }
             },
             "additionalProperties": false

@@ -3,7 +3,7 @@ name: stage-mode
 covers: [script:scripts/forge.py, mode:forge/new-mode]
 desc: >-
   `forge.py stage-mode` copies the installed pack to outputs/<id>/staged/, adds a skeleton mode that
-  meets the coverage rule (golden and failure cases), exports it and bumps the pack's minor
+  meets the coverage rule (golden and failure cases) and has a `done:` block, exports it and bumps the pack's minor
   version; `changes` lists the new files; nothing under packs/ changes.
 setup:
   install: [demo]
@@ -15,7 +15,7 @@ steps:
       stdout: ['"pack_version": "0.2.0"']
       files:
         exists: [outputs/$T/staged/demo/modes/brief/mode.yaml, outputs/$T/staged/demo/modes/brief/evals/golden-01.json, outputs/$T/staged/demo/modes/brief/evals/golden-fail.json]
-        contains: {outputs/$T/staged/demo/pack.yaml: 'modes: \[note, brief\]'}
+        contains: {outputs/$T/staged/demo/pack.yaml: 'modes: \[note, brief\]', outputs/$T/staged/demo/modes/brief/mode.yaml: ['(?m)^done:', '(?m)^  must:']}
         absent: packs/demo/modes/brief
   - run: $PMOS eval --coverage outputs/$T/staged/demo
     expect: {stdout: '(?i)no gaps'}

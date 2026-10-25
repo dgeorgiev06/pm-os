@@ -134,7 +134,9 @@ One JSON file per case, in `modes/<mode>/evals/` or `evals/workflows/`:
 ```
 
 `envelope.mode` is one of the pack's own modes (a workflow case: usually the router); `fixtures`
-values are inline data or paths inside the pack; `gates` answer the mode's gates in order.
+values are inline data or paths inside the pack; `gates` answer the mode's gates in order. `expect`
+is optional: without it the grader checks the mode's `done.must` lines, with the same ids as
+`task show --checklist` (explicit lines are `expect-1`, …).
 
 ### Results (eval-result@1)
 
@@ -148,7 +150,7 @@ Never hard-code a task id or date; capture it.
 
 ### Fixtures
 
-- `fixtures/packs/`: small packs, each meeting the coverage rule unless it exists to break it. `gtm` (depends `pm@^0.2`; router `gtm/launch-pack` calls `pm/prd`
+- `fixtures/packs/`: small packs, each meeting the coverage rule unless it exists to break it. `gtm` (depends `pm@^0.3`; router `gtm/launch-pack` calls `pm/prd`
   and `pm/release-notes`; `gtm/brief` runs under `pm/doc-writer`), `typed` (doc_ref inputs and
   outputs), `assemble` (`merge_child_actions`), `star` (`calls: ["*"]`), `loop` (calls itself),
   `bare` (bare exports, no SKILL names), `orphan` (an uncalled internal mode), `badtype` (type
@@ -156,7 +158,7 @@ Never hard-code a task id or date; capture it.
   case; `fixtures/patches/x-uncovered/` adds the missing cases), and `x-forge`, `x-cos`,
   `x-staking`, `x-noevals` (admission must refuse them).
 - `fixtures/bin/`: helpers. `mkresult.py` writes and submits a result; `advance.py` takes a task
-  through review and approval; `verdicts.py` builds per-line verdicts; `yset.py` edits YAML/JSON;
+  through review and approval; `verdicts.py` builds per-line verdicts (with evidence, and a fix on failed lines); `yset.py` edits YAML/JSON;
   `mktext.py` writes a component file of N words; `section.py`, `once.py`, `before.py`, `legend_check.py`, `unused_roles.py`,
   `cli_help_check.py`, `grants_claim_check.py`; and `fake_runner.py` / `fake_grader.py` stand in
   for `eval.command` and `eval.grader_command`. The helpers detect which contract the tree has
@@ -164,7 +166,7 @@ Never hard-code a task id or date; capture it.
 
 ## Core's groups
 
-95 cases: 84 conformance, 11 regression.
+103 cases: 92 conformance, 11 regression.
 
 | Group | Cases | Regression | Covers |
 | --- | --- | --- | --- |
@@ -173,14 +175,16 @@ Never hard-code a task id or date; capture it.
 | performance | 15 | 0 | performance 1–9 |
 | clarity | 13 | 2 | clarity 1–9, plus the false doc claims the reviews found |
 | eval-standard | 10 | 0 | request:eval@1 — the schema, the coverage rule, the sandbox, the runner, CoS/hub docs, forge skeletons, `pmos path` |
-| effort | 5 | 0 | request:effort — resolution and risk scaling, risk-scaled review, schemas and defaults, renders, `task list`/`stats` |
+| effort | 6 | 0 | request:effort — resolution and risk scaling, risk-scaled review, schemas and defaults, renders, `task list`/`stats`; request:effort-defaults — reviewers high, implementers medium |
 | dispatch | 2 | 0 | request:dispatch — resolution, schemas, renders, COS.md |
 | tightness | 7 | 0 | request:tightness — `pmos lint` (budgets, mode structure, filler, cite don't copy, sentence length), where it runs, `core:tight-instructions` |
 | cos-thread | 5 | 0 | request:cos-thread — background long commands, the inline limit rendered from pm-os.yaml, the eval estimate, `lock_cos`, `cos-turn` and stats |
+| done | 7 | 0 | request:done — the `done:` block and its validation, the checklist kinds, code lines first, verdicts with evidence and fix, the revision brief, gated children's lines, golden default expect, authoring docs |
 
 Baseline on core 0.2.0 (2026-10-24): all 55 review conformance cases failed and all 11 regression
 cases passed. The eval-standard, effort and dispatch cases all failed before core 0.3.0; the
-tightness and cos-thread cases all failed before core 0.3.1.
+tightness and cos-thread cases all failed before core 0.3.1; the done cases and effort-reviewers-high all
+failed before core 0.4.0.
 
 ## Judgment-only (scored by `forge/review-framework`, no conformance case)
 

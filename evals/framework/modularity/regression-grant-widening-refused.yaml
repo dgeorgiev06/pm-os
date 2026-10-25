@@ -15,7 +15,7 @@ steps:
   - run: $PMOS task new --mode pm/prd --verb draft --inputs '{"goal":"g"}'
     expect: {exit: nonzero, output: '(?i)grant'}
   - name: upgrade without --approve-grants
-    run: $PY $FX/bin/yset.py packs/pm/pack.yaml version 0.3.0 && $PMOS pack add packs/pm --upgrade
+    run: $PY $FX/bin/yset.py packs/pm/pack.yaml version 0.4.0 && $PMOS pack add packs/pm --upgrade
     expect: {exit: nonzero, output: 'approve-grants'}
   - run: $PMOS pack add packs/pm --upgrade --approve-grants
   - run: $PMOS validate

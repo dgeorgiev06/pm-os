@@ -1,5 +1,5 @@
 name: cos/todos
-version: 0.1.3
+version: 0.2.0
 contract: task@1
 author: dima
 summary: Plan the next few days from the todo list and free hours; turn a messy request into proposed todo changes
@@ -18,10 +18,11 @@ grants: { todos: draft, calendar: read }
 approval: before_execute     # the PM approves agent-proposed changes; direct edits go through todos.py
 risk: low
 principles: [fit-the-real-day, delegate-only-when-directed]
-rubric:
-  - Nothing due in the window is dropped silently
-  - Delegation candidates appear only as suggestions in the plan, never as tasks
-acceptance:             # the envelope's default when the CoS passes no --acceptance
-  - "Everything due in the window is scheduled or listed as overflow"
-  - "Proposed changes are a todo diff for approval, not direct edits"
+done:
+  must:
+    - "Everything due in the window is scheduled or listed as overflow; nothing is dropped silently"
+    - "Proposed changes are a todo diff for approval, not direct edits"
+    - principle: delegate-only-when-directed
+  should:
+    - "Each overflow item comes with a suggestion: move it, drop it, or delegate it if the PM says so"
 evals: evals/

@@ -1,0 +1,23 @@
+kind: conformance
+name: done-gated-child-lines
+covers: [script:scripts/pmos.py]
+finding: request:done
+severity: medium
+desc: >-
+  A child whose approval rolls up to its parent skips its own review (as before); its done lines
+  are judged in the parent's review: its must lines are must lines of the parent's checklist, ids
+  prefixed with the child's id, and its should lines join the parent's should lines.
+steps:
+  - run: $PMOS task new --mode pm/sprint-planning --inputs '{"sprint":"2026-S22","project":"STK"}'
+    capture: {S: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $S running
+  - run: $PMOS task new --parent $S --mode pm/jira-tickets --approval none --inputs '{"plan":"outputs/plan.json","project":"STK"}'
+    capture: {J: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task move $S waiting && $PMOS task move $J running && $PY $FX/bin/mkresult.py --task $J --submit
+    expect: {task: {id: $J, state: done, fields: {reviewed_with: $S}}}
+  - run: $PMOS task show $S --checklist
+    expect:
+      stdout:
+        - '"id": "${J}:must-1",\s*"kind": "must"'
+        - '"id": "must-1",\s*"kind": "must"'
+        - '"kind": "should"'

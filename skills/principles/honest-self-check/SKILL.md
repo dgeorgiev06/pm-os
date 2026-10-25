@@ -2,7 +2,7 @@
 name: core-principles-honest-self-check
 description: "Principle: Report misses plainly; never hide one. Read when a role or mode cites core:honest-self-check, and before reviewing work against it."
 kind: principle
-check: "Every acceptance item is met or its self_check says plainly why not"
+check: "Every must line is met or its self_check says plainly why not"
 always: true
 ---
 # Report misses plainly; never hide one.

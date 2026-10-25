@@ -18,7 +18,7 @@ roles:
   roadmap-strategist:
     agent: worker
     tier: top
-    effort: high
+    effort: medium
     persona: Senior PM for institutional staking products. Weighs customer commitments, revenue, risk and dependencies; states trade-offs plainly.
     skills: [core:infra/envelope-io, core:infra/self-check, domain/prioritization]
     context: [product.md, customers.md, roadmap.yaml, decisions.log]
@@ -30,6 +30,7 @@ roles:
   sprint-planner:
     agent: worker
     tier: mid
+    effort: medium
     persona: Delivery-minded PM who plans to real capacity, not hopes.
     skills: [core:infra/envelope-io, core:infra/self-check, domain/sprint-planning]
     context: [product.md, decisions.log]
@@ -41,7 +42,7 @@ roles:
   jira-curator:
     agent: worker
     tier: small
-    effort: low
+    effort: medium
     persona: Precise ticket writer who follows the team's Jira conventions exactly.
     skills: [core:infra/envelope-io, core:infra/self-check, domain/jira-conventions]
     context: [glossary.md]
@@ -64,6 +65,7 @@ roles:
   communicator:
     agent: worker
     tier: mid
+    effort: medium
     persona: Writes short, specific status updates for stakeholders.
     skills: [core:infra/envelope-io, core:infra/self-check]
     context: [product.md, decisions.log]

@@ -16,7 +16,7 @@ framework the same way. Later, the same functions become steps in a durable work
   pmos task show ID [--for-review] [--checklist] [--json]
   pmos task move ID STATE [--note TEXT] [--by WHO]
   pmos task result ID RESULT.json
-  pmos task review ID --verdicts FILE|- [--note TEXT ...]   pmos computes pass from per-line verdicts
+  pmos task review ID --verdicts FILE|- [--note TEXT ...]   per-line verdicts {id, pass, evidence, fix}; pmos computes pass
   pmos task approve ID --by WHO [--note TEXT]
   pmos task list [--state STATE] [--all]
   pmos task state ID [--json]           a task's state (full state JSON with --json), for scripts
@@ -70,7 +70,7 @@ RISK_LEVEL = {"low": 0, "medium": 1, "high": 2}                        # so is i
 EFFORT_LEVELS = ["low", "medium", "high", "max"]                     # how hard the model reasons
 DISPATCH_VALUES = ["background", "foreground"]                      # how the CoS runs a subagent
 SUMMARY_MAX_WORDS = 80      # the CoS forwards a result's summary as-is
-REVIEW_PASS_SCORE = 4       # review passes when every core line holds and the score is at least this
+REVIEW_PASS_SCORE = 4       # review passes when every core and must line holds and the should score is at least this
 
 # The task state machine. pmos is the only writer of task state.
 TRANSITIONS: dict[str, set[str]] = {
@@ -463,16 +463,190 @@ def resolve_effort(flag: str | None, man: dict | None, role: dict | None, risk: 
 
 
 def review_effort(risk: str) -> str:
-    """The Reviewer's effort for a task: core/reviewer's (role > agent > default), scaled by the task's risk."""
+    """The Reviewer's effort for a task: core/reviewer's (role > agent > default, high), one level lower for a
+    low-risk task. Risk high never raises it (a high-risk review stays at the reviewer's level); clamped by
+    effort.min/max."""
     role = all_roles().get(f"{CORE}/reviewer") or {"agent": "reviewer"}
     base, _ = resolve_setting("effort", None, None, role)
-    return risk_scaled(base, risk)[0]
+    lo, hi = effort_bounds()
+    i = EFFORT_LEVELS.index(base) - (1 if risk == "low" else 0)
+    return EFFORT_LEVELS[min(max(i, lo), hi)]
 
 
 def effort_param(provider: str, level: str) -> tuple[str | None, str]:
     """The provider's parameter name and value for LEVEL, from effort_map in pm-os.yaml."""
     m = (config().get("effort_map") or {}).get(provider) or {}
     return m.get("param"), str(m.get(level, level))
+
+
+# --------------------------------------------------------------------------- definition of done
+CODE_PLACEHOLDER = re.compile(r"\{([^{}\s]*)\}")     # {outputs.prd}, {inputs.plan}, {task}, {outputs_dir}
+CHECKLIST_ORDER = {"core": 0, "must": 1, "code": 2, "should": 3}
+
+
+def done_lines(man: dict, pack: str) -> list[dict]:
+    """The mode's `done:` block as lines {id, kind: must|code|should, text, command?, timeout?, principle?}.
+    Ids: an explicit `id`, else must-N / should-N for judged lines, code-N for code lines, and the
+    principle's qualified ref for a cited principle."""
+    principles, out = all_principles(), []
+    for section in ("must", "should"):
+        n_text = n_code = 0
+        for raw in (man.get("done") or {}).get(section) or []:
+            raw = {"text": raw} if isinstance(raw, str) else dict(raw or {})
+            if "code" in raw:
+                n_code += 1
+                out.append({"id": raw.get("id") or f"code-{n_code}", "kind": "code", "section": section,
+                            "text": f"`{raw['code']}` exits 0", "command": str(raw["code"]), "timeout": raw.get("timeout")})
+            elif "principle" in raw:
+                pid = q_skill(str(raw["principle"]), pack)
+                pr = principles.get(pid)
+                out.append({"id": raw.get("id") or pid, "kind": section, "section": section, "principle": pid,
+                            "text": pr["meta"].get("check", pid) if pr else f"principle {pid}"})
+            else:
+                n_text += 1
+                out.append({"id": raw.get("id") or f"{section}-{n_text}", "kind": section, "section": section,
+                            "text": str(raw.get("text", ""))})
+    return out
+
+
+def code_script(command: str) -> str | None:
+    """The script a code line runs: the first argument after python/python3, else the command itself."""
+    try:
+        tokens = shlex.split(CODE_PLACEHOLDER.sub("X", command))
+    except ValueError:
+        return None
+    if tokens and Path(tokens[0]).name in ("python", "python3"):
+        tokens = tokens[1:]
+    return tokens[0] if tokens and not tokens[0].startswith("-") else None
+
+
+def script_path(script: str, pack: str) -> Path:
+    """A code line's script on disk: `packs/<pack>/…` means the pack's own folder, wherever it is installed."""
+    prefix = f"packs/{pack}/"
+    if pack != CORE and script.startswith(prefix):
+        return packs()[pack]["dir"] / script[len(prefix):]
+    return ROOT / script
+
+
+def done_errors(mm: dict, where: str, pack: str) -> list[str]:
+    """The checks `validate` and admission make on a mode's done block (the schema is checked first)."""
+    errors, ids, principles = [], {}, all_principles()
+    returns = {k for k in (mm.get("returns") or {})}
+    accepts = {k for k in (mm.get("accepts") or {})}
+    pack_scripts = set(view_scripts(pack_view(pack))) if pack != CORE else set()
+    for line in done_lines(mm, pack):
+        lid = line["id"]
+        if lid in ids:
+            errors.append(f"{where}: done: two lines have the id '{lid}'; give one an explicit id")
+        ids[lid] = True
+        if line.get("principle"):
+            pid = line["principle"]
+            if pid not in principles:
+                errors.append(f"{where}: done: principle '{pid}' not found")
+            else:
+                err = visibility_error(pack, pid.split(":")[0], "principles", pid.split(":", 1)[1])
+                if err:
+                    errors.append(f"{where}: done: {err}")
+        if line["kind"] != "code":
+            continue
+        cmd = line["command"]
+        if line["section"] != "must":
+            errors.append(f"{where}: done.should: code line '{cmd}' belongs in done.must (pmos runs code lines as musts)")
+        for name in CODE_PLACEHOLDER.findall(cmd):
+            kind, _, field = name.partition(".")
+            if name in ("task", "outputs_dir"):
+                continue
+            if kind == "outputs" and field:
+                if field not in returns:
+                    errors.append(f"{where}: done: code line '{cmd}': {{{name}}} names no output in returns "
+                                  f"({', '.join(sorted(returns)) or 'none'})")
+            elif kind == "inputs" and field:
+                if field not in accepts:
+                    errors.append(f"{where}: done: code line '{cmd}': {{{name}}} names no input in accepts")
+            else:
+                errors.append(f"{where}: done: code line '{cmd}': unknown placeholder {{{name}}}; use {{outputs.<name>}}, "
+                              f"{{inputs.<name>}}, {{task}} or {{outputs_dir}}")
+        script = code_script(cmd)
+        if not script or "{" in script:
+            errors.append(f"{where}: done: code line '{cmd}' runs no script file (a code line runs a pack or core script)")
+            continue
+        path = script_path(script, pack)
+        if not path.is_file():
+            errors.append(f"{where}: done: code line '{cmd}': script {script} not found")
+            continue
+        p = packs()[pack]
+        in_pack = pack != CORE and path.resolve().is_relative_to(p["dir"].resolve()) and \
+            path.resolve().relative_to(p["dir"].resolve()).as_posix() in pack_scripts
+        in_core = path.resolve().parent == (ROOT / "scripts").resolve() and path.suffix == ".py"
+        if not (in_pack or in_core):
+            errors.append(f"{where}: done: code line '{cmd}': {script} is not one of the pack's scripts (scripts/, "
+                          f"modes/*/scripts/) or core's scripts/, so no conformance case covers it")
+    return errors
+
+
+def fill_code(line: dict, task: dict, result: dict) -> tuple[str, list[str]]:
+    """A code line's command with its placeholders filled from the task and its result (values shell-quoted),
+    and the names it couldn't fill."""
+    env, missing = task["envelope"], []
+    outputs = result.get("outputs") or {}
+    inputs = task.get("inputs_resolved") or env.get("inputs") or {}
+    out_dir = path_of("outputs") / env["id"]
+
+    def value(v) -> str:
+        return shlex.quote(v if isinstance(v, str) else json.dumps(v, ensure_ascii=False))
+
+    def sub(m):
+        name = m.group(1)
+        if name == "task":
+            return env["id"]
+        if name == "outputs_dir":
+            return shlex.quote(rel(out_dir))
+        kind, _, field = name.partition(".")
+        source = {"outputs": outputs, "inputs": inputs}.get(kind)
+        if source is None or field not in source:
+            missing.append(name)
+            return m.group(0)
+        return value(source[field])
+    cmd = CODE_PLACEHOLDER.sub(sub, line["command"])
+    pack = task.get("pack")
+    if pack and pack != CORE and pack in packs():     # packs/<pack>/… is the pack's folder, wherever installed
+        actual = rel(packs()[pack]["dir"])
+        if actual != f"packs/{pack}":
+            cmd = re.sub(rf"(?<![\w/.-])packs/{re.escape(pack)}/", actual + "/", cmd)
+    return cmd, missing
+
+
+def run_code_lines(task: dict, result: dict) -> list[dict]:
+    """Run the mode's done.must code lines for a result, in the repo root, each under its timeout."""
+    recs = []
+    default_timeout = int((config().get("defaults") or {}).get("code_timeout_seconds") or 120)
+    for line in [ln for ln in done_lines(task_manifest(task), task.get("pack") or CORE) if ln["kind"] == "code"]:
+        cmd, missing = fill_code(line, task, result)
+        started = time.time()
+        rec = {"id": line["id"], "command": cmd}
+        if missing:
+            rec.update(exit=None, passed=False,
+                       output=f"not run: the result has no {', '.join('{' + n + '}' for n in missing)}")
+        else:
+            timeout = int(line.get("timeout") or default_timeout)
+            run = re.sub(r"^python3?(?=\s)", shlex.quote(sys.executable), cmd)
+            try:
+                proc = subprocess.run(run, shell=True, cwd=ROOT, capture_output=True, text=True, timeout=timeout,
+                                      env={**os.environ, "PMOS_ROOT": str(ROOT)})
+                rec.update(exit=proc.returncode, passed=proc.returncode == 0,
+                           output=(proc.stdout + ("\n" if proc.stdout and proc.stderr else "") + proc.stderr).strip())
+            except subprocess.TimeoutExpired:
+                rec.update(exit=None, passed=False, output=f"timed out after {timeout} s")
+        rec["pass"] = rec.pop("passed")
+        rec["output"] = rec["output"][-2000:]
+        rec["seconds"] = round(time.time() - started, 2)
+        recs.append(rec)
+    return recs
+
+
+def tail(text: str, n: int = 300) -> str:
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= n else "…" + text[-n:]
 
 
 def principles_for(mode: dict, role: dict) -> list[tuple[str, str, dict]]:
@@ -620,6 +794,7 @@ def check_pack(name: str, check_grants: bool = True) -> tuple[list[str], list[st
                 err = visibility_error(name, pid.split(":")[0], "principles", pid.split(":", 1)[1])
                 if err:
                     errors.append(f"{where}: {err}")
+        errors += done_errors(mm, where, name)
         for call in mm.get("calls", []):
             if call == "*":     # any mode visible to this pack; checked when a child is created
                 continue
@@ -693,7 +868,7 @@ def components_of(name: str, d: Path, man: dict) -> list[dict]:
         if sf.exists():
             out.append({"file": rel(sf), "kind": "mode", "pack": name, "id": mm.get("name"),
                         "text": sf.read_text(encoding="utf-8")})
-        lines = [*(mm.get("rubric") or []), *(mm.get("acceptance") or [])]
+        lines = [ln["text"] for ln in done_lines(mm, name) if ln["kind"] != "code" and not ln.get("principle")]
         if lines:
             out.append({"file": rel(mf), "kind": "manifest", "pack": name, "id": mm.get("name"), "text": lines})
     for key in [] if core else ("cos", "cos_section"):
@@ -1575,7 +1750,7 @@ def cmd_task_new(args) -> int:
         "mode": args.mode if "@" in args.mode else f"{man['name']}@{man['version']}",
         "role": role_fq,
         "inputs": inputs,
-        "acceptance": args.acceptance or list(man.get("acceptance") or []),
+        "acceptance": list(args.acceptance or []),   # extra must lines for this task (task-1, …)
         "risk": risk,
         "approval": approval,
         "budget": budget,
@@ -1644,32 +1819,81 @@ def delegate_target(role: dict) -> str:
     return f"{role['agent']}-{role['tier']}" if role.get("tier") in tiers else role["agent"]
 
 
+def code_status(entry: dict, rec: dict | None) -> dict:
+    """A checklist code line with what pmos recorded when it ran it (settled once it ran and passed)."""
+    if rec is None:
+        return {**entry, "settled": False}
+    return {**entry, "settled": bool(rec["pass"]), "pass": bool(rec["pass"]), "exit": rec.get("exit"),
+            "output": tail(rec.get("output"), 500)}
+
+
 def review_checklist(task: dict, mode: dict, role: dict) -> list[dict]:
-    """The lines the Reviewer scores, each with a stable id (`task show --checklist`, `task review --verdicts`)."""
+    """The lines a review judges, each with a stable id and a kind (`task show --checklist`, `task review
+    --verdicts`): core principles; then must lines (the mode's done.must, the task's --acceptance lines,
+    the PM's instructions, the musts of children reviewed here); then the must code lines, settled by pmos
+    at `task result`; then should lines (done.should, cited principles that aren't musts, role rubrics)."""
     env, man = task["envelope"], mode["manifest"]
-    lines = [{"id": pid, "group": group, "text": pr["meta"]["check"]} for group, pid, pr in principles_for(mode, role)]
-    mode_rubric = [(None, r) for r in man.get("rubric", []) or []]
-    role_rubric = [(None, r) for r in role.get("rubric", []) or []]
-    # Children that skipped their own review (gated by this task) are reviewed here, on their lines.
-    for cid in task.get("children", []):
-        child = load_task(cid)
-        if child.get("reviewed_with") != env["id"]:
-            continue
+    lines, seen = [], set()
+
+    def add(entry: dict) -> None:
+        if entry["id"] not in seen:
+            lines.append(entry)
+            seen.add(entry["id"])
+
+    for group, pid, pr in principles_for(mode, role):
+        if group == "core":
+            add({"id": pid, "kind": "core", "group": "core", "text": pr["meta"]["check"]})
+
+    def add_done(owner: dict, man_: dict, pack: str, group: str, prefix: str = "") -> None:
+        recs = {r["id"]: r for r in owner.get("done_code") or []}
+        for ln in done_lines(man_, pack):
+            if ln.get("principle") in seen:      # a core principle cited again
+                continue
+            entry = {"id": prefix + ln["id"], "kind": ln["kind"], "group": group, "text": ln["text"]}
+            if ln["kind"] == "code":
+                entry = code_status({**entry, "command": ln["command"]}, recs.get(ln["id"]))
+            add(entry)
+            if ln.get("principle"):
+                seen.add(ln["principle"])
+        oenv = owner["envelope"]
+        for i, a in enumerate(oenv.get("acceptance") or [], 1):
+            add({"id": f"{prefix}task-{i}", "kind": "must", "group": "task" if not prefix else group, "text": a})
+
+    add_done(task, man, mode["pack"], "mode")
+    if env.get("instructions"):
+        add({"id": "pm-instructions", "kind": "must", "group": "pm instructions",
+             "text": "Follows the PM's instructions", "instructions": env["instructions"]})
+    later = []                       # should lines of the children, after this task's own
+    children = [load_task(c) for c in task.get("children", [])]
+    for child in [c for c in children if c.get("reviewed_with") == env["id"]]:
+        cid = child["envelope"]["id"]
         cmode = {"manifest": task_manifest(child), "pack": child["pack"]}
         crole = all_roles().get(child["role"], {"_pack": child["pack"], "principles": [], "rubric": []})
-        seen = {line["id"] for line in lines}
-        lines += [{"id": pid, "group": "mode", "text": f"{pr['meta']['check']} (child {cid})"}
-                  for group, pid, pr in principles_for(cmode, crole) if group != "core" and pid not in seen]
-        mode_rubric += [(cid, r) for r in cmode["manifest"].get("rubric", []) or []]
-        role_rubric += [(cid, r) for r in crole.get("rubric", []) or []]
-    lines += [{"id": f"mode-rubric-{i}", "group": "mode rubric", "text": r + (f" (child {cid})" if cid else "")}
-              for i, (cid, r) in enumerate(mode_rubric, 1)]
-    lines += [{"id": f"role-rubric-{i}", "group": "role rubric", "text": r + (f" (child {cid})" if cid else "")}
-              for i, (cid, r) in enumerate(role_rubric, 1)]
-    if env.get("instructions"):
-        lines.append({"id": "pm-instructions", "group": "pm instructions",
-                      "text": "The result follows the PM's instructions, or the self-check says why it couldn't"})
-    return lines
+        add_done(child, cmode["manifest"], child["pack"], f"child {cid}", prefix=f"{cid}:")
+        later += [{"id": pid, "kind": "should", "group": f"child {cid}", "text": f"{pr['meta']['check']} (child {cid})"}
+                  for group, pid, pr in principles_for(cmode, crole) if group != "core"]
+        later += [{"id": f"{cid}:role-rubric-{i}", "kind": "should", "group": f"child {cid}", "text": r}
+                  for i, r in enumerate(crole.get("rubric") or [], 1)]
+    for group, pid, pr in principles_for(mode, role):
+        if group != "core":
+            add({"id": pid, "kind": "should", "group": f"{group} principle", "text": pr["meta"]["check"]})
+    for i, r in enumerate(role.get("rubric") or [], 1):
+        add({"id": f"role-rubric-{i}", "kind": "should", "group": "role rubric", "text": r})
+    for entry in later:
+        add(entry)
+    return sorted(lines, key=lambda c: CHECKLIST_ORDER[c["kind"]])   # stable: keeps the order within a kind
+
+
+def checklist_line(c: dict, state: bool = True) -> str:
+    """One checklist line as Markdown, for the review brief and (without the run state) the golden grader."""
+    text = c["text"] + (f": \"{c['instructions']}\"" if c.get("instructions") else "")
+    if c["kind"] == "expect":
+        return f"`{c['id']}` [expect] {text}"
+    if c["kind"] == "code" and state:
+        state = (f"settled by pmos: passed (exit {c.get('exit')})" if c.get("settled")
+                 else "not run yet" if "pass" not in c else f"FAILED (exit {c.get('exit')})")
+        return f"`{c['id']}` [code] {text} — {state}"
+    return f"`{c['id']}` [{c['kind']}] {text}"
 
 
 def cmd_task_show(args) -> int:
@@ -1684,9 +1908,16 @@ def cmd_task_show(args) -> int:
     if args.checklist:
         print(json.dumps(review_checklist(task, mode, role), indent=2, ensure_ascii=False))
         return 0
-    # Stable parts first (mode, role, principles), so the prompt prefix caches across tasks;
-    # everything specific to this task (id, envelope, history, result) comes after.
-    out = [
+    # Stable parts first (mode, role, principles, definition of done), so the prompt prefix caches across
+    # tasks; everything specific to this task (id, envelope, history, result) comes after. A revision brief
+    # (the lines that failed, with their fix) comes before everything: it is what the Worker does next.
+    out = []
+    brief = task.get("revision_brief")
+    if brief and task["state"] in ("revise", "running"):
+        source = {"code": "pmos ran the code lines", "review": "the review", "pm": "the PM"}.get(brief.get("from"), "")
+        out += [f"## Revise first: fix these {len(brief['lines'])} line(s) ({source}), then resubmit", "",
+                *[f"- `{ln['id']}`: {ln['fix']}" for ln in brief["lines"]], ""]
+    out += [
         f"# {task['mode_name']}@{task['mode_version']}",
         f"delegate to: {delegate_target(role)} · effort: {task.get('effort', '—')} · run: {task.get('dispatch', 'background')}",
         "",
@@ -1701,6 +1932,9 @@ def cmd_task_show(args) -> int:
     out += ["", "## Principles (read each before you start; the Reviewer scores these checks)"]
     for group, pid, pr in principles_for(mode, role):
         out.append(f"- [{group}] {pid}: {pr['meta']['check']} ({rel(pr['path'])})")
+    out += ["", "## Definition of done (mode.yaml `done`: every must holds, code lines run at `task result`; "
+                "the share of should lines that hold sets the score)"]
+    out += [f"- {ln['kind']} `{ln['id']}`: {ln['text']}" for ln in done_lines(man, mode["pack"])]
     out += [
         "",
         f"# Task {env['id']} · {env['verb']} · state: {task['state']}",
@@ -1716,6 +1950,11 @@ def cmd_task_show(args) -> int:
                   else "")
         out += [f"## Instructions from the PM ({source}follow these; they come from the PM directly)", "",
                 *[f"> {line}" for line in env["instructions"].splitlines()], ""]
+    task_musts = [f"- must `task-{i}`: {a}" for i, a in enumerate(env.get("acceptance") or [], 1)]
+    if env.get("instructions"):
+        task_musts.append("- must `pm-instructions`: Follows the PM's instructions (above)")
+    if task_musts:
+        out += ["## Also done for this task (must)", "", *task_musts, ""]
     if env.get("origin"):
         out += [f"Origin: {env['origin']['pack']}:{env['origin']['ref']}.", ""]
     if task.get("inputs_resolved") is not None:
@@ -1746,12 +1985,14 @@ def cmd_task_show(args) -> int:
             out.append(f"- action: {a['system']}.{a['op']} · {a.get('preview', a['idempotency_key'])}"
                        + (f" (from {merged[a['idempotency_key']]})" if a["idempotency_key"] in merged else ""))
     if args.for_review:
-        out += ["", f"Review effort: {task.get('review_effort', '—')} (core/reviewer's effort, scaled by the task's "
-                    f"risk {env['risk']}).", "", "## Review checklist",
-                "Give every line a verdict by its id (`task show <id> --checklist` prints them as JSON). "
-                "pmos computes the pass: every core line holds and the overall score is 4 or more.", ""]
+        out += ["", f"Review effort: {task.get('review_effort', '—')} (core/reviewer's effort; one level lower for "
+                    f"a low-risk task; this one is {env['risk']}).", "", "## Review checklist",
+                "Give every line that isn't settled a verdict by its id, with `evidence` (where in the artifact) and, "
+                "for a failed line, a `fix` (`task show <id> --checklist` prints them as JSON). pmos computes the "
+                "pass: every core and must line holds, and the score (5 × the share of should lines that hold) is "
+                f"{REVIEW_PASS_SCORE} or more.", ""]
         for line in review_checklist(task, mode, role):
-            out.append(f"- [ ] `{line['id']}` [{line['group']}] {line['text']}")
+            out.append(f"- [{'x' if line.get('settled') else ' '}] {checklist_line(line)}")
         if task.get("result"):
             out += ["", "## Producer self-check"]
             out += [f"- {'met' if s['met'] else 'NOT met'}: {s['criterion']}" + (f" · {s['note']}" if s.get("note") else "")
@@ -1785,6 +2026,7 @@ def cmd_task_move(args) -> int:
     if args.state == "revise":
         if task["state"] == "awaiting_approval":   # the PM's "change X": doesn't use up max_revisions
             task["change_requests"] = task.get("change_requests", 0) + 1
+            task["revision_brief"] = {"from": "pm", "lines": [{"id": "pm-changes", "fix": args.note or "(no note)"}]}
         else:
             task["revisions"] = task.get("revisions", 0) + 1
     transition(task, args.state, args.by, args.note)
@@ -1875,10 +2117,17 @@ def cmd_task_result(args) -> int:
     task["result"] = result
     task["usd_spent"] = spent
     task["result_path"] = rel(path.resolve())
+    task.pop("revision_brief", None)            # a new result answers the last brief
     to = {"done": "in_review", "needs_approval": "in_review", "blocked": "blocked", "failed": "failed"}[result["status"]]
+    # Code lines first: the mode's done.must `code:` lines run before any Reviewer is spent.
+    task["done_code"] = run_code_lines(task, result) if to == "in_review" else []
+    code_failed = [r for r in task["done_code"] if not r["pass"]]
     note = "; ".join(result.get("open_questions", [])) if to == "blocked" else result["summary"][:200]
-    trace(task, "result", status=result["status"], actions=len(keys), usage=result.get("usage"))
+    trace(task, "result", status=result["status"], actions=len(keys), usage=result.get("usage"),
+          code_lines={r["id"]: r["pass"] for r in task["done_code"]})
     transition(task, to, args.by, note)
+    if code_failed:
+        return code_lines_failed(task, code_failed, args.by)
     parent = load_task(env["parent"]) if env.get("parent") and to == "in_review" else None
     if parent and (task.get("approval_from") == parent["envelope"]["id"]
                    or (env["approval"] == "none" and parent["envelope"]["approval"] != "none")):
@@ -1889,6 +2138,31 @@ def cmd_task_result(args) -> int:
     write_board()
     print(f"{args.id}: result accepted -> {to}")
     return 0
+
+
+def code_lines_failed(task: dict, failed: list[dict], by: str) -> int:
+    """A result whose done code lines failed goes straight to revise (a failed check, counted against
+    max_revisions), with each failing line's id and output as the note and the revision brief."""
+    tid = task["envelope"]["id"]
+    lines = [{"id": r["id"], "fix": f"make `{r['command']}` exit 0; it "
+              + (f"exited {r['exit']}" if r.get("exit") is not None else "did not finish") + f": {tail(r['output'])}"}
+             for r in failed]
+    task["revision_brief"] = {"from": "code", "lines": lines}
+    task["revisions"] = task.get("revisions", 0) + 1
+    limit = config()["defaults"].get("max_revisions", 2)
+    to = "revise" if task["revisions"] <= limit else "failed"
+    note = "done code line(s) failed, no review run: " + "; ".join(f"{r['id']}: {tail(r['output'], 200)}" for r in failed)
+    if to == "failed":
+        note = f"failed its checks {task['revisions']} times: {note}"
+    trace(task, "review", passed=False, score=None, failing=[r["id"] for r in failed], by="pmos", code_lines=True)
+    transition(task, to, "pmos", note)
+    write_board()
+    print(f"{tid}: result accepted, but done code line(s) failed -> {to}")
+    for r in failed:
+        print(f"  - {r['id']}: `{r['command']}` " + (f"exited {r['exit']}" if r.get("exit") is not None else "did not finish")
+              + f": {tail(r['output'])}")
+    print(f"Fix them and resubmit (`pmos task show {tid}` lists them first).")
+    return 1
 
 
 def check_result_cheaply(task: dict, result: dict) -> None:
@@ -1928,33 +2202,54 @@ def merge_child_actions(task: dict, result: dict) -> list[dict]:
 
 
 def load_verdicts(task: dict, source: str) -> dict:
-    """Read a verdicts file ('-' = stdin) and check it covers every checklist line exactly."""
+    """Read a verdicts file ('-' = stdin): one {id, pass, evidence, fix?} per checklist line that isn't settled.
+    Returns the review lines (settled code lines included) and the score pmos computes from the should lines."""
     raw = sys.stdin.read() if source == "-" else Path(source).read_text(encoding="utf-8")
     try:
         verdicts = json.loads(raw)
     except json.JSONDecodeError as e:
         raise PmosError(f"--verdicts is not valid JSON: {e}")
+    shape = '{"lines": [{"id": ..., "pass": true|false, "evidence": "<where in the artifact>", "fix": "<if failed>"}]}'
     if not isinstance(verdicts, dict) or not isinstance(verdicts.get("lines"), list):
-        raise PmosError('--verdicts must be {"score": 0-5, "lines": [{"id": ..., "pass": true|false, "note": ...}]}')
-    score = verdicts.get("score")
-    if not isinstance(score, (int, float)) or isinstance(score, bool) or not 0 <= score <= 5:
-        raise PmosError("verdicts need an overall 'score' from 0 to 5")
-    mode = task_mode(task)
-    checklist = review_checklist(task, mode, all_roles()[task["role"]])
-    given = {}
+        raise PmosError(f"--verdicts must be {shape}")
+    if "score" in verdicts:
+        print("note: the verdicts file's score is ignored; pmos computes it from the should lines", file=sys.stderr)
+    checklist = review_checklist(task, task_mode(task), all_roles()[task["role"]])
+    settled = {c["id"] for c in checklist if c.get("settled")}
+    given, problems = {}, []
     for line in verdicts["lines"]:
         if not isinstance(line, dict) or not isinstance(line.get("id"), str) or not isinstance(line.get("pass"), bool):
-            raise PmosError(f'each verdict line needs an "id" and a boolean "pass": {line!r}')
-        given[line["id"]] = line
-    ids = [c["id"] for c in checklist]
+            raise PmosError(f'each verdict needs an "id" and a boolean "pass": {line!r}')
+        lid = line["id"]
+        if lid in settled:
+            problems.append(f"{lid} is settled (a code line pmos ran at task result); leave it out")
+        if not str(line.get("evidence") or "").strip():
+            problems.append(f"{lid} has no evidence (say where in the artifact: section, heading or line)")
+        if not line["pass"] and not str(line.get("fix") or "").strip():
+            problems.append(f"{lid} failed without a fix (say what must change)")
+        given[lid] = line
+    ids = [c["id"] for c in checklist if c["id"] not in settled]
     missing = [i for i in ids if i not in given]
-    unknown = [i for i in given if i not in ids]
-    if missing or unknown:
-        raise PmosError("verdicts must cover every checklist line (`pmos task show <id> --checklist`)"
-                        + (f"; missing verdict for line(s): {', '.join(missing)}" if missing else "")
-                        + (f"; unknown line(s): {', '.join(unknown)}" if unknown else ""))
-    lines = [{"id": c["id"], "group": c["group"], "pass": given[c["id"]]["pass"],
-              **({"note": given[c["id"]]["note"]} if given[c["id"]].get("note") else {})} for c in checklist]
+    unknown = [i for i in given if i not in ids and i not in settled]
+    if missing:
+        problems.append(f"missing verdict for line(s): {', '.join(missing)}")
+    if unknown:
+        problems.append(f"unknown line(s): {', '.join(unknown)}")
+    if problems:
+        raise PmosError("verdicts must give every checklist line that isn't settled (`pmos task show <id> --checklist`) "
+                        "a pass, evidence and, when it fails, a fix:\n  - " + "\n  - ".join(problems))
+    lines = []
+    for c in checklist:
+        if c["id"] in settled:
+            lines.append({"id": c["id"], "kind": c["kind"], "group": c["group"], "pass": True, "settled": True,
+                          "evidence": f"pmos ran it at task result: exit {c.get('exit')}"})
+            continue
+        v = given[c["id"]]
+        lines.append({"id": c["id"], "kind": c["kind"], "group": c["group"], "pass": v["pass"],
+                      "evidence": str(v["evidence"]), **({"fix": str(v["fix"])} if v.get("fix") and not v["pass"] else {}),
+                      **({"note": str(v["note"])} if v.get("note") else {})})
+    should = [ln for ln in lines if ln["kind"] == "should"]
+    score = round(5 * sum(ln["pass"] for ln in should) / len(should), 2) if should else 5.0
     return {"score": score, "lines": lines}
 
 
@@ -1968,11 +2263,12 @@ def cmd_task_review(args) -> int:
     verdicts = load_verdicts(task, args.verdicts)
     failing = [line for line in verdicts["lines"] if not line["pass"]]
     score = verdicts["score"]
-    passed = not any(line["group"] == "core" for line in failing) and score >= REVIEW_PASS_SCORE
+    blocking = [line for line in failing if line["kind"] in ("core", "must", "code")]
+    passed = not blocking and score >= REVIEW_PASS_SCORE
     if args.passed is not None and (args.passed.lower() in ("true", "yes", "1", "pass")) != passed:
         print(f"warn: --passed {args.passed} ignored; pmos computed passed={str(passed).lower()} from the verdicts",
               file=sys.stderr)
-    notes = list(args.note or []) + [f"{line['id']}: {line.get('note', 'fails')}" for line in failing]
+    notes = list(args.note or []) + [f"{line['id']}: {line.get('fix') or line.get('note') or 'fails'}" for line in failing]
     review = {"passed": passed, "score": score, "notes": notes, "lines": verdicts["lines"]}
     # Stored in task state only: result.json stays the producer's file, so a resubmit after revise works.
     task["result"]["review"] = review
@@ -1981,18 +2277,22 @@ def cmd_task_review(args) -> int:
     if passed:
         needs_ok = env["approval"] != "none" and (result.get("actions") or env["approval"] == "before_publish")
         to = "awaiting_approval" if needs_ok else "done"
-        note = f"review passed (score {score})"
+        note = f"review passed (score {score:g})"
     else:
         task["revisions"] = task.get("revisions", 0) + 1
         limit = config()["defaults"].get("max_revisions", 2)
         to = "revise" if task["revisions"] <= limit else "failed"
-        note = "; ".join(notes) or f"review failed (score {score} < {REVIEW_PASS_SCORE})"
+        why = (f"{len(blocking)} core or must line(s) failed" if blocking
+               else f"score {score:g} < {REVIEW_PASS_SCORE} from the should lines")
+        note = f"review failed ({why}): " + "; ".join(notes)
         if to == "failed":
             note = f"failed review {task['revisions']} times: {note}"
+        task["revision_brief"] = {"from": "review", "lines": [{"id": ln["id"], "fix": ln.get("fix") or "fails"}
+                                                              for ln in failing]}
     transition(task, to, args.by, note)
     write_board()
-    print(f"{args.id}: review {'passed' if passed else 'failed'} (score {score}, "
-          f"{len(failing)} failing line(s)) -> {to}")
+    print(f"{args.id}: review {'passed' if passed else 'failed'} (score {score:g}, "
+          f"{len(failing)} failing line(s){', ' + str(len(blocking)) + ' blocking' if blocking else ''}) -> {to}")
     return 0
 
 
@@ -2761,13 +3061,35 @@ def golden_prompt(spec: dict, man: dict, role: dict, case_dir: Path, case_name: 
         prompt += ["   Where a mode pauses for the PM (a gate), stop there.", ""]
     if fixtures:
         prompt += ["## Fixtures", "", "```json", json.dumps(fixtures, indent=2), "```", ""]
-    grader = [f"# Grader: {man['name']} · {case_name}", "",
-              f"Score the worker's output ({rel(case_dir / 'outputs')}/<task id>/, and the run log "
-              f"output.md) against each line. Pass = all met.",
-              'Print only JSON: {"passed": true|false, "lines": [{"line": "<the line>", "pass": true|false, '
-              '"note": "<why>"}]}', ""]
-    grader += [f"- [ ] {e}" for e in spec.get("expect", [])]
-    return prompt, grader
+    return prompt, []
+
+
+def golden_grader(spec: dict, mode: dict, role: dict, case_dir: Path, case_name: str) -> list[str]:
+    """grader.md: the case's `expect` lines (expect-N), or without them the mode's done.must lines, plus the core
+    principles, all to hold; then the should lines that set the score. Ids match `task show --checklist`."""
+    env = spec["envelope"]
+    fake = {"envelope": {"id": "golden", "acceptance": env.get("acceptance") or [], "instructions": None},
+            "children": []}
+    lines = review_checklist(fake, mode, role)
+    expect = spec.get("expect")
+    must = [c for c in lines if c["kind"] == "core"]
+    if expect:
+        must += [{"id": f"expect-{i}", "kind": "expect", "text": e} for i, e in enumerate(expect, 1)]
+        heading = "## Must hold (the case's expect lines and the core principles)"
+    else:
+        must += [c for c in lines if c["kind"] in ("must", "code")]
+        heading = "## Must hold (the mode's done.must, the task's acceptance and the core principles; this case sets no expect)"
+    should = [c for c in lines if c["kind"] == "should"]
+    out = [f"# Grader: {mode['manifest']['name']} · {case_name}", "",
+           f"Score the worker's output ({rel(case_dir / 'outputs')}/<task id>/, and the run log output.md) against "
+           f"each line. Pass = every line under Must hold is met and at least {REVIEW_PASS_SCORE / 5:.0%} of the score "
+           f"lines are.",
+           'Print only JSON: {"passed": true|false, "lines": [{"id": "<line id>", "line": "<the line>", '
+           '"pass": true|false, "note": "<why>"}]}', "", heading, ""]
+    out += [f"- [ ] {checklist_line(c, state=False)}" for c in must]
+    out += ["", "## Score lines (done.should, cited principles, the role's rubric)", ""]
+    out += [f"- [ ] {checklist_line(c, state=False)}" for c in should] or ["(none)"]
+    return out
 
 
 def run_golden(v: dict, cases: list[dict], state: dict, log) -> list[dict]:
@@ -2799,10 +3121,8 @@ def run_golden(v: dict, cases: list[dict], state: dict, log) -> list[dict]:
         case_dir.mkdir(parents=True, exist_ok=True)
         state["rendered"] += 1
         role = resolve_role(man["default_role"], mode["pack"])
-        prompt, grader = golden_prompt(spec, man, role, case_dir, spec.get("name", f.stem))
-        grader += ["", "Principles and rubric:"]
-        grader += [f"- [ ] [{g}] {pid}: {pr['meta']['check']}" for g, pid, pr in principles_for(mode, role)]
-        grader += [f"- [ ] {r}" for r in man.get("rubric", [])]
+        prompt, _ = golden_prompt(spec, man, role, case_dir, spec.get("name", f.stem))
+        grader = golden_grader(spec, mode, role, case_dir, spec.get("name", f.stem))
         (case_dir / "prompt.md").write_text("\n".join(prompt), encoding="utf-8")
         (case_dir / "grader.md").write_text("\n".join(grader) + "\n", encoding="utf-8")
         if not command:
@@ -3192,7 +3512,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="how the CoS runs the subagent; default: mode > role > agent > defaults.dispatch")
     n.add_argument("--approval", choices=["none", "before_publish", "before_execute"],
                    help="when the PM must approve; default: the mode's approval")
-    n.add_argument("--acceptance", action="append", help="an acceptance line the result must meet (repeatable)")
+    n.add_argument("--acceptance", action="append", help="an extra must line for this task (task-1, …; repeatable)")
     n.add_argument("--depends-on", action="append", dest="depends_on", help="a task id that must finish first (repeatable)")
     n.add_argument("--parent", help="the task creating this one as its child")
     n.add_argument("--budget-usd", type=float, help="spending cap in USD; default from pm-os.yaml")
@@ -3208,7 +3528,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("id", help="task id")
     s.add_argument("--for-review", action="store_true", help="add the result and the review checklist")
     s.add_argument("--checklist", action="store_true",
-                   help="print the review checklist as JSON: [{id, group, text}], the ids `task review --verdicts` takes")
+                   help="print the review checklist as JSON: [{id, kind, group, text, ...}] (kind core|must|code|should; "
+                        "code lines carry settled), the ids `task review --verdicts` takes")
     s.add_argument("--json", action="store_true", help="print the task state as JSON")
     s.set_defaults(fn=cmd_task_show)
 
@@ -3227,10 +3548,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     rv = t.add_parser("review", help="record the Reviewer's per-line verdicts; pmos computes pass or fail")
     rv.add_argument("id", help="task id")
-    rv.add_argument("--verdicts", help='JSON file (or - for stdin): {"score": 0-5, "lines": '
-                                       '[{"id": <checklist id>, "pass": true|false, "note": ...}]}; pmos computes the pass')
+    rv.add_argument("--verdicts", help='JSON file (or - for stdin): {"lines": [{"id": <checklist id>, "pass": true|false, '
+                                       '"evidence": <where in the artifact>, "fix": <what must change, if failed>}]}, one per '
+                                       'line that is not settled; pmos computes the score and the pass')
     rv.add_argument("--passed", help="ignored (pmos computes the pass from --verdicts); kept so old calls get a clear error")
-    rv.add_argument("--score", type=float, help="ignored; the score goes in the verdicts file")
+    rv.add_argument("--score", type=float, help="ignored; pmos computes the score from the should lines")
     rv.add_argument("--note", action="append", help="a review note: what is missing and where (repeatable)")
     rv.add_argument("--by", default="reviewer", help="who reviewed, for the trace (default: reviewer)")
     rv.set_defaults(fn=cmd_task_review)

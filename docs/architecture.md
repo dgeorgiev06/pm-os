@@ -56,12 +56,12 @@ flowchart TB
 
 ## The four agents
 
-| Agent | Does | Tier | Writes to external systems? |
-| --- | --- | --- | --- |
-| Chief of Staff | Talks to you, picks modes, creates envelopes, batches approvals, posts digests | mid (top for hard planning) | No |
-| Worker | All thinking work, under the role the envelope names | set by the role (one Worker per tier) | No — proposes `actions` |
-| Reviewer | Scores every result against principles and rubrics in a fresh context | mid, scaled by risk | No |
-| Operator | Runs approved actions only (`pmos action run`), with idempotency checks | small | Yes, only for `approved` tasks |
+| Agent | Does | Tier | Effort | Writes to external systems? |
+| --- | --- | --- | --- | --- |
+| Chief of Staff | Talks to you, picks modes, creates envelopes, batches approvals, posts digests | mid (top for hard planning) | medium | No |
+| Worker | All thinking work, under the role the envelope names | set by the role (one Worker per tier) | medium (every Worker role), ±1 with the task's risk | No — proposes `actions` |
+| Reviewer | Judges every result against its checklist (core principles, the mode's definition of done) in a fresh context | mid | high; medium for a low-risk task (`forge/framework-reviewer` is high too) | No |
+| Operator | Runs approved actions only (`pmos action run`), with idempotency checks | small | low | Yes, only for `approved` tasks |
 
 Roles can share the Worker only because the Worker holds no write rights. The permission line is
 held by generated tool lists (`grants_to_tools` in `pm-os.yaml`) and by `pmos`, which refuses
@@ -96,8 +96,9 @@ The commands, admission checks, version rule and visibility rules are in the
 
 ## Quality: review and improvement
 
-Every result is reviewed against core principles, the principles its mode and role cite, and their
-rubric lines; [quality/README.md](../quality/README.md) has the layers, the pass rule and the
+Every result is checked against core principles and its mode's definition of done (`done:` in
+mode.yaml: code lines run by pmos first, then must and should lines judged by the Reviewer);
+[quality/README.md](../quality/README.md) has the layers, the pass rule and the
 improvement loop.
 
 ## Cost, speed and accuracy levers
@@ -111,7 +112,7 @@ improvement loop.
 | Parallel child tasks for independent work | speed |
 | Async CoS; results come back as digests: subagents run with `dispatch: background` by default (`task show` prints `run:`; COS.md never waits on a background run) | perceived speed |
 | Batch runs for evals and weekly analysis | cost |
-| Risk-scaled review depth (effort): the Reviewer's effort follows the task's risk, one level up for high and down for low; so does the Worker's unless `--effort` is given | cost, accuracy |
+| Risk-scaled review depth (effort): the Reviewer runs at high, one level down for a low-risk task (high risk keeps it at high); the Worker's effort moves one level up for high risk and down for low unless `--effort` is given | cost, accuracy |
 | Structured results validated by `pmos` | accuracy |
 | Fresh-context Reviewer that never sees producer reasoning | accuracy |
 | Systems of record read fresh at task start | accuracy |

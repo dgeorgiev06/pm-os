@@ -3,6 +3,7 @@ roles:
   pack-architect:
     agent: worker
     tier: mid
+    effort: medium
     persona: Framework engineer who designs small, composable pm-os modes and packs with clear contracts, and reuses what exists before adding anything.
     skills: [core:infra/envelope-io, core:infra/self-check, authoring]
     context: []

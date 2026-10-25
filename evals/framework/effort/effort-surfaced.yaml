@@ -10,7 +10,8 @@ steps:
   - run: $PMOS task new --mode pm/jira-tickets --inputs '{"plan":"outputs/plan.json","project":"STK"}'
     capture: {J: '(T-\d{8}-\d{3,})'}
   - run: $PMOS task list
-    expect: {stdout: 'worker-small\s+low'}
+    expect: {stdout: 'worker-small\s+medium'}
+  - run: $PMOS task new --mode pm/release-notes --inputs '{"sprint":"S","project":"STK"}'
   - run: $PMOS task new --mode pm/prd --inputs '{"goal":"g"}' --risk high
     capture: {T: '(T-\d{8}-\d{3,})'}
   - run: |

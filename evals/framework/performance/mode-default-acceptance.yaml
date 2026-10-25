@@ -5,19 +5,22 @@ finding: performance#6
 owner: performance
 severity: medium
 desc: >-
-  Modes declare default `acceptance` lines in mode.yaml; the envelope gets them when the CoS passes
-  no --acceptance, so honest-self-check has something to check.
+  Every mode states what done means, so honest-self-check has something to check: mode.yaml
+  `done.must` (core 0.4.0 replaced the default `acceptance` lines with it). The envelope's
+  `acceptance` holds only the task's own --acceptance lines, which join the must lines.
 steps:
-  - name: every installed mode declares acceptance
+  - name: every installed mode declares done.must
     run: |
       $PY - <<'PY'
       import glob, sys, yaml
       missing = [f for f in sorted(glob.glob("packs/*/modes/*/mode.yaml"))
-                 if not (yaml.safe_load(open(f)) or {}).get("acceptance")]
-      print("modes without acceptance:", missing)
+                 if not ((yaml.safe_load(open(f)) or {}).get("done") or {}).get("must")]
+      print("modes without done.must:", missing)
       sys.exit(1 if missing else 0)
       PY
-  - run: $PMOS task new --mode pm/prd --verb draft --inputs '{"goal":"g"}'
+  - run: $PMOS task new --mode pm/prd --verb draft --inputs '{"goal":"g"}' --acceptance "Has a rollout plan"
     capture: {T: '(T-\d{8}-\d{3,})'}
     expect:
-      task: {id: $T, fields: {envelope.acceptance: '\["'}}
+      task: {id: $T, fields: {envelope.acceptance: '^\["Has a rollout plan"\]$'}}
+  - run: $PMOS task show $T
+    expect: {stdout: ['(?i)definition of done', '`task-1`: Has a rollout plan']}

@@ -68,10 +68,13 @@ grants: {{}}                        # TODO: e.g. {{ jira: read, docs: draft }}
 approval: before_publish          # TODO: none | before_publish | before_execute
 risk: medium
 principles: []                    # cite existing principles before writing new ones
-rubric:
-  - "TODO: one line a reviewer can check for this mode"
-acceptance:                       # the envelope's default acceptance when the CoS passes none
-  - "TODO: one outcome the Worker self-checks before submitting"
+done:                             # the definition of done
+  must:                           # every line must hold, or the review fails
+    - "TODO: one outcome a reviewer can check in the artifact"
+    # - code: "python packs/{pack}/modes/{name}/scripts/<script>.py {{outputs.doc}}"   # run by pmos at task result
+    # - principle: <a principle this mode must meet>
+  should:                         # the share that holds sets the score
+    - "TODO: one line that makes the work better"
 evals: evals/
 """
 
@@ -146,8 +149,8 @@ version: 0.1.0
 contract: pack@1
 summary: "{summary}"
 requires:
-  core: ^0.3
-depends: []                       # other packs this one uses, e.g. [pm@^0.2]
+  core: ^0.4
+depends: []                       # other packs this one uses, e.g. [pm@^0.3]
 exports:
   modes: []
   roles: [{role}]
@@ -159,6 +162,7 @@ ROLES_YAML = """roles:
   {role}:
     agent: worker
     tier: mid                     # small | mid | top
+    effort: medium                # implementers run at medium; reviewers at high
     persona: "TODO: who this role is, in one sentence"
     skills: [core:infra/envelope-io, core:infra/self-check]
     context: []

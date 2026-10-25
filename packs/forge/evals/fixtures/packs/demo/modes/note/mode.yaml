@@ -15,8 +15,7 @@ grants: { docs: draft }
 approval: before_publish
 risk: low
 principles: []
-rubric:
-  - "The note answers the goal"
-acceptance:
-  - "The note answers the goal"
+done:
+  must:
+    - "The note answers the goal"
 evals: evals/

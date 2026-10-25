@@ -8,6 +8,7 @@
 By default the result carries one placeholder artifact under outputs/<id>/ and, when
 contracts/result.schema.json has an `outputs` property, an `outputs` map with a placeholder value
 for every name in the mode's `returns` (so the same case works before and after that contract change).
+Placeholder documents have the sections a PRD check looks for, so done.must code lines pass on them.
 """
 import argparse
 import json
@@ -21,11 +22,33 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _common import ROOT, outputs_dir, ref_for, task_state  # noqa: E402
 
 
+# Shaped like a document so a mode's done.must code lines (e.g. pm/prd's check_prd.py) pass on it.
+PLACEHOLDER = """# {name}
+
+Placeholder written by the framework evals.
+
+## Problem
+A fixture.
+
+## Personas
+- Fixture reader
+
+## Requirements
+- R1: The fixture exists.
+
+## Success metrics
+- The case passes.
+
+## Open questions
+- None (owner: framework evals).
+"""
+
+
 def placeholder(task_id: str, name: str) -> str:
     p = outputs_dir() / task_id / f"{name}.md"
     p.parent.mkdir(parents=True, exist_ok=True)
     if not p.exists():
-        p.write_text(f"# {name}\n\nPlaceholder written by the framework evals.\n", encoding="utf-8")
+        p.write_text(PLACEHOLDER.format(name=name), encoding="utf-8")
     return ref_for(p)
 
 

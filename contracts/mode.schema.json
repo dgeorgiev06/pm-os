@@ -11,7 +11,8 @@
     "accepts",
     "returns",
     "default_role",
-    "approval"
+    "approval",
+    "done"
   ],
   "additionalProperties": false,
   "$defs": {
@@ -19,6 +20,73 @@
       "type": "string",
       "pattern": "^(string|number|integer|bool|boolean|list|object|doc_ref|diff_ref)\\??$",
       "description": "The closed type vocabulary, optionally ending in ? (optional)"
+    },
+    "done_line": {
+      "description": "One line of the definition of done. A string is judged by the Reviewer; {code} is run by pmos on `task result` (repo root; {outputs.<name>}, {inputs.<name>}, {task} and {outputs_dir} are filled in; exit 0 = holds); {principle} cites a principle (bare = this pack). Ids default to must-N / should-N (strings), code-N, or the principle's ref.",
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object",
+          "required": [
+            "text"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "id": {
+              "$ref": "#/$defs/line_id"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "code"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string",
+              "minLength": 1
+            },
+            "id": {
+              "$ref": "#/$defs/line_id"
+            },
+            "timeout": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3600,
+              "description": "seconds; default defaults.code_timeout_seconds in pm-os.yaml"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "principle"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "principle": {
+              "type": "string",
+              "minLength": 1
+            },
+            "id": {
+              "$ref": "#/$defs/line_id"
+            }
+          }
+        }
+      ]
+    },
+    "line_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9:_-]*$"
     }
   },
   "properties": {
@@ -115,12 +183,6 @@
         "high"
       ]
     },
-    "rubric": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
     "evals": {
       "type": "string",
       "default": "evals/"
@@ -130,14 +192,30 @@
       "items": {
         "type": "string"
       },
-      "description": "Principles this mode cites: bare = this pack, <pack>:<name> otherwise"
+      "description": "Principles the Worker reads as guidance and the Reviewer scores as should lines: bare = this pack, <pack>:<name> otherwise. Cite one in done.must to make it blocking"
     },
-    "acceptance": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Default acceptance lines for the envelope when `task new` gets no --acceptance"
+    "done": {
+      "type": "object",
+      "required": [
+        "must"
+      ],
+      "additionalProperties": false,
+      "description": "The definition of done. must: every line holds or the review fails; code lines run first, at `task result`. should: the share that holds sets the score (5 x held / total; 4 or more passes).",
+      "properties": {
+        "must": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/done_line"
+          }
+        },
+        "should": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/done_line"
+          }
+        }
+      }
     },
     "merge_child_actions": {
       "type": "boolean",

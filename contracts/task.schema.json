@@ -44,6 +44,7 @@
     },
     "acceptance": {
       "type": "array",
+      "description": "Extra must lines for this task (task new --acceptance), judged with the mode's done.must as task-1, task-2, …",
       "items": {
         "type": "string"
       }

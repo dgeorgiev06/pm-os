@@ -1,5 +1,5 @@
 name: forge/review-framework
-version: 0.1.3
+version: 0.2.0
 contract: task@1
 author: dima
 summary: "Re-run one framework review of pm-os (conformance evals plus judgment) and report it in the original reviews' shape"
@@ -19,14 +19,12 @@ grants: { repo: read }  # reads the tree under review; writes only its own outpu
 approval: none          # a read-only report: no actions, nothing to approve
 risk: low
 principles: []          # the core principles apply to every task; the role cites the two this leans on
-rubric:
-  - "Scores use the original review's sub-scales, 1-5, each with a one-line reason"
-  - "Every issue cites file:line evidence and is marked with the conformance case that covers it, or judgment-only"
-  - "Conformance results are quoted from conformance.json, not re-judged"
-  - "Nothing outside outputs/<id>/ changed (the verify-clean step passed)"
-  - "Tightness: every file in lint.json is scored 1-5, with the exact lines to cut for any file under 5"
-acceptance:             # the envelope's default when the CoS passes no --acceptance
-  - "Every sub-scale of the aspect is scored 1-5 with a reason"
-  - "Every issue is marked with its conformance case or judgment-only"
-  - "The repo under review is unchanged"
+done:
+  must:
+    - code: "python packs/forge/modes/review-framework/scripts/conformance.py --task {task} --verify-clean"
+    - "Every sub-scale of the aspect is scored 1-5 with a one-line reason"
+    - "Every issue cites file:line evidence and is marked with the conformance case that covers it, or judgment-only"
+    - "Conformance results are quoted from conformance.json, not re-judged"
+  should:
+    - "Tightness: every file in lint.json is scored 1-5, with the exact lines to cut for any file under 5"
 evals: evals/

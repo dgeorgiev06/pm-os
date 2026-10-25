@@ -4,7 +4,7 @@ contract: pack@1
 author: framework-evals
 summary: "Fixture: calls forge/new-mode without depending on forge"
 requires:
-  core: ^0.3
+  core: ^0.4
 depends: []
 exports:
   modes: [x-forge/main]

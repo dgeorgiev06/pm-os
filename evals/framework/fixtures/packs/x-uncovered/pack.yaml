@@ -4,7 +4,7 @@ contract: pack@1
 author: framework-evals
 summary: "Fixture: a router, a script and an action handler, with only a happy-path golden case"
 requires:
-  core: ^0.3
+  core: ^0.4
 depends: []
 router: main
 actions:

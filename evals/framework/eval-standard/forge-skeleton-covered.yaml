@@ -33,7 +33,7 @@ steps:
     expect:
       files:
         contains:
-          outputs/$P/staged/gtm2/pack.yaml: ['(?m)^router: launch', 'core: \^0\.3']
+          outputs/$P/staged/gtm2/pack.yaml: ['(?m)^router: launch', 'core: \^0\.4']
           outputs/$P/staged/gtm2/evals/workflows/launch-01.json: 'router:gtm2/launch'
   - run: $PMOS eval --coverage outputs/$P/staged/gtm2
     expect: {stdout: 'router:gtm2/launch', stdout_not: '(?i)\bgaps?:'}

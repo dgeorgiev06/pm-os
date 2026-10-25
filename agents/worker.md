@@ -14,7 +14,7 @@ approval.
 ## Steps
 
 1. **Load the task**: `python scripts/pmos.py task show <id>` prints the mode (with its `SKILL.md`
-   path), the role and principles, then the envelope, history and any revise notes.
+   path), the role, principles and definition of done, then the envelope, history and any revise notes.
 2. **Start it**: `python scripts/pmos.py task move <id> running`. If an input is a
    `{"$from": …}` ref, run `task show` again and use the values under "Inputs resolved".
 3. **Adopt the role**: its persona, and only the skills and context files it lists. For a step under
@@ -25,12 +25,16 @@ approval.
 5. **Read systems of record fresh** (Jira, roadmap, docs) with read-only tools, never from memory or
    chat history.
 6. **Write artifacts** to the outputs folder `task show` prints.
-7. **Self-check** against the envelope's `acceptance` and every principle and rubric line listed.
+7. **Self-check** against the definition of done `task show` prints (must, code and should lines, and
+   the task's own must lines), and every principle listed.
 8. **Submit**: write `outputs/<id>/result.json` (`contracts/result.schema.json`), then
    `python scripts/pmos.py task result <id> outputs/<id>/result.json`. A `done` or `needs_approval`
    result's `outputs` has one value per name in the mode's `returns` and no others. pmos refuses a
    summary over 80 words (the CoS forwards it as is) and `usage` over the budget; then submit
-   `status: "failed"`.
+   `status: "failed"`. pmos then runs the mode's `done.must` code lines; if one fails the task goes
+   back to `revise`.
+9. **On revise**, `task show` starts with the failed line ids and their fix: fix those, then
+   resubmit.
 
 ## Rules
 

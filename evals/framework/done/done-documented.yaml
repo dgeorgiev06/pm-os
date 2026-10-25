@@ -1,0 +1,38 @@
+kind: conformance
+name: done-documented
+covers: [script:scripts/pmos.py]
+finding: request:done
+severity: medium
+desc: >-
+  The definition of done is how authors, Workers and Reviewers are told what finished means:
+  forge's stage-mode skeleton writes a `done:` block, and forge:authoring, the README mode recipe,
+  quality/README.md and the worker and reviewer agents describe it (evidence and fix on every
+  verdict, code lines settled by pmos). No doc still tells authors to write mode `acceptance` or
+  `rubric`.
+steps:
+  - run: $PMOS task new --mode forge/new-mode --inputs '{"pack":"pm","name":"evalnote","purpose":"a note"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - name: the skeleton has a done block, and validates
+    run: $PMOS task move $T running && $FORGE stage-mode --task $T --pack pm --name evalnote --summary "Eval note" && $PMOS eval --coverage outputs/$T/staged/pm
+    expect:
+      stdout_not: '(?i)\bgaps?:'
+      files:
+        contains: {outputs/$T/staged/pm/modes/evalnote/mode.yaml: ['(?m)^done:', '(?m)^  must:', '(?m)^  should:']}
+        not_contains: {outputs/$T/staged/pm/modes/evalnote/mode.yaml: '(?m)^(rubric|acceptance):'}
+  - name: the docs describe it
+    run: 'true'
+    expect:
+      files:
+        contains:
+          packs/forge/skills/authoring/SKILL.md: ['done', 'must', 'should', 'code:']
+          README.md: ['`done`', '(?i)must', '(?i)should']
+          quality/README.md: ['done\.must', 'done\.should', '(?i)evidence', '(?i)\bfix\b', '(?i)settled', '`code:`']
+          agents/reviewer.md: ['(?i)evidence', '(?i)\bfix\b', '(?i)settled']
+          agents/worker.md: ['(?i)definition of done|done\.must|`done`']
+          skills/infra/self-check/SKILL.md: ['(?i)done']
+        not_contains:
+          packs/forge/skills/authoring/SKILL.md: '`rubric`'
+          quality/README.md: 'mode-rubric|`rubric:` in `mode\.yaml`'
+          skills/infra/self-check/SKILL.md: "mode's `rubric`"
+  - name: the README recipe lists no acceptance or rubric among a mode's fields
+    run: $PY $FX/bin/section.py README.md "by hand" | tr '\n' ' ' | grep -oE 'Optional:[^.]*' | grep -E '`(rubric|acceptance)`' && exit 1 || true

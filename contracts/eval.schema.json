@@ -93,7 +93,7 @@
     },
     "golden": {
       "type": "object",
-      "required": ["kind", "name", "covers", "envelope", "expect"],
+      "required": ["kind", "name", "covers", "envelope"],
       "additionalProperties": false,
       "properties": {
         "kind": { "const": "golden" },
@@ -117,7 +117,7 @@
         },
         "fixtures": { "type": "object", "description": "name -> inline data or a path inside the pack" },
         "gates": { "type": "array", "items": { "type": "string" }, "description": "Answers to the mode's gates, in order" },
-        "expect": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "Lines a grader checks" }
+        "expect": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "Lines a grader checks (expect-1, expect-2, …). Without it, the case is graded against its mode's done.must lines" }
       }
     }
   },

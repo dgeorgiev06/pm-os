@@ -15,6 +15,7 @@ grants: {}
 approval: none
 risk: low
 principles: []
-rubric:
-  - "The artifact exists and answers the envelope"
+done:
+  must:
+    - "The artifact exists and answers the envelope"
 evals: evals/

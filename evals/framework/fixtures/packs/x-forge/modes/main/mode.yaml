@@ -10,11 +10,12 @@ returns:
   doc: doc_ref
 skill: SKILL.md
 default_role: writer
-calls: [forge/new-mode@^0.1]
+calls: [forge/new-mode@^0.2]
 grants: {}
 approval: none
 risk: low
 principles: []
-rubric:
-  - "The artifact exists and answers the envelope"
+done:
+  must:
+    - "The artifact exists and answers the envelope"
 evals: evals/

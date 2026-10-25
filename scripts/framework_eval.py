@@ -33,7 +33,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 REVIEWS = ["clarity", "performance", "modularity", "composability", "eval-standard", "effort", "dispatch",
-           "tightness", "cos-thread"]
+           "tightness", "cos-thread", "done"]
 CORE_CTX = {"pack": "core", "pack_rel": ".", "fx_rel": "evals/framework/fixtures", "sync_fixtures": True}
 CHAIN_VAR = "PMOS_CONFORMANCE_CHAIN"   # the cases running above this one, so a case never runs itself
 STEP_TIMEOUT = 180

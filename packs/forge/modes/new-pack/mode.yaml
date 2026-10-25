@@ -1,5 +1,5 @@
 name: forge/new-pack
-version: 0.1.3
+version: 0.2.0
 contract: task@1
 author: dima
 summary: Design a new pack (its roles, principles and first modes), stage it, check it, and propose it for approval
@@ -13,16 +13,17 @@ returns:
   staged: diff_ref
 skill: SKILL.md
 default_role: pack-architect
-calls: [forge/new-mode@^0.1]
+calls: [forge/new-mode@^0.2]
 grants: { repo: draft }
 approval: before_execute
 risk: medium
 principles: [contract-first, smallest-unit, compose-dont-copy, core:tight-instructions]
-rubric:
-  - The pack's scope doesn't overlap an installed pack; overlaps are reused through depends
-  - Every first mode was built by a forge/new-mode child task
-acceptance:             # the envelope's default when the CoS passes no --acceptance
-  - "The staged pack passes forge lint and a dry-run admission"
-  - "Each first mode was built by its own forge/new-mode child task"
-  - "The pack depends on installed packs instead of copying them"
+done:
+  must:
+    - code: "python packs/forge/scripts/forge.py lint {outputs.staged} --target packs/{inputs.name}"
+    - "A dry-run admission of the staged pack passed"
+    - "Each first mode was built by its own forge/new-mode child task"
+    - principle: compose-dont-copy
+  should:
+    - "The pack's scope doesn't overlap an installed pack; overlaps are reused through depends"
 evals: evals/

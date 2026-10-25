@@ -105,7 +105,7 @@ Built-in packs:
 | --- | --- |
 | Verb | The kind of work: `plan`, `draft`, `analyze`, `execute` or `review`. `--verb` is optional when a mode lists one |
 | Tier | A role's model size: `small`, `mid` or `top`, mapped to model ids in `pm-os.yaml` |
-| Effort | How hard the model reasons, separate from tier: `low`, `medium`, `high` or `max`. `task new --effort` > mode > role > agent > `defaults.effort`; risk `high` raises it one level and `low` lowers it (not on an explicit `--effort`). The Reviewer's effort follows the task's risk. `effort_map` in `pm-os.yaml` names each provider's parameter |
+| Effort | How hard the model reasons, separate from tier: `low`, `medium`, `high` or `max`. `task new --effort` > mode > role > agent > `defaults.effort`; risk `high` raises it one level and `low` lowers it (not on an explicit `--effort`). Defaults: Worker roles `medium`, reviewers `high` (a low-risk review runs at `medium`), Operator `low`, CoS `medium`. `effort_map` in `pm-os.yaml` names each provider's parameter |
 | Dispatch | How the CoS runs a subagent: `background` (default: start it, reply, report when it lands) or `foreground` (wait). Resolved like effort, without risk scaling; `task show` prints both: `delegate to: worker-mid · effort: medium · run: background` |
 | Gate | Where a task waits for you: mid-way (a `blocked` result with one question) or at the end (`awaiting_approval`) |
 | Admission | The checks `pmos pack add` runs before it installs a pack (below) |
@@ -135,8 +135,9 @@ Prompts ask agents to behave; these rules hold in code whatever an agent does.
 - **Budgets.** `task result` refuses a result whose `usage` exceeds the task's budget (`max_usd`,
   `max_minutes`) unless its status is `failed`, and a summary over 80 words. A child's spend counts
   against its parent's (and every ancestor's) `max_usd`.
-- **Review.** The Reviewer gives a verdict for every checklist line (pmos refuses missing ones), and
-  pmos computes pass or fail ([quality/README.md](quality/README.md)).
+- **Review.** A mode's `done.must` code lines run at `task result`; a failure goes straight to
+  `revise`. The Reviewer gives every other checklist line a verdict with evidence, and a fix when it
+  fails (pmos refuses missing ones), and pmos computes pass or fail ([quality/README.md](quality/README.md)).
 - **Versions.** `pack add --upgrade` refuses unless the pack's version goes up.
 - **Evals.** `pack add` (and `validate`) refuses a pack whose eval cases don't match eval@1 or leave a
   feature uncovered, and `pack add` refuses one whose conformance cases fail in the sandbox.
@@ -181,15 +182,19 @@ change, the Operator copies it into `packs/`, and you run the install command th
 1. Copy a working mode: `cp -r packs/pm/modes/prd packs/<pack>/modes/<mode>`.
 2. Edit `mode.yaml` ([schema](contracts/mode.schema.json)). Required:
    `name` (`<pack>/<mode>`), `version`, `contract` (`task@1`), `summary` (one line; the CoS routes
-   on it), `accepts` (`input: type`, a trailing `?` = optional), `returns`, `default_role` and
-   `approval` (`none`, `before_publish` or `before_execute`). Optional: `verbs`, `calls`, `grants`,
-   `risk`, `principles`, `rubric`, `acceptance`, `evals`.
+   on it), `accepts` (`input: type`, a trailing `?` = optional), `returns`, `default_role`,
+   `approval` (`none`, `before_publish` or `before_execute`) and `done`, the definition of done:
+   `must` lines (every one holds, or the review fails) and optional `should` lines (they set the
+   score). A line is text the Reviewer judges, `{code: "<command>"}` that pmos runs at `task result`
+   (`{outputs.<name>}`, `{task}`, `{outputs_dir}` filled in), or `{principle: <ref>}`. Optional:
+   `verbs`, `calls`, `grants`, `risk`, `principles`, `evals`.
 3. Edit `SKILL.md`: a `description` in the frontmatter, then numbered steps, each tagged (see the
    next section) and at most 60 words. Start with `task show <id>`; end with
    `task result <id> outputs/<id>/result.json`. `pmos lint` checks this and the word budgets.
 4. Rewrite the eval cases ([eval@1](evals/framework/README.md)): `evals/golden-01.json` (`kind: golden`,
    `name`, `covers: ["mode:<pack>/<mode>"]`, `envelope` with `verb`, `mode`, `inputs`, `acceptance`,
-   `risk`, `approval`, optional `fixtures`, and `expect` lines a grader checks), a failure-path case
+   `risk`, `approval`, optional `fixtures`, and `expect` lines a grader checks; without `expect` it
+   is graded on the mode's `done.must`), a failure-path case
    (`"failure": true`), and a conformance case in the pack's `evals/conformance/` for each script you add.
 5. Make it reachable: add the bare name to `exports.modes` in `pack.yaml` (for the CoS and other
    packs), or to another mode's `calls`. `validate` warns about a mode that is neither.
@@ -200,7 +205,8 @@ change, the Operator copies it into `packs/`, and you run the install command th
 Other units:
 
 - **Role**: an entry in `roles.yaml` with `agent`, `tier`, `persona`, `skills`, `context`,
-  `principles` and `rubric`; optionally `effort` and `dispatch` (modes and agents may set them too).
+  `principles` and `rubric` (should lines on its tasks' checklists); optionally `effort` and `dispatch`
+  (modes and agents may set them too).
 - **Principle**: `packs/<pack>/skills/principles/<name>/SKILL.md` with `description`,
   `kind: principle` and a one-line `check`. Cite principles instead of restating rules: the Worker
   reads them and the Reviewer scores the same `check` lines.
@@ -238,7 +244,7 @@ case. Core is the pack `core`; `evals/framework/` is its conformance folder.
 | Kind | Where | What it checks |
 | --- | --- | --- |
 | Conformance (code, no model) | core: `evals/framework/<group>/`; a pack: `evals/conformance/` | scripts, action handlers, refusals, pmos itself; runs in a sandbox with only core and the pack's `depends` |
-| Golden (model-graded) | `modes/<mode>/evals/`; workflows across modes: `evals/workflows/` | a mode's output on a sample task, against `expect`, principles and rubric |
+| Golden (model-graded) | `modes/<mode>/evals/`; workflows across modes: `evals/workflows/` | a mode's output on a sample task, against `expect` (default: the mode's `done.must`) and the should lines |
 | Framework review (judgment) | `forge/review-framework` | what code can't check, scored like the original reviews |
 
 ```bash

@@ -1,5 +1,5 @@
 name: pm/sprint-planning
-version: 0.2.3
+version: 0.3.0
 contract: task@1
 author: dima
 summary: Prioritize the next sprint, update the roadmap, plan the work and draft Jira tickets
@@ -17,17 +17,18 @@ returns:
 skill: SKILL.md
 default_role: sprint-planner
 roles: [roadmap-strategist]
-calls: [pm/jira-tickets@^0.2]
+calls: [pm/jira-tickets@^0.3]
 merge_child_actions: true   # stage C in code: pmos appends the ticket child's actions to this result
 grants: { jira: draft, roadmap: draft }   # proposes roadmap and ticket actions; writes happen only via the Operator after approval
 approval: before_execute
 risk: high
 principles: [plan-to-capacity, explicit-trade-offs]
-rubric:
-  - Priorities were approved by the PM before planning started (gate 1)
-  - Every roadmap change in the diff traces to a ranked item
-acceptance:             # the envelope's default when the CoS passes no --acceptance
-  - "Ranking approved by the PM before planning"
-  - "Committed points within capacity (check_plan.py passes)"
-  - "Roadmap and ticket changes proposed as actions for one approval"
+done:
+  must:
+    - code: "python packs/pm/modes/sprint-planning/scripts/check_plan.py {outputs_dir}/plan.json {outputs_dir}/capacity.json"
+    - "The PM approved the ranking before planning started (gate 1)"
+    - principle: plan-to-capacity
+    - "Roadmap and ticket changes are proposed as actions for one approval"
+  should:
+    - "Every roadmap change in the diff traces to a ranked item"
 evals: evals/

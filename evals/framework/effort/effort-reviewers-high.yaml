@@ -1,0 +1,41 @@
+kind: conformance
+name: effort-reviewers-high
+covers: [script:scripts/pmos.py]
+finding: request:effort-defaults
+severity: medium
+desc: >-
+  The PM's rule: reviewers high, implementers medium. The reviewer agent and core/reviewer role, and
+  forge/framework-reviewer, are high; every Worker role of the built-in packs is medium; the
+  operator stays low and the CoS medium. Risk still scales: a low-risk review runs at medium, a
+  high-risk review stays high; a Worker task still moves one level with its risk.
+steps:
+  - run: 'true'
+    expect:
+      files:
+        contains:
+          agents/reviewer.md: '(?m)^effort: high$'
+          agents/operator.md: '(?m)^effort: low$'
+          packs/cos/agents/cos.md: '(?m)^effort: medium$'
+  - name: every role's effort
+    run: |
+      $PY - <<'PY'
+      import glob, sys, yaml
+      bad = []
+      for f in ["roles.yaml", *sorted(glob.glob("packs/*/roles.yaml"))]:
+          for name, r in (yaml.safe_load(open(f)) or {}).get("roles", {}).items():
+              want = "high" if name in ("reviewer", "framework-reviewer") else "medium"
+              if r.get("effort") != want:
+                  bad.append(f"{f}: {name} is {r.get('effort')}, want {want}")
+      print("\n".join(bad))
+      sys.exit(1 if bad else 0)
+      PY
+  - name: review effort by risk (low -> medium, medium -> high, high -> high)
+    run: |
+      L=$($PMOS task new --mode pm/release-notes --inputs '{"sprint":"S","project":"STK"}') &&
+      M=$($PMOS task new --mode pm/prd --inputs '{"goal":"g"}') &&
+      H=$($PMOS task new --mode pm/prd --inputs '{"goal":"g"}' --risk high) &&
+      for t in $L:medium $M:high $H:high; do $PMOS task show ${t%:*} --for-review | grep -E "review effort: ${t#*:}\b" || exit 1; done
+  - name: a Worker task still moves with its risk (jira-curator medium; release-notes low risk)
+    run: $PMOS task new --mode pm/release-notes --inputs '{"sprint":"S","project":"STK"}'
+    capture: {R: '(T-\d{8}-\d{3,})'}
+    expect: {task: {id: $R, fields: {effort: '^low$', effort_base: '^medium$', effort_source: '^role$'}}}

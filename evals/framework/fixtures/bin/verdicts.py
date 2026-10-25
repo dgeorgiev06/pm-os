@@ -4,7 +4,9 @@
   verdicts.py --task ID [--fail LINE_ID ...] [--drop N] [--score N]
 
 --fail marks those checklist lines as failing; --drop leaves out the last N lines (to test that
-pmos refuses incomplete verdicts).
+pmos refuses incomplete verdicts). Each verdict carries `evidence`, and a failed one a `fix`;
+settled lines (code lines pmos ran) get none. --score is written only for a tree whose review
+still takes one (a checklist without `kind`).
 """
 import argparse
 import json
@@ -21,10 +23,20 @@ def checklist(task_id: str) -> list[dict]:
 
 
 def build(task_id: str, fail=(), drop: int = 0, score: float = 5) -> dict:
-    lines = [{"id": c["id"], "pass": c["id"] not in set(fail), "note": "framework-eval verdict"}
-             for c in checklist(task_id)]
+    items = checklist(task_id)
+    lines = []
+    for c in items:
+        if c.get("settled"):
+            continue
+        line = {"id": c["id"], "pass": c["id"] not in set(fail), "note": "framework-eval verdict",
+                "evidence": "framework-eval: the fixture artifact"}
+        if not line["pass"]:
+            line["fix"] = "framework-eval fix"
+        lines.append(line)
     if drop:
         lines = lines[:-drop]
+    if items and "kind" in items[0]:      # the score comes from the should lines
+        return {"lines": lines}
     return {"score": score, "lines": lines}
 
 
