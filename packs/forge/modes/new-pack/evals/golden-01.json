@@ -1,0 +1,25 @@
+{
+  "name": "create a gtm pack that reuses pm",
+  "envelope": {
+    "verb": "plan",
+    "mode": "forge/new-pack",
+    "inputs": {
+      "name": "gtm",
+      "summary": "Go-to-market: launch briefs and customer announcements",
+      "purpose": "Turn shipped features into launch briefs for sales and announcements for custodians and banks",
+      "modes": [
+        { "name": "launch-brief", "purpose": "One-page brief for sales from a PRD and release notes" },
+        { "name": "announcement", "purpose": "Customer-facing announcement email draft" }
+      ]
+    },
+    "acceptance": ["depends on pm instead of copying its skills", "each mode built by a child task"],
+    "risk": "medium",
+    "approval": "before_execute"
+  },
+  "expect": [
+    "staged gtm/pack.yaml lists pm in depends and cites pm:cite-customer-claims rather than copying it",
+    "two forge/new-mode children, each with into set to the staged gtm pack",
+    "lint and `pmos pack add … --dry-run` pass on the staged pack",
+    "one sync_pack action targeting packs/gtm; packs/ unchanged until approval"
+  ]
+}

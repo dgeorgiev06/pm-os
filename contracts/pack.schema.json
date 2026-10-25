@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pm-os/pack@1",
+  "title": "Pack manifest (pack.yaml)",
+  "description": "A pack is the unit you install and share: modes, roles, skills, principles and optionally agents or the Chief of Staff.",
+  "type": "object",
+  "required": ["name", "version", "contract", "summary", "requires", "exports"],
+  "additionalProperties": false,
+  "properties": {
+    "name": { "type": "string", "pattern": "^[a-z0-9-]+$", "not": { "const": "core" } },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "contract": { "const": "pack@1" },
+    "author": { "type": "string" },
+    "summary": { "type": "string", "maxLength": 140, "description": "One line; the CoS sees this in its pack list" },
+    "requires": {
+      "type": "object",
+      "required": ["core"],
+      "properties": { "core": { "type": "string", "description": "Version range of pm-os core, e.g. ^0.2" } },
+      "additionalProperties": false
+    },
+    "depends": {
+      "type": "array",
+      "description": "Other packs this one uses, with version ranges: [\"pm@^0.1\"]",
+      "items": { "type": "string", "pattern": "^[a-z0-9-]+(@[~^]?[0-9]+(\\.[0-9]+){0,2})?$" }
+    },
+    "router": { "type": "string", "description": "The pack's entry mode for goal-level asks" },
+    "cos": { "type": "string", "description": "Path to a Chief of Staff manual this pack supplies" },
+    "exports": {
+      "type": "object",
+      "description": "What other packs and the CoS may use. Anything not exported is internal to the pack.",
+      "additionalProperties": false,
+      "properties": {
+        "modes": { "type": "array", "items": { "type": "string" } },
+        "roles": { "type": "array", "items": { "type": "string" } },
+        "skills": { "type": "array", "items": { "type": "string" } },
+        "principles": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

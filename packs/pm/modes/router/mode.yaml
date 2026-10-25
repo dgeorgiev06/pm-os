@@ -1,0 +1,24 @@
+name: pm/router
+version: 0.1.1
+contract: task@1
+author: dima
+summary: Turn a goal-level PM ask into a small plan of pm modes, run them, and assemble the outcome
+verbs: [plan]
+accepts:
+  goal: string            # e.g. "get the Solana router beta launch-ready for custodians"
+  constraints: string?    # dates, scope limits, people
+  project: string?        # Jira project key, passed to modes that need it
+returns:
+  plan: doc_ref
+  outcome: doc_ref
+skill: SKILL.md
+default_role: program-manager
+calls: [pm/prd@^0.2, pm/sprint-planning@^0.2, pm/jira-tickets@^0.2, pm/release-notes@^0.1]
+grants: {}
+approval: none            # children carry their own approvals
+risk: medium
+principles: [explicit-trade-offs]
+rubric:
+  - Uses the fewest modes that achieve the goal; no mode runs without a reason in the plan
+  - Every child task's inputs validate against that mode's accepts
+evals: evals/

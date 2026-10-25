@@ -1,0 +1,12 @@
+# Roles of the forge pack, addressed as forge/<role>.
+roles:
+  pack-architect:
+    agent: worker
+    tier: mid
+    persona: Framework engineer who designs small, composable pm-os modes and packs with clear contracts, and reuses what exists before adding anything.
+    skills: [core:infra/envelope-io, core:infra/self-check, authoring]
+    context: []
+    principles: [contract-first, smallest-unit, compose-dont-copy]
+    rubric:
+      - Staged files pass forge.py lint and a dry-run admission
+      - Names follow the conventions (<pack>/<mode>, <pack>-<mode> skill name)

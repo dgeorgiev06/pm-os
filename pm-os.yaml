@@ -1,22 +1,19 @@
-# pm-os framework config. Harness- and model-neutral: nothing here assumes one vendor.
+# pm-os core config. Harness- and model-neutral: nothing here assumes one vendor.
 framework: pm-os
-version: 0.1.0
+version: 0.2.0          # core version; packs declare `requires.core` against it
 contract: task@1
 
 paths:
-  modes: [modes]          # mode roots scanned by the registry; add vendored org/third-party dirs here
-  skills: skills          # shared skills (infra / domain / product)
-  roles: roles.yaml
-  agents: agents
+  packs_file: packs.yaml  # installed packs (managed by `pmos pack add/remove`)
+  skills: skills          # core skills and core principles
+  roles: roles.yaml       # core roles
+  agents: agents          # core agents: worker, operator, reviewer
   context: context
   state: state
   traces: traces
-  outputs: outputs        # drafts and artifacts the Worker produces
+  outputs: outputs
 
-# Which source each mode root belongs to. Used for tie-breaking (precedence below).
-sources:
-  modes: local
-  # vendor/acme-modes: third-party
+cos_pack: cos           # which installed pack supplies the Chief of Staff (AGENTS.md is generated from it)
 
 precedence: [local, org, third-party]   # how the CoS breaks ties between matching modes
 
@@ -42,7 +39,6 @@ adapters:
     # Map framework grants to this harness's tool names. This is what enforces the
     # permission line (Worker can't write to Jira). An agent whose grants map to
     # nothing inherits every tool, and `render` warns about it.
-    # Fill the Jira/Slack entries with your MCP server's tool names.
     grants_to_tools:
       docs:read: [Read, Grep, Glob]
       docs:write: [Write, Edit]
@@ -50,6 +46,8 @@ adapters:
       jira:read: []          # e.g. mcp__jira__search_issues, mcp__jira__get_issue
       jira:write: []         # e.g. mcp__jira__create_issue, mcp__jira__update_issue
       comms:send: []         # e.g. mcp__slack__post_message
+      repo:write: [Write, Edit]
+      todos:write: [Bash]    # the Operator applies todo diffs with packs/cos/scripts/todos.py
   generic:
     provider: anthropic
     out_dir: build/generic   # one system prompt per agent + models.json, for any SDK or API
