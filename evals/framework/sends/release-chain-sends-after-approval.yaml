@@ -1,0 +1,81 @@
+kind: conformance
+name: release-chain-sends-after-approval
+covers: [script:scripts/pmos.py]
+failure: true
+desc: >-
+  The release flow end to end, on the real modes: pm/release-notes produces the notes; release-comms/
+  release-notify takes them by `$from`, starts one cos/notify child per audience and waits; the merged
+  approval gate shows every send before anything runs; after the yes, `action run` sends nothing without a
+  receipt (exit 2, task approved) and the task is done once every receipt is recorded.
+setup:
+  copy:
+    send/channels.yaml: channels.yaml
+    send/draft-release.json: draft.json
+  files:
+    notes.md: 'Release 2.4 ships 2026-10-30. Routing rules per account; report lag fixed.'
+steps:
+  - name: pm/release-notes is started and takes the notes to done
+    run: |
+      $PMOS task new --mode pm/release-notes --verb draft --inputs '{"sprint":"2026-S22","project":"STK"}' &&
+      $PMOS task move $(echo "$($PMOS task list --state queued)" | grep -oE 'T-[0-9]{8}-[0-9]{3,}' | tail -1) running
+    capture: {N: '(T-\d{8}-\d{3,})'}
+  - run: |
+      mkdir -p outputs/$N && cp notes.md outputs/$N/notes.md &&
+      $PY $FX/bin/mkresult.py --task $N --status done --submit --outputs-json "{\"notes\": \"outputs/$N/notes.md\"}" &&
+      $PY $FX/bin/advance.py --task $N --to done
+    expect: {task: {id: $N, state: done}}
+  - name: release-notify takes the notes by $from and is started
+    run: $PMOS task new --mode release-comms/release-notify --verb draft --inputs "{\"release_notes\":{\"\$from\":\"$N\",\"output\":\"notes\"}}"
+    capture: {R: '(T-\d{8}-\d{3,})'}
+  - name: its notes are resolved when it starts
+    run: PMOS_CHANNELS_FILE=channels.yaml $PMOS task move $R running && $PMOS task show $R
+    expect: {stdout: 'notes.md'}
+  - name: it writes the draft and starts one cos/notify child per audience
+    run: |
+      mkdir -p outputs/$R && cp draft.json outputs/$R/draft.json &&
+      $PMOS task new --parent $R --mode cos/notify@^0.1 --verb draft --approval none --risk high --inputs "{\"draft\":\"outputs/$R/draft.json\",\"audience\":\"external\"}"
+    capture: {CE: '(T-\d{8}-\d{3,})'}
+  - run: $PMOS task new --parent $R --mode cos/notify@^0.1 --verb draft --approval none --risk medium --inputs "{\"draft\":\"outputs/$R/draft.json\",\"audience\":\"internal\"}"
+    capture: {CI: '(T-\d{8}-\d{3,})'}
+  - name: the release task waits for its children
+    run: $PMOS task move $R waiting
+    expect: {task: {id: $R, state: waiting}}
+  - name: each child builds its messages and proposed sends
+    run: |
+      $PMOS task move $CE running && $PMOS task move $CI running &&
+      PMOS_CHANNELS_FILE=channels.yaml $PY packs/cos/modes/notify/scripts/build_actions.py build outputs/$R/draft.json --audience external --task $CE --out outputs/$CE &&
+      PMOS_CHANNELS_FILE=channels.yaml $PY packs/cos/modes/notify/scripts/build_actions.py build outputs/$R/draft.json --audience internal --task $CI --out outputs/$CI
+    expect: {exit: 0}
+  - name: each child submits its messages and its proposed sends
+    run: |
+      PMOS_CHANNELS_FILE=channels.yaml $PY $FX/bin/submit_actions.py $CE "{\"messages\": \"outputs/$CE/messages.json\"}" outputs/$CE/actions.json &&
+      PMOS_CHANNELS_FILE=channels.yaml $PY $FX/bin/submit_actions.py $CI "{\"messages\": \"outputs/$CI/messages.json\"}" outputs/$CI/actions.json &&
+      $PY $FX/bin/advance.py --task $CE --to done && $PY $FX/bin/advance.py --task $CI --to done
+    expect: {exit: 0}
+  - name: the release task resumes once its children are done and merges their messages
+    run: |
+      $PMOS task state $R | grep -q queued &&
+      $PMOS task move $R running &&
+      PMOS_CHANNELS_FILE=channels.yaml $PY packs/cos/modes/notify/scripts/build_actions.py merge outputs/$R/messages.json outputs/$CE/messages.json outputs/$CI/messages.json &&
+      PMOS_CHANNELS_FILE=channels.yaml $PY $FX/bin/mkresult.py --task $R --status needs_approval --submit --outputs-json "{\"draft\": \"outputs/$R/draft.json\", \"messages\": \"outputs/$R/messages.json\"}" &&
+      PMOS_CHANNELS_FILE=channels.yaml $PY $FX/bin/advance.py --task $R --to awaiting_approval
+    expect: {exit: 0}
+  - name: the gate shows every send with its recipient before anything runs
+    run: $PMOS task show $R
+    expect: {stdout: 'customers@example.test'}
+  - run: $PMOS task approve $R --by pm
+  - name: a comms tool is mapped; the sends are verified, not sent
+    run: |
+      sed -i 's/comms:send: \[\]/comms:send: [mcp__slack__post_message]/' pm-os.yaml &&
+      PMOS_CHANNELS_FILE=channels.yaml $PMOS action run $R
+    expect: {exit: 2, stdout: 'pending_send'}
+  - name: the task is still approved and not done
+    run: $PMOS task state $R
+    expect: {task: {id: $R, state: approved}}
+  - name: each send's receipt is recorded and the task is done
+    run: |
+      ARGS=$($PY -c "import json,sys; print(' '.join('--receipt ' + a['idempotency_key'] + '=RCPT-' + a['idempotency_key'] for f in sys.argv[1:] for a in json.load(open(f))))" outputs/$CE/actions.json outputs/$CI/actions.json) &&
+      PMOS_CHANNELS_FILE=channels.yaml $PMOS action run $R $ARGS
+    expect:
+      exit: 0
+      task: {id: $R, state: done}

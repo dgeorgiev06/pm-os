@@ -2232,9 +2232,19 @@ def cmd_task_show(args) -> int:
         for a in task["result"].get("artifacts", []):
             out.append(f"- artifact: {a['ref']}" + (f" ({a['title']})" if a.get("title") else ""))
         merged = {m["idempotency_key"]: m["from"] for m in task.get("merged_actions", [])}
+        sent_map = {x["key"]: x["receipt"] for x in task.get("sent") or []}
+        ext = external_systems()
+        unsent = pending_send(task) if task["state"] == "approved" else []
+        if unsent:
+            out.append(f"- pending send: {', '.join(a['idempotency_key'] for a in unsent)} "
+                       f"(send each, then `pmos action run {env['id']} --receipt KEY=ID`)")
         for a in task["result"].get("actions", []):
-            out.append(f"- action: {a['system']}.{a['op']} · {a.get('preview', a['idempotency_key'])}"
-                       + (f" (from {merged[a['idempotency_key']]})" if a["idempotency_key"] in merged else ""))
+            key = a["idempotency_key"]
+            status = ""
+            if a["system"] in ext and task["state"] in ("approved", "done"):
+                status = f" · sent {sent_map[key]}" if key in sent_map else " · pending send"
+            out.append(f"- action: {a['system']}.{a['op']} · {a.get('preview', key)}"
+                       + (f" (from {merged[key]})" if key in merged else "") + status)
     if args.for_review:
         out += ["", f"Review effort: {task.get('review_effort', '—')} (core/reviewer's effort; one level lower for "
                     f"a low-risk task; this one is {env['risk']}).", "", "## Review checklist",
@@ -2263,6 +2273,12 @@ def cmd_task_move(args) -> int:
         raise PmosError(f"{args.id} is in_review; only {OWNED_BY['in_review']} moves it on")
     if args.state in ("awaiting_approval", "approved"):
         raise PmosError(f"only {OWNED_BY[args.state]} moves a task to {args.state}")
+    if args.state == "done" and task["state"] == "approved":
+        unsent = pending_send(task)
+        if unsent:
+            raise PmosError(f"{args.id} has pending send: {', '.join(a['idempotency_key'] for a in unsent)}; "
+                            f"send each and record its receipt with `pmos action run {args.id} --receipt KEY=ID` "
+                            f"(task move can't mark a send done)")
     if args.state == "running":
         pending = deps_pending(task)
         if pending:
@@ -2591,8 +2607,53 @@ def cmd_task_state(args) -> int:
 
 
 # --------------------------------------------------------------------------- actions
+def external_systems() -> set[str]:
+    """Systems whose actions reach people outside pmos: each needs a receipt before its task is done (SR1)."""
+    return set(config().get("external_systems") or [])
+
+
+def pending_send(task: dict) -> list[dict]:
+    """The task's external actions that have no receipt yet (SR1, SR5)."""
+    ext = external_systems()
+    sent = {s["key"] for s in task.get("sent") or []}
+    return [a for a in (task.get("result") or {}).get("actions", [])
+            if a["system"] in ext and a["idempotency_key"] not in sent]
+
+
+def parse_receipts(values: list[str] | None, actions: list[dict]) -> dict[str, str]:
+    """--receipt KEY=RECEIPT: the key must be an external action of this task (SR3)."""
+    by_key = {a["idempotency_key"]: a for a in actions}
+    out: dict[str, str] = {}
+    for raw in values or []:
+        key, sep, receipt = raw.partition("=")
+        if not sep or not receipt.strip():
+            raise PmosError(f"--receipt wants KEY=RECEIPT, got '{raw}'")
+        if key not in by_key:
+            raise PmosError(f"--receipt {key}: the task has no action with that idempotency_key; receipt refused")
+        a = by_key[key]
+        if a["system"] not in external_systems():
+            raise PmosError(f"--receipt {key}: {a['system']}.{a['op']} is not an external action, so it takes no receipt")
+        out[key] = receipt.strip()
+    return out
+
+
+def handler_reply(stdout: str) -> dict:
+    """A handler's reply: one JSON object on stdout (the last JSON line, if it prints anything else too)."""
+    lines = [ln for ln in stdout.strip().splitlines() if ln.strip()]
+    if not lines:
+        return {}
+    try:
+        data = json.loads(lines[-1])
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def cmd_action_run(args) -> int:
-    """Run an approved task's actions through the handlers its pack declares in pack.yaml `actions:`."""
+    """Run an approved task's actions through the handlers its pack declares in pack.yaml `actions:`.
+
+    A task is done only when every action is applied and every external action has a receipt (SR1-SR5).
+    Exit: 0 done (or nothing left to do), 1 a handler failed or refused, 2 a send is still pending."""
     task = load_task(args.id)
     tid = task["envelope"]["id"]
     if task["state"] != "approved":
@@ -2607,15 +2668,19 @@ def cmd_action_run(args) -> int:
                         f"{approvals[-1].get('actions_sha')}); nothing was run. Send it back for approval.")
     if args.key and args.key not in {a["idempotency_key"] for a in actions}:
         raise PmosError(f"{tid} has no action with idempotency_key '{args.key}'")
+    receipts = parse_receipts(args.receipt, actions)
+    ext = external_systems()
     pack = packs().get(task["pack"])
     handlers = (pack["manifest"].get("actions") or {}) if pack else {}
     out_dir = path_of("outputs") / tid
     record_path = out_dir / "applied.json"
     record = load_json(record_path) if record_path.exists() else {}
-    done_keys = {a["key"] for a in record.get("applied", [])}
-    applied, skipped, failed, manual = list(record.get("applied", [])), [], [], []
+    applied, sent = list(record.get("applied", [])), list(record.get("sent", []))
+    done_keys = {a["key"] for a in applied} | {s["key"] for s in sent}
+    recorded, skipped, failed, manual = [], [], [], []
     for a in actions:
         key, kind = a["idempotency_key"], f"{a['system']}.{a['op']}"
+        external = a["system"] in ext
         if args.key and key != args.key:
             continue
         if key in done_keys:
@@ -2623,28 +2688,57 @@ def cmd_action_run(args) -> int:
             continue
         handler = handlers.get(kind)
         if not handler:
-            manual.append({"key": key, "action": kind, "preview": a.get("preview", "")})
+            if external and key in receipts:   # the Operator sent it with a tool and reports the receipt
+                sent.append({"key": key, "receipt": receipts[key]})
+                applied.append({"key": key, "action": kind, "receipt": receipts[key], "handler": None})
+                done_keys.add(key)
+            else:
+                manual.append({"key": key, "action": kind, "preview": a.get("preview", "")})
             continue
         if failed:
             skipped.append({"key": key, "action": kind, "why": "an earlier action failed"})
             continue
         script, *fixed = shlex.split(handler)
         action_file = out_dir / "actions" / f"{re.sub(r'[^A-Za-z0-9_.-]', '_', key)}.json"
-        write_json(action_file, {"task_id": tid, "action": a})
+        payload = {"task_id": tid, "action": a}
+        if key in receipts:
+            payload["receipt"] = receipts[key]
+        write_json(action_file, payload)
         proc = subprocess.run([sys.executable, str(pack["dir"] / script), *fixed, str(action_file)], cwd=ROOT,
                               capture_output=True, text=True, env={**os.environ, "PMOS_ROOT": str(ROOT)})
         entry = {"key": key, "action": kind, "handler": f"{task['pack']}: {handler}",
                  "output": (proc.stdout.strip() or proc.stderr.strip())[-2000:]}
-        (applied if proc.returncode == 0 else failed).append(entry)
-    out = {"task_id": tid, "applied": applied, "skipped": skipped, "failed": failed, "manual": manual}
+        if proc.returncode != 0:
+            failed.append(entry)
+            continue
+        if not external:
+            applied.append(entry)
+            done_keys.add(key)
+            continue
+        # the handler's receipt (SR2), else the one the Operator's tool returned and gave with --receipt (SR3)
+        reply_receipt = handler_reply(proc.stdout).get("receipt") or receipts.get(key)
+        if reply_receipt:
+            entry["receipt"] = str(reply_receipt)
+            applied.append(entry)
+            sent.append({"key": key, "receipt": entry["receipt"]})
+            done_keys.add(key)
+        else:                                   # verified, not sent: the Operator still has to send it
+            recorded.append(entry)
+    pending = [a["idempotency_key"] for a in actions
+               if a["system"] in ext and a["idempotency_key"] not in {s["key"] for s in sent}]
+    out = {"task_id": tid, "applied": applied, "recorded": recorded, "sent": sent, "skipped": skipped,
+           "failed": failed, "manual": manual, "pending_send": pending}
     write_json(record_path, out)
-    trace(task, "actions_run", by=args.by, applied=len(applied), failed=len(failed), manual=len(manual))
-    all_done = {a["idempotency_key"] for a in actions} <= {a["key"] for a in applied}
-    if not failed and all_done:
-        transition(task, "done", args.by, f"{len(applied)} action(s) applied by handlers")
+    task["sent"] = sent
+    save_task(task)
+    trace(task, "actions_run", by=args.by, applied=len(applied), sent=len(sent), failed=len(failed),
+          manual=len(manual), pending_send=len(pending))
+    all_done = {a["idempotency_key"] for a in actions} <= done_keys
+    if not failed and not pending and all_done:
+        transition(task, "done", args.by, f"{len(sent)} send(s) with receipts, {len(applied)} action(s) applied")
         write_board()
     print(json.dumps(out, indent=2, ensure_ascii=False))
-    return 1 if failed else 0
+    return 1 if failed else (2 if pending else 0)
 
 
 # --------------------------------------------------------------------------- board & decisions
@@ -3851,6 +3945,8 @@ def build_parser() -> argparse.ArgumentParser:
     ar.add_argument("id", help="the approved task")
     ar.add_argument("--key", help="run only the action with this idempotency_key")
     ar.add_argument("--by", default="operator", help="who runs them (recorded in history)")
+    ar.add_argument("--receipt", action="append", default=[], metavar="KEY=RECEIPT",
+                    help="the id the external tool returned for an external action; marks it sent (repeatable)")
     ar.set_defaults(fn=cmd_action_run)
     return p
 

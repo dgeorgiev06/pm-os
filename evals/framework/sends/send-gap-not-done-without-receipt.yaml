@@ -1,0 +1,47 @@
+kind: conformance
+name: send-gap-not-done-without-receipt
+covers: [script:scripts/pmos.py]
+failure: true
+desc: >-
+  An approved task whose external send has no receipt is not done. `action run` verifies the send and
+  leaves the task approved with a pending send (exit 2); `task move … done` refuses it; a receipt given
+  for the key (`--receipt KEY=ID`) marks it sent and the task done.
+setup:
+  copy:
+    send/channels.yaml: channels.yaml
+    send/draft.json: draft.json
+steps:
+  - name: a cos/notify task is approved with one internal Slack send
+    run: |
+      $PMOS task new --mode cos/notify --verb draft --inputs '{"draft":"draft.json","audience":"internal"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - name: its messages and send action are built and submitted
+    run: |
+      $PMOS task move $T running &&
+      PMOS_CHANNELS_FILE=channels.yaml $PY packs/cos/modes/notify/scripts/build_actions.py build draft.json --audience internal --task $T --out outputs/$T &&
+      PMOS_CHANNELS_FILE=channels.yaml $PY $FX/bin/mkresult.py --task $T --status needs_approval --submit \
+        --outputs-json "{\"messages\": \"outputs/$T/messages.json\"}" \
+        --action "$($PY -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))[0]))' outputs/$T/actions.json)" &&
+      PMOS_CHANNELS_FILE=channels.yaml $PY $FX/bin/advance.py --task $T --to awaiting_approval && $PMOS task approve $T --by pm
+  - name: a comms tool is mapped
+    run: |
+      sed -i 's/comms:send: \[\]/comms:send: [mcp__slack__post_message]/' pm-os.yaml
+  - name: the Operator runs the action; the send is verified, not sent, so the task stays approved
+    run: PMOS_CHANNELS_FILE=channels.yaml $PMOS action run $T
+    expect: {exit: 2, stdout: 'pending_send'}
+  - name: the task shows what is still unsent
+    run: $PMOS task show $T
+    expect: {stdout: 'pending send'}
+  - name: task move cannot mark an unsent send done
+    run: $PMOS task move $T done --by operator
+    expect: {exit: nonzero, stderr: 'pending send'}
+  - name: the task is still approved
+    run: $PMOS task state $T
+    expect: {task: {id: $T, state: approved}}
+  - name: the tool's receipt is recorded and the task is done
+    run: PMOS_CHANNELS_FILE=channels.yaml $PMOS action run $T --receipt $T-team-slack-1=C-RCPT-1
+    expect:
+      exit: 0
+      task: {id: $T, state: done}
+      files:
+        contains: {'outputs/*/applied.json': 'C-RCPT-1'}

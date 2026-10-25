@@ -141,6 +141,7 @@ Prompts ask agents to behave; these rules hold in code whatever an agent does.
 - **Review.** A mode's `done.must` code lines run at `task result`; a failure goes straight to
   `revise`. The Reviewer gives every other checklist line a verdict with evidence, and a fix when it
   fails (pmos refuses missing ones), and pmos computes pass or fail ([quality/README.md](quality/README.md)).
+- **Sends.** An action on an `external_systems` system (pm-os.yaml) doesn't finish the task until its handler or the Operator's tool returns a receipt: `pmos action run --receipt KEY=ID` records it. Until then the task stays `approved` with a pending send (exit 2), and `task move … done` refuses it.
 - **Versions.** `pack add --upgrade` refuses unless the pack's version goes up.
 - **Evals.** `pack add` (and `validate`) refuses a pack whose eval cases don't match eval@1 or leave a
   feature uncovered, and `pack add` refuses one whose conformance cases fail in the sandbox.

@@ -328,7 +328,7 @@ def cmd_build(a) -> int:
                 actions.append({"system": "comms", "op": "send", "idempotency_key": key,
                                 "payload": {"audience": a.audience, "channel": c["name"], "kind": c["kind"],
                                             "recipient": target, "text": r["text"], "send_at": a.send_at},
-                                "preview": r["text"]})
+                                "preview": f"to {target}: {r['text']}"})
     if not messages and not problems:
         problems.append(f"no notification for audience {a.audience}")
     if problems:

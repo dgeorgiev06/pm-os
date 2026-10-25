@@ -1,6 +1,6 @@
 # pm-os core config. Harness- and model-neutral: nothing here assumes one vendor.
 framework: pm-os
-version: 0.5.0          # core version; packs declare `requires.core` against it
+version: 0.5.1          # core version; packs declare `requires.core` against it
 contract: task@1
 
 paths:
@@ -14,6 +14,10 @@ paths:
   outputs: outputs
 
 cos_pack: cos           # which installed pack supplies the Chief of Staff (AGENTS.md is generated from it)
+
+# Systems whose actions reach people outside pmos. An approved task with an action on one of them is not
+# done until each such action has a receipt from its handler or from the Operator's tool (`pmos action run --receipt`).
+external_systems: [comms]
 
 # How the CoS keeps the PM's thread free. `pmos catalog` writes these numbers into AGENTS.md
 # (COS.md says {{cos.inline_max_seconds}}); `pmos stats` reports replies over the call limit.

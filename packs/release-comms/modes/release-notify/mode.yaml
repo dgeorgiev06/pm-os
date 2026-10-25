@@ -1,8 +1,8 @@
 name: release-comms/release-notify
-version: 0.1.1
+version: 0.1.2
 contract: task@1
 author: dima
-summary: "Draft a release's customer email and internal note from its release notes, then send each draft to cos/notify"
+summary: "Customer and internal release notices: start pm/release-notes first and pass its notes as release_notes, $from ref"
 verbs: [draft]
 accepts:
   release_notes: doc_ref          # usually {"$from": "<pm/release-notes task>", "output": "notes"}

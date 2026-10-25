@@ -112,7 +112,7 @@ Conformance cases are code and free; golden cases run a model and cost money.
 | --- | --- | --- | --- | --- | --- |
 | `pm` | 0.4.0 | Product management — PRDs, sprint planning, roadmap diffs, Jira tickets, release notes | `pm/router` | `pm/jira-tickets`, `pm/prd`, `pm/release-notes`, `pm/router`, `pm/sprint-planning` | local |
 | `forge` | 0.4.1 | Builds and reviews pm-os itself — new modes or packs, staged and checked before they land, and on-demand framework reviews | — | `forge/new-mode`, `forge/new-pack`, `forge/review-framework` | local |
-| `cos` | 0.4.1 | Chief of Staff — talks to the PM, routes to packs and modes, keeps the todo list, batches approvals, posts digests | — | `cos/notify`, `cos/todos` | local |
-| `release-comms` | 0.1.1 | Release notifications: customer and internal messages from release notes, checked and approved before send | — | `release-comms/release-notify` | local |
+| `cos` | 0.4.2 | Chief of Staff — talks to the PM, routes to packs and modes, keeps the todo list, batches approvals, posts digests | — | `cos/notify`, `cos/todos` | local |
+| `release-comms` | 0.1.3 | Release notifications: customer and internal messages from release notes, checked and approved before send | — | `release-comms/release-notify` | local |
 
 Use `python scripts/pmos.py catalog --pack <pack>` for a pack's modes and what each accepts.

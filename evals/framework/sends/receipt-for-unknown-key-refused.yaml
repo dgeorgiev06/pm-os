@@ -1,0 +1,26 @@
+kind: conformance
+name: receipt-for-unknown-key-refused
+covers: [script:scripts/pmos.py]
+failure: true
+desc: >-
+  `action run --receipt KEY=ID` refuses a key that is not an action of the task, before any handler runs,
+  and the task is unchanged.
+setup:
+  copy:
+    send/channels.yaml: channels.yaml
+    send/draft.json: draft.json
+steps:
+  - run: $PMOS task new --mode cos/notify --verb draft --inputs '{"draft":"draft.json","audience":"internal"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - run: |
+      $PMOS task move $T running &&
+      PMOS_CHANNELS_FILE=channels.yaml $PY packs/cos/modes/notify/scripts/build_actions.py build draft.json --audience internal --task $T --out outputs/$T &&
+      PMOS_CHANNELS_FILE=channels.yaml $PY $FX/bin/mkresult.py --task $T --status needs_approval --submit \
+        --outputs-json "{\"messages\": \"outputs/$T/messages.json\"}" \
+        --action "$($PY -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))[0]))' outputs/$T/actions.json)" &&
+      $PY $FX/bin/advance.py --task $T --to awaiting_approval && $PMOS task approve $T --by pm
+  - name: a receipt for a key that is not an action is refused
+    run: $PMOS action run $T --receipt no-such-key=C-RCPT-9
+    expect: {exit: nonzero, stderr: 'receipt'}
+  - run: $PMOS task state $T
+    expect: {task: {id: $T, state: approved}}

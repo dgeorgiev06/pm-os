@@ -219,3 +219,16 @@ Core cases touched by these packs: `one-version-rule`, `regression-forge-stages-
 `task-show-survives-upgrade`, `regression-grant-widening-refused` and `regression-removal-guards` now
 set `release-comms` aside first (its `depends: pm@^0.4` would block their 0.5.0 fixture bump, which is
 the C2 check working as designed); `done-block-validated` pins cos 0.4.1 and forge 0.4.1.
+
+## Send receipts — core 0.5.1
+
+A send is done only when a receipt says so. Contract first: cases in `evals/framework/sends/`.
+
+| # | Interface | Shape and rules | Cases |
+| --- | --- | --- | --- |
+| SR1 | `external_systems` | pm-os.yaml `external_systems: [comms]`: systems whose actions reach people outside pmos. An approved task with an action on one of them is not `done` until every such action has a receipt. | send-gap-not-done-without-receipt |
+| SR2 | Handler reply | A handler prints one JSON object on stdout. `{"receipt": "<id>"}` = sent. Exit 0 with no receipt on an external action = recorded (verified, not sent). On any other action, exit 0 = applied, as before. Exit non-zero = failed. | send-gap-not-done-without-receipt, send-retry-skips-sent |
+| SR3 | `pmos action run ID [--key K] [--receipt KEY=RECEIPT …]` | `--receipt` gives the handler the receipt as `"receipt"` in its action file. Without a receipt from the handler's reply, a `--receipt` given for an external action is recorded as its receipt. A receipt for a key that is not an action of the task, or for a non-external action, is refused (key word `receipt`), before any handler runs. Exit 0: every action applied or sent, task `done`. Exit 1: a handler failed or refused (`not configured` included), task stays `approved`. Exit 2: nothing failed but a send is pending (`pending_send` in the JSON). | receipt-for-unknown-key-refused, send-unconfigured-fails-loudly |
+| SR4 | `applied.json` | `{applied, recorded, sent: [{key, receipt}], failed, skipped, manual}`. A key with a receipt, or applied, is skipped on retry (`already applied`); a recorded one runs again. | send-retry-skips-sent |
+| SR5 | `task move ID done` from `approved` | Refused while an external action is unsent (key word `pending send`). `task move` still can't enter `approved`; only `action run` moves a task from `approved` to `done`. | send-gap-not-done-without-receipt |
+| SR6 | `task show` and `task state` | On an approved task: `pending send: <keys>` in the task part, and each action line ends `· sent <receipt>` or `· pending send`. `task show --json` and `task state --json` include `sent`. | send-gap-not-done-without-receipt |
