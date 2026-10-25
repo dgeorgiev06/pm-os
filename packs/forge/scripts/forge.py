@@ -4,11 +4,13 @@ Everything is staged under outputs/<task id>/staged/ first. Nothing touches pack
 Operator runs `apply` for an approved task.
 
   stage-mode --task ID --pack PACK --name NAME --summary TEXT [--role ROLE] [--into STAGED_PACK_DIR]
-             [--script NAME ...] [--router]
+             [--script NAME ...] [--router] [--standard NAME]
       Copy the installed pack to the staging area (or use --into, a pack staged by forge/new-pack),
       add a skeleton mode with the eval@1 cases the coverage rule needs (a golden case and a failure
       case), export it, and bump the pack's minor version. --script adds modes/<mode>/scripts/NAME.py
-      with a conformance case; --router makes the mode the pack's router, with a workflow case.
+      with a conformance case; --router makes the mode the pack's router, with a workflow case;
+      --standard adds a stub document standard standards/NAME.yaml (exported, applied to the mode's
+      `doc` output) with a passing and a failure-path conformance case and their fixtures.
   stage-pack --task ID --name NAME --summary TEXT [--role ROLE]
       Create a skeleton pack in the staging area (with evals/conformance/ and evals/workflows/).
   lint [DIR] [--target packs/NAME]
@@ -63,11 +65,13 @@ returns:                          # types: string number integer bool list objec
   doc: doc_ref                    # TODO: the real outputs (results carry them in `outputs`)
 skill: SKILL.md
 default_role: {role}
+skills: []                        # skills the work needs beyond the role's (`task show` lists both)
+{standard_line}
 calls: []                         # modes this one may start as children, version-pinned
 grants: {{}}                        # TODO: e.g. {{ jira: read, docs: draft }}
 approval: before_publish          # TODO: none | before_publish | before_execute
 risk: medium
-principles: []                    # cite existing principles before writing new ones
+principles: []                    # document-type principles (voice and style go on the role); cite existing ones first
 done:                             # the definition of done
   must:                           # every line must hold, or the review fails
     - "TODO: one outcome a reviewer can check in the artifact"
@@ -149,14 +153,58 @@ version: 0.1.0
 contract: pack@1
 summary: "{summary}"
 requires:
-  core: ^0.4
-depends: []                       # other packs this one uses, e.g. [pm@^0.3]
+  core: ^0.5
+depends: []                       # other packs this one uses, e.g. [pm@^0.4]
 exports:
   modes: []
   roles: [{role}]
   skills: []
   principles: []
 """
+
+STANDARD_COMMENT = ("# standard: {ref: <name>, output: doc}   # a document standard (standards/<name>.yaml): "
+                    "pmos runs check_doc.py on that output")
+
+STANDARD_YAML = """name: {standard}
+version: 0.1.0
+summary: "TODO: the document type, in one line"
+sections:                         # in document order; a heading naming the title (or an alias) starts one
+  - id: summary
+    title: Summary
+    required: true
+    contains: "TODO: what this section holds, in one sentence."
+    # numbered: {{prefix: R, contiguous: true}}   # items numbered R1, R2, ... with no gaps
+    # fields: [metric, target]                   # a table with these columns
+    # min_items: 2
+forbid:
+  - id: markers
+    pattern: '\\b(TODO|TBD)\\b'
+    message: an unresolved TODO or TBD marker
+judgment:                         # rules only a reviewer can judge; each becomes a must line
+  - "TODO: one rule a reviewer can check, in one sentence."
+"""
+
+STANDARD_CASE = """kind: conformance
+name: {case}
+covers: [standard:{pack}:{standard}]
+desc: "TODO: a document that meets {pack}:standards/{standard} passes check_doc.py"
+steps:
+  - run: $PY scripts/check_doc.py --standard {pack}:standards/{standard} $FX/{standard}-good.md
+    expect: {{stdout: '^PASS'}}
+"""
+
+STANDARD_REJECTS = """kind: conformance
+name: {case}-rejects
+covers: [standard:{pack}:{standard}]
+failure: true
+desc: "TODO: a document that breaks {pack}:standards/{standard} fails, naming the rule"
+steps:
+  - run: $PY scripts/check_doc.py --standard {pack}:standards/{standard} $FX/{standard}-bad.md
+    expect: {{exit: 1, stdout: ['^FAIL', 'section:summary']}}
+"""
+
+STANDARD_GOOD = "# A {standard}\n\n## Summary\nThe point, in one paragraph.\n"
+STANDARD_BAD = "# A {standard}\n\nNo sections yet.\n"
 
 ROLES_YAML = """roles:
   {role}:
@@ -237,6 +285,9 @@ def bump_minor(pack_yaml: Path) -> str:
 def add_export(pack_yaml: Path, kind: str, item: str) -> None:
     text = pack_yaml.read_text(encoding="utf-8")
     m = re.search(rf"^(\s+{kind}: \[)(.*?)(\])", text, flags=re.M)
+    if not m and kind == "standards":           # older packs have no exports.standards line yet
+        text = re.sub(r"^(exports:\s*\n)", "\\1  standards: []\n", text, count=1, flags=re.M)
+        m = re.search(rf"^(\s+{kind}: \[)(.*?)(\])", text, flags=re.M)
     if not m:
         raise SystemExit(f"error: {pack_yaml} has no exports.{kind} list on one line")
     items = [x.strip() for x in m.group(2).split(",") if x.strip()]
@@ -279,7 +330,12 @@ def cmd_stage_mode(a) -> int:
         return fail(f"{mode_dir} already exists")
     role = a.role or default_role(pack_dir)
     (mode_dir / "evals").mkdir(parents=True)
-    fmt = {"pack": a.pack, "name": a.name, "summary": a.summary.replace('"', "'"), "role": role}
+    if a.standard and not re.fullmatch(r"[a-z0-9-]+", a.standard):
+        return fail("standard name: lowercase letters, digits and hyphens only")
+    std_line = f"standard: {{ref: {a.standard}, output: doc}}   # standards/{a.standard}.yaml" if a.standard \
+        else STANDARD_COMMENT
+    fmt = {"pack": a.pack, "name": a.name, "summary": a.summary.replace('"', "'"), "role": role,
+           "standard_line": std_line}
     (mode_dir / "mode.yaml").write_text(MODE_YAML.format(**fmt), encoding="utf-8")
     (mode_dir / "SKILL.md").write_text(SKILL_MD.format(**fmt), encoding="utf-8")
     def case(template: dict) -> str:
@@ -300,6 +356,22 @@ def cmd_stage_mode(a) -> int:
         (pack_dir / "evals" / "conformance" / f"{cname}.yaml").write_text(
             SCRIPT_CASE.format(case=cname, name=a.name, script=script), encoding="utf-8")
         written.append(rel(pack_dir / "evals" / "conformance" / f"{cname}.yaml"))
+    if a.standard:                                     # a standard needs a passing and a failure-path case
+        sfile = pack_dir / "standards" / f"{a.standard}.yaml"
+        if sfile.exists():
+            return fail(f"{sfile} already exists")
+        sfile.parent.mkdir(parents=True, exist_ok=True)
+        sfmt = {"pack": a.pack, "standard": a.standard, "case": f"standard-{a.standard}"}
+        sfile.write_text(STANDARD_YAML.format(**sfmt), encoding="utf-8")
+        conf, fx = pack_dir / "evals" / "conformance", pack_dir / "evals" / "fixtures"
+        conf.mkdir(parents=True, exist_ok=True)
+        fx.mkdir(parents=True, exist_ok=True)
+        (conf / f"standard-{a.standard}.yaml").write_text(STANDARD_CASE.format(**sfmt), encoding="utf-8")
+        (conf / f"standard-{a.standard}-rejects.yaml").write_text(STANDARD_REJECTS.format(**sfmt), encoding="utf-8")
+        (fx / f"{a.standard}-good.md").write_text(STANDARD_GOOD.format(**sfmt), encoding="utf-8")
+        (fx / f"{a.standard}-bad.md").write_text(STANDARD_BAD.format(**sfmt), encoding="utf-8")
+        add_export(pack_dir / "pack.yaml", "standards", a.standard)
+        written += [rel(sfile), rel(conf / f"standard-{a.standard}.yaml"), rel(conf / f"standard-{a.standard}-rejects.yaml")]
     if a.router:                                       # a router needs a workflow case
         set_router(pack_dir / "pack.yaml", a.name)
         (pack_dir / "evals" / "workflows").mkdir(parents=True, exist_ok=True)
@@ -445,6 +517,8 @@ def main() -> int:
     sm.add_argument("--into", help="a pack staged by forge/new-pack (no copy, no version bump)")
     sm.add_argument("--script", action="append", help="add modes/<mode>/scripts/SCRIPT.py and its conformance case")
     sm.add_argument("--router", action="store_true", help="make this mode the pack's router, with a workflow case")
+    sm.add_argument("--standard", help="add a stub document standard standards/STANDARD.yaml for the mode's doc output, "
+                                       "with its passing and failure-path conformance cases")
     sm.set_defaults(fn=cmd_stage_mode)
     sp = sub.add_parser("stage-pack")
     for flag in ("--task", "--name", "--summary"):

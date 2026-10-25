@@ -1,5 +1,5 @@
 name: forge/review-framework
-version: 0.2.0
+version: 0.2.1
 contract: task@1
 author: dima
 summary: "Re-run one framework review of pm-os (conformance evals plus judgment) and report it in the original reviews' shape"
@@ -18,7 +18,7 @@ calls: []
 grants: { repo: read }  # reads the tree under review; writes only its own outputs/<id>/
 approval: none          # a read-only report: no actions, nothing to approve
 risk: low
-principles: []          # the core principles apply to every task; the role cites the two this leans on
+principles: [core:grounded, core:honest-self-check]   # always-on core principles, named because the report leans on them
 done:
   must:
     - code: "python packs/forge/modes/review-framework/scripts/conformance.py --task {task} --verify-clean"

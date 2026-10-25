@@ -1,0 +1,27 @@
+kind: conformance
+name: mode-skills-merged
+covers: [script:scripts/pmos.py]
+finding: request:standards
+severity: medium
+failure: true
+desc: >-
+  A mode may cite skills (`skills:` in mode.yaml, checked like a role's). `task show` lists the
+  role's skills, then the mode's, then the product overlay's, once each and tagged by source; so a
+  general role such as pm/doc-writer carries no document-type skill.
+steps:
+  - run: $PMOS task new --mode pm/prd --inputs '{"goal":"g"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - name: role skills, then mode skills, tagged
+    run: $PMOS task show $T
+    expect:
+      stdout:
+        - '(?i)## Skills'
+        - '(?m)^- \[role\] core:infra/envelope-io'
+        - '(?m)^- \[mode\] pm:domain/prd-structure \(packs/pm/skills/domain/prd-structure/SKILL\.md\)'
+  - name: a skill on both the role and the mode is listed once
+    run: |
+      $PY $FX/bin/yset.py packs/pm/roles.yaml roles.doc-writer.skills '[core:infra/envelope-io, core:infra/self-check, domain/prd-structure]' &&
+      $PMOS task show $T > brief.md && test "$(grep -c 'pm:domain/prd-structure (' brief.md)" = 1
+  - name: an unknown mode skill is refused by validate
+    run: $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml skills '[domain/no-such]' && $PMOS validate
+    expect: {exit: nonzero, output: ['packs/pm/modes/prd/mode\.yaml', 'pm:domain/no-such', '(?i)not found']}

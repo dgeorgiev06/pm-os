@@ -1,6 +1,6 @@
 # pm-os core config. Harness- and model-neutral: nothing here assumes one vendor.
 framework: pm-os
-version: 0.4.0          # core version; packs declare `requires.core` against it
+version: 0.5.0          # core version; packs declare `requires.core` against it
 contract: task@1
 
 paths:
@@ -102,6 +102,7 @@ lint:
     mode: 450
     agent: 500
     cos: 1000                 # COS.md plus every installed cos_section
+    standard_line: 25         # each contains/judgment line of a document standard (standards/*.yaml): one sentence
   warn_at: 0.9
   max_raise: 1.5              # a file may set `budget:` with `budget_reason:`, up to this times its kind's budget
   step_max_words: 60          # per numbered step of a mode SKILL.md

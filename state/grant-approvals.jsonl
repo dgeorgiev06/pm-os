@@ -12,3 +12,6 @@
 {"ts": "2026-10-25T01:46:53+00:00", "pack": "pm", "version": "0.3.0", "grants": {"docs": "draft", "jira": "draft", "roadmap": "draft"}}
 {"ts": "2026-10-25T01:46:59+00:00", "pack": "cos", "version": "0.3.0", "grants": {"calendar": "read", "todos": "draft"}}
 {"ts": "2026-10-25T01:47:11+00:00", "pack": "forge", "version": "0.3.0", "grants": {"repo": "draft"}}
+{"ts": "2026-10-25T13:20:33+00:00", "pack": "pm", "version": "0.4.0", "grants": {"docs": "draft", "jira": "draft", "roadmap": "draft"}}
+{"ts": "2026-10-25T13:20:39+00:00", "pack": "cos", "version": "0.3.1", "grants": {"calendar": "read", "todos": "draft"}}
+{"ts": "2026-10-25T13:20:53+00:00", "pack": "forge", "version": "0.4.0", "grants": {"repo": "draft"}}

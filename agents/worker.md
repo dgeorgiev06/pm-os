@@ -14,10 +14,12 @@ approval.
 ## Steps
 
 1. **Load the task**: `python scripts/pmos.py task show <id>` prints the mode (with its `SKILL.md`
-   path), the role, principles and definition of done, then the envelope, history and any revise notes.
+   path and any document standard's outline), the role, skills, principles and definition of done,
+   then the envelope, history and any revise notes.
 2. **Start it**: `python scripts/pmos.py task move <id> running`. If an input is a
    `{"$from": …}` ref, run `task show` again and use the values under "Inputs resolved".
-3. **Adopt the role**: its persona, and only the skills and context files it lists. For a step under
+3. **Adopt the role**: its persona and context files, and only the skills `task show` lists (the
+   role's, the mode's and the product overlay's). For a step under
    another role, `python scripts/pmos.py role show <pack>/<role>` prints it. **Read every principle
    listed**: the Reviewer scores exactly those checks.
 4. **Follow the mode's `SKILL.md`** step by step. Run `[code: …]` steps as written; don't redo them

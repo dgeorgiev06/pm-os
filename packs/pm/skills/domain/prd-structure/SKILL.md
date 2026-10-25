@@ -1,18 +1,26 @@
 ---
-name: pm-domain-prd-structure
-description: Standard PRD outline and writing rules. Use when drafting or revising a PRD in pm-os.
+description: How to write a strong PRD — the evidence, the requirements and the metrics. Use when drafting or revising a PRD in pm-os; the outline itself is the standard pm:standards/prd, which `task show` prints.
 ---
-# PRD structure
+# Writing a PRD well
 
-Use these sections, in order (check_prd.py enforces the first five headings):
+The outline and its checked rules live in `pm:standards/prd`: `task show` prints them and
+`check_doc.py` checks them. This skill is the judgment no checker makes.
 
-1. **Problem** — who has it, evidence (cited), why now.
-2. **Personas** — who uses it and what they need; for institutional products, include the compliance or risk reviewer.
-3. **Requirements** — numbered R1, R2, …; each testable. Group as Must / Should / Later.
-4. **Success metrics** — metric, baseline (or "to measure"), target, how it's measured.
-5. **Open questions** — each with an owner.
-6. **Non-goals** — what this deliberately does not cover.
-7. **Risks and dependencies**.
+## Evidence
 
-Rules: no adjectives without a number ("fast" → "p95 under 300 ms"); every customer claim cites a ref;
-mark assumptions as assumptions.
+- Open the problem with what was observed (a ticket, a call note, a number) and its ref.
+- Keep what a customer said apart from what you infer; label each inference as an assumption.
+- Say what waiting costs: a commitment, a deadline, revenue at risk.
+
+## Requirements
+
+- One behaviour per requirement; split any line joined by "and".
+- Cover the unhappy path: an operator degrades, data arrives late, an approval is refused.
+- State what must be true, not how to build it, unless the constraint is real (a regulator, a contract).
+- Each one meets `pm:testable-requirements`; customer claims meet `pm:cite-customer-claims`.
+
+## Metrics
+
+- Measure the outcome the problem names (stake routed, reports accepted), not activity.
+- Pick a target someone could argue with, and say where the number is read (a dashboard, a report).
+- Prefer one metric that moves to five that are tracked.

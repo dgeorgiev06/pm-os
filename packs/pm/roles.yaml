@@ -1,6 +1,7 @@
 # Roles of the pm pack, addressed as pm/<role>. The Worker (or Reviewer) loads one per task.
 # Skill and principle refs: bare = this pack; core ones as core:<path>; another pack's as <pack>:<path>.
-# Context ids are files in the core context/ folder.
+# Context ids are files in the core context/ folder. Principles: document-type ones live on the mode,
+# voice and style on the role (validate refuses a mode and its default role citing the same one).
 
 roles:
   program-manager:
@@ -10,7 +11,7 @@ roles:
     persona: Program manager who turns a goal into a small set of well-ordered work items, each owned by the right mode.
     skills: [core:infra/envelope-io, core:infra/self-check]
     context: [product.md, roadmap.yaml, decisions.log]
-    principles: [explicit-trade-offs]
+    principles: []
     rubric:
       - Each work item maps to exactly one exported mode with valid inputs
       - Dependencies between items are explicit (depends_on)
@@ -22,7 +23,7 @@ roles:
     persona: Senior PM for institutional staking products. Weighs customer commitments, revenue, risk and dependencies; states trade-offs plainly.
     skills: [core:infra/envelope-io, core:infra/self-check, domain/prioritization]
     context: [product.md, customers.md, roadmap.yaml, decisions.log]
-    principles: [explicit-trade-offs]
+    principles: []
     rubric:
       - Every ranked item has a score and a one-line rationale tied to a goal or customer
       - Consistent with recent entries in decisions.log, or flags the conflict
@@ -34,7 +35,7 @@ roles:
     persona: Delivery-minded PM who plans to real capacity, not hopes.
     skills: [core:infra/envelope-io, core:infra/self-check, domain/sprint-planning]
     context: [product.md, decisions.log]
-    principles: [plan-to-capacity]
+    principles: []
     rubric:
       - Two to four sprint goals, each testable at sprint end
       - Risks and dependencies named with an owner
@@ -46,7 +47,7 @@ roles:
     persona: Precise ticket writer who follows the team's Jira conventions exactly.
     skills: [core:infra/envelope-io, core:infra/self-check, domain/jira-conventions]
     context: [glossary.md]
-    principles: [testable-requirements]
+    principles: []
     rubric:
       - Every ticket has summary, type, description, acceptance criteria and estimate
       - No duplicates of existing tickets; links to parent epic
@@ -55,12 +56,12 @@ roles:
     agent: worker
     tier: mid
     effort: medium
-    persona: Clear, specific PM writer for institutional audiences (custodians, banks, financial institutions).
-    skills: [core:infra/envelope-io, core:infra/self-check, domain/prd-structure, product/staking-prd]
+    persona: Clear, specific writer for institutional audiences (custodians, banks, financial institutions); leads with the point and uses the reader's terms.
+    skills: [core:infra/envelope-io, core:infra/self-check]
     context: [product.md, customers.md, glossary.md, decisions.log]
-    principles: [testable-requirements, cite-customer-claims]
+    principles: []              # voice and style only; document-type principles live on the modes it serves
     rubric:
-      - Problem, personas, requirements, success metrics and open questions present
+      - Leads each section with its point, in the reader's terms (glossary.md)
 
   communicator:
     agent: worker

@@ -4,8 +4,8 @@ contract: pack@1
 author: framework-evals
 summary: "Fixture: role uses pm's unexported staking-prd skill"
 requires:
-  core: ^0.4
-depends: [pm@^0.3]
+  core: ^0.5
+depends: [pm@^0.4]
 exports:
   modes: [x-staking/main]
   roles: [writer]

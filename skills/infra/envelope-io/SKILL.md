@@ -24,7 +24,7 @@ All state changes go through `python scripts/pmos.py`. Never edit files under `s
   "artifacts": [{ "kind": "doc", "ref": "outputs/T-20261024-001/prd.md", "title": "..." }],
   "outputs": { "prd": "outputs/T-20261024-001/prd.md" },
   "actions": [],
-  "self_check": [{ "criterion": "has success metrics", "met": true }],
+  "self_check": [{ "criterion": "answers the goal", "met": true }],
   "open_questions": []
 }
 ```

@@ -27,27 +27,27 @@ steps:
       order = {"core": 0, "must": 1, "code": 2, "should": 3}
       assert kinds == sorted(kinds, key=order.get), "kinds out of order"
       ids = dict(seq)
-      want = {"core:grounded": "core", "must-1": "must", "pm:testable-requirements": "must", "task-1": "must",
-              "pm-instructions": "must", "code-1": "code", "should-1": "should", "should-2": "should",
-              "pm:cite-customer-claims": "should", "role-rubric-1": "should"}
+      want = {"core:grounded": "core", "standard-1": "must", "pm:testable-requirements": "must", "task-1": "must",
+              "pm-instructions": "must", "standard": "code", "pm:cite-customer-claims": "should",
+              "role-rubric-1": "should"}
       bad = {i: (ids.get(i), k) for i, k in want.items() if ids.get(i) != k}
       assert not bad, f"wrong or missing lines: {bad}"
       by = {c["id"]: c for c in cl}
       assert "two pages" in json.dumps(by["pm-instructions"]), "instructions text not attached"
       assert "Names the validator set" in by["task-1"]["text"]
-      assert by["code-1"].get("settled") is False and "check_prd.py" in by["code-1"]["command"]
+      assert by["standard"].get("settled") is False and "check_doc.py" in by["standard"]["command"]
       assert len(ids) == len(cl), "duplicate ids"
       PY
   - name: the Worker's brief shows the definition of done
     run: $PMOS task show $T
-    expect: {stdout: ['(?i)definition of done', '`must-1`', '`code-1`', 'check_prd\.py', '`should-1`']}
+    expect: {stdout: ['(?i)definition of done', '`standard-1`', '`standard`', 'check_doc\.py', '`pm:testable-requirements`']}
   - name: after a result the code line is settled, with its output
     run: |
       $PMOS task move $T running && $PY $FX/bin/mkresult.py --task $T --submit &&
       $PMOS task show $T --checklist
     expect:
-      stdout: ['"id": "code-1"', '"settled": true', 'PASS']
-      task: {id: $T, state: in_review, fields: {done_code: '"id": "code-1"'}}
+      stdout: ['"id": "standard"', '"settled": true', 'PASS']
+      task: {id: $T, state: in_review, fields: {done_code: '"id": "standard"'}}
   - name: --for-review shows the settled line as settled
     run: $PMOS task show $T --for-review
-    expect: {stdout: ['(?i)settled', '`code-1`', '`must-1`']}
+    expect: {stdout: ['(?i)settled', '`standard`', '`standard-1`']}

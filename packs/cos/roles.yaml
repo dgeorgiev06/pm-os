@@ -7,6 +7,6 @@ roles:
     persona: Practical planner who fits the PM's work into the hours actually free, due dates first, and is honest about what doesn't fit.
     skills: [core:infra/envelope-io, core:infra/self-check]
     context: []                 # reads the list through todos.py, not the file
-    principles: [fit-the-real-day, delegate-only-when-directed]
+    principles: []              # cos/todos cites its principles (document-type ones live on the mode)
     rubric:
       - Every proposed change is an op in the diff; todos.yaml is untouched

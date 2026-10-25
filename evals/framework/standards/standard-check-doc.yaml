@@ -1,0 +1,47 @@
+kind: conformance
+name: standard-check-doc
+covers: [script:scripts/check_doc.py]
+finding: request:standards
+severity: high
+failure: true
+desc: >-
+  `scripts/check_doc.py --standard REF|FILE DOC` checks a document against a standard: required
+  sections (by title or alias, any heading level, subsections included), numbering without gaps,
+  table fields, a minimum of items and forbidden markers. Each problem names its rule
+  (`section:<id>`, `numbered:<id>`, `fields:<id>`, `min_items:<id>`, `forbid:<id>`); `--json` is
+  check-doc@1; a missing document fails; an unknown standard exits 2 listing the known ones.
+steps:
+  - name: a document that meets the standard (a heading alias, numbers in a subsection)
+    run: $PY scripts/check_doc.py --standard $FX/standards/memo.yaml $FX/standards/memo-good.md
+    expect: {stdout: '^PASS'}
+  - name: every rule that fails is named
+    run: $PY scripts/check_doc.py --standard $FX/standards/memo.yaml $FX/standards/memo-bad.md
+    expect:
+      exit: 1
+      stdout:
+        - '^FAIL'
+        - '(?m)^- section:summary: missing section "Summary"'
+        - '(?m)^- numbered:decisions: .*gaps'
+        - '(?m)^- fields:metrics: .*target'
+        - '(?m)^- min_items:metrics: '
+        - '(?m)^- forbid:markers: .*TBD.*line 12'
+      stdout_not: ['section:notes', 'section:decisions:']
+  - name: --json is check-doc@1
+    run: |
+      $PY scripts/check_doc.py --standard $FX/standards/memo.yaml $FX/standards/memo-bad.md --json > r.json; $PY - <<'PY'
+      import json
+      r = json.load(open("r.json"))
+      assert r["contract"] == "check-doc@1" and r["pass"] is False, r
+      rules = {p["rule"] for p in r["problems"]}
+      assert {"section:summary", "numbered:decisions", "fields:metrics", "min_items:metrics", "forbid:markers"} <= rules, rules
+      assert all({"rule", "section", "message", "line"} <= set(p) for p in r["problems"]), r["problems"]
+      PY
+  - name: a missing document fails
+    run: $PY scripts/check_doc.py --standard $FX/standards/memo.yaml no-such.md
+    expect: {exit: 1, output: 'not found'}
+  - name: an installed pack's standard, by reference
+    run: $PY scripts/check_doc.py --standard pm:standards/prd packs/pm/evals/fixtures/prd-good.md
+    expect: {stdout: '^PASS pm:standards/prd'}
+  - name: an unknown standard
+    run: $PY scripts/check_doc.py --standard pm:standards/nope packs/pm/evals/fixtures/prd-good.md
+    expect: {exit: 2, output: ['(?i)unknown standard', 'pm:standards/prd']}

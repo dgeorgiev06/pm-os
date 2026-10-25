@@ -38,12 +38,15 @@ only render (`prompt.md`, `grader.md` under `build/evals/`) until `eval.command`
 
 `covers` names the case's own pack's features: `mode:<pack>/<mode>`, `script:<path relative to
 the pack>` (core: relative to the repo root), `action:<system>.<op>` (a pack.yaml `actions:`
-handler), `router:<pack>/<mode>`, and optionally `principle:<pack>:<name>`. Admission (`pack add`,
+handler), `standard:<pack>:<name>` (a `standards/<name>.yaml`), `router:<pack>/<mode>`, and optionally
+`principle:<pack>:<name>`. Admission (`pack add`,
 including `--dry-run`) and `validate` refuse a pack unless:
 
 - every exported mode has a golden case and a failure-path case (`failure: true`, golden or conformance);
 - every file under `scripts/` and `modes/*/scripts/` has a conformance case (core: `scripts/*.py`);
 - every `actions:` handler has a conformance case;
+- every standard has a passing conformance case and a `failure: true` one (check_doc.py on a document
+  that meets it and on one that doesn't);
 - the router has a workflow case (in `evals/workflows/`).
 
 The error lists each missing feature and the folder to add a case to. Admission then runs the
@@ -157,16 +160,18 @@ Never hard-code a task id or date; capture it.
   typos), `x-uncovered` (a router, a script and an action handler with only a happy-path golden
   case; `fixtures/patches/x-uncovered/` adds the missing cases), and `x-forge`, `x-cos`,
   `x-staking`, `x-noevals` (admission must refuse them).
+- `fixtures/standards/`: `memo.yaml`, a standard using every check_doc.py rule, with `memo-good.md` and
+  `memo-bad.md`.
 - `fixtures/bin/`: helpers. `mkresult.py` writes and submits a result; `advance.py` takes a task
   through review and approval; `verdicts.py` builds per-line verdicts (with evidence, and a fix on failed lines); `yset.py` edits YAML/JSON;
-  `mktext.py` writes a component file of N words; `section.py`, `once.py`, `before.py`, `legend_check.py`, `unused_roles.py`,
+  `mktext.py` writes a component file of N words (`yset.py --front` edits a Markdown file's frontmatter); `section.py`, `once.py`, `before.py`, `legend_check.py`, `unused_roles.py`,
   `cli_help_check.py`, `grants_claim_check.py`; and `fake_runner.py` / `fake_grader.py` stand in
   for `eval.command` and `eval.grader_command`. The helpers detect which contract the tree has
   (see the end of INTERFACES.md), so one owner's change doesn't break another owner's cases.
 
 ## Core's groups
 
-103 cases: 92 conformance, 11 regression.
+113 cases: 102 conformance, 11 regression.
 
 | Group | Cases | Regression | Covers |
 | --- | --- | --- | --- |
@@ -180,11 +185,13 @@ Never hard-code a task id or date; capture it.
 | tightness | 7 | 0 | request:tightness — `pmos lint` (budgets, mode structure, filler, cite don't copy, sentence length), where it runs, `core:tight-instructions` |
 | cos-thread | 5 | 0 | request:cos-thread — background long commands, the inline limit rendered from pm-os.yaml, the eval estimate, `lock_cos`, `cos-turn` and stats |
 | done | 7 | 0 | request:done — the `done:` block and its validation, the checklist kinds, code lines first, verdicts with evidence and fix, the revision brief, gated children's lines, golden default expect, authoring docs |
+| standards | 6 | 0 | request:standards — `check_doc.py` and its rules, standard validation and coverage, the derived done lines and the outline in `task show`, the standard lint, mode `skills:` merged with the role's, a principle cited once (mode or role) |
+| overlays | 4 | 0 | request:overlays — the product from `--product`, the parent or `context/product.md`; unknown products refused; no product, no overlay |
 
 Baseline on core 0.2.0 (2026-10-24): all 55 review conformance cases failed and all 11 regression
 cases passed. The eval-standard, effort and dispatch cases all failed before core 0.3.0; the
 tightness and cos-thread cases all failed before core 0.3.1; the done cases and effort-reviewers-high all
-failed before core 0.4.0.
+failed before core 0.4.0; the standards and overlays cases all failed before core 0.5.0.
 
 ## Judgment-only (scored by `forge/review-framework`, no conformance case)
 

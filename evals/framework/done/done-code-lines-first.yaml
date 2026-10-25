@@ -13,7 +13,7 @@ desc: >-
 steps:
   - run: $PMOS task new --mode pm/prd --inputs '{"goal":"g"}'
     capture: {T: '(T-\d{8}-\d{3,})'}
-  - name: a PRD that check_prd.py fails
+  - name: a PRD that the standard line (check_doc.py) fails
     run: |
       $PMOS task move $T running && mkdir -p outputs/$T && printf '# PRD\n\nJust a goal. TODO\n' > outputs/$T/prd.md &&
       $PY $FX/bin/mkresult.py --task $T --outputs-json "{\"prd\": \"outputs/$T/prd.md\"}" --submit
@@ -23,15 +23,15 @@ steps:
       task:
         id: $T
         state: revise
-        fields: {revisions: '^1$', done_code: '"pass": false', revision_brief: 'code-1'}
+        fields: {revisions: '^1$', done_code: '"pass": false', revision_brief: '"standard"'}
   - name: the note names the line and carries the script's output; no Reviewer ran
     run: $PMOS task state $T --json
     expect:
-      stdout: ['"to": "revise"[^}]*code-1', 'missing section']
+      stdout: ['"to": "revise"[^}]*standard', 'missing section']
       task: {id: $T, absent: [result.review]}
   - name: the Worker's brief starts with what to fix
-    run: $PMOS task show $T > brief.md && head -6 brief.md && $PY $FX/bin/before.py code-1 '# pm/prd@' < brief.md
-    expect: {stdout: ['(?i)revise', 'code-1', 'missing section']}
+    run: $PMOS task show $T > brief.md && head -6 brief.md && $PY $FX/bin/before.py '`standard`' '# pm/prd@' < brief.md
+    expect: {stdout: ['(?i)revise', '`standard`', 'missing section']}
   - name: fixed, it passes the code lines and reaches review
     run: |
       $PMOS task move $T running &&

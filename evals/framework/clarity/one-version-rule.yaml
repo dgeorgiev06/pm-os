@@ -15,4 +15,4 @@ steps:
     run: $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml grants.slack read && $PMOS pack add packs/pm --upgrade --approve-grants
     expect: {exit: nonzero, output: '(?i)version'}
   - name: after a bump it installs
-    run: $PY $FX/bin/yset.py packs/pm/pack.yaml version 0.4.0 && $PMOS pack add packs/pm --upgrade --approve-grants
+    run: $PY $FX/bin/yset.py packs/pm/pack.yaml version 0.5.0 && $PMOS pack add packs/pm --upgrade --approve-grants

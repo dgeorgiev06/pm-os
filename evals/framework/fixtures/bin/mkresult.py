@@ -8,7 +8,7 @@
 By default the result carries one placeholder artifact under outputs/<id>/ and, when
 contracts/result.schema.json has an `outputs` property, an `outputs` map with a placeholder value
 for every name in the mode's `returns` (so the same case works before and after that contract change).
-Placeholder documents have the sections a PRD check looks for, so done.must code lines pass on them.
+Placeholder documents have the sections pm:standards/prd requires, so done.must code lines pass on them.
 """
 import argparse
 import json
@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _common import ROOT, outputs_dir, ref_for, task_state  # noqa: E402
 
 
-# Shaped like a document so a mode's done.must code lines (e.g. pm/prd's check_prd.py) pass on it.
+# Shaped like a document so a mode's done.must code lines (e.g. pm/prd's `standard` line, check_doc.py) pass on it.
 PLACEHOLDER = """# {name}
 
 Placeholder written by the framework evals.

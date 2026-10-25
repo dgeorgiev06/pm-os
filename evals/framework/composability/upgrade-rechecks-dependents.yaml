@@ -5,12 +5,12 @@ finding: composability#3
 owner: composability
 severity: high
 desc: >-
-  Upgrading pm to 0.4.0 while gtm depends on pm@^0.3 is refused (naming gtm) unless --force, so
+  Upgrading pm to 0.5.0 while gtm depends on pm@^0.4 is refused (naming gtm) unless --force, so
   dependents aren't silently broken.
 setup:
   install: [gtm]
 steps:
-  - run: $PY $FX/bin/yset.py packs/pm/pack.yaml version 0.4.0
+  - run: $PY $FX/bin/yset.py packs/pm/pack.yaml version 0.5.0
   - run: $PMOS pack add packs/pm --upgrade --approve-grants
     expect: {exit: nonzero, output: 'gtm'}
   - name: --force overrides

@@ -1,0 +1,28 @@
+name: memo
+version: 0.1.0
+summary: "Fixture: a decision memo, for check_doc.py's rules"
+sections:
+  - id: summary
+    title: Summary
+    aliases: [tl;dr]
+    required: true
+    contains: The decision in one short paragraph.
+  - id: decisions
+    title: Decisions
+    required: true
+    contains: Each decision on its own line.
+    numbered: {prefix: D, contiguous: true}
+  - id: metrics
+    title: Metrics
+    required: true
+    contains: What will be measured, as a table.
+    fields: [metric, target]
+    min_items: 2
+  - id: notes
+    title: Notes
+    required: false
+    contains: Anything else the reader needs.
+forbid:
+  - {id: markers, pattern: '\b(TODO|TBD)\b', message: unresolved TODO or TBD marker}
+judgment:
+  - The summary states the decision before the reasoning.

@@ -150,6 +150,13 @@
       },
       "description": "Other roles this mode uses"
     },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Skills this mode's work needs (bare = this pack, <pack>:<path> otherwise); `task show` lists them after the role's, deduped"
+    },
     "calls": {
       "type": "array",
       "description": "Modes this one may start as children, version-pinned; [\"*\"] = any mode visible to its pack (routers)",
@@ -192,7 +199,36 @@
       "items": {
         "type": "string"
       },
-      "description": "Principles the Worker reads as guidance and the Reviewer scores as should lines: bare = this pack, <pack>:<name> otherwise. Cite one in done.must to make it blocking"
+      "description": "Principles the Worker reads as guidance and the Reviewer scores as should lines: bare = this pack, <pack>:<name> otherwise. Cite one in done.must to make it blocking. Document-type principles live on the mode, voice and style on the role: a mode and its default role never cite the same one"
+    },
+    "standard": {
+      "description": "The document standard (standards/<name>.yaml) an output follows: {ref, output}, or a ref when returns has exactly one doc_ref. pmos adds the done.must code line `standard` (scripts/check_doc.py on that output) and one must line per judgment line (standard-1, …), and `task show` prints the outline",
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object",
+          "required": [
+            "ref",
+            "output"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "ref": {
+              "type": "string",
+              "minLength": 1,
+              "description": "<name> or standards/<name> (this pack), or <pack>:standards/<name>"
+            },
+            "output": {
+              "type": "string",
+              "minLength": 1,
+              "description": "a doc_ref name in returns"
+            }
+          }
+        }
+      ]
     },
     "done": {
       "type": "object",

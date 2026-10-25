@@ -4,7 +4,7 @@ contract: pack@1
 author: framework-evals
 summary: "Fixture: exports.modes with bare names and SKILL.md files without a name"
 requires:
-  core: ^0.4
+  core: ^0.5
 depends: []
 exports:
   modes: [brief]

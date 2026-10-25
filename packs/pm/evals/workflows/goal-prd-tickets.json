@@ -21,7 +21,7 @@
     "plan.md has exactly two items: pm/prd, then pm/jira-tickets, each with why it is needed",
     "the router runs without stopping for the PM (two items, no high-risk mode)",
     "a pm/prd child and a pm/jira-tickets child exist; the tickets child's plan input is {\"$from\": <the PRD child>, \"output\": \"prd\"} and its depends_on names the PRD child",
-    "the PRD child's prd.md passes check_prd.py and has a requirement on operator failover",
+    "the PRD child's prd.md passes check_doc.py --standard pm:standards/prd and has a requirement on operator failover",
     "the router's own result has no actions; ticket actions, if any, belong to the jira-tickets child"
   ]
 }

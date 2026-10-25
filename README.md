@@ -36,7 +36,8 @@ Then:
    - Any harness that reads `AGENTS.md` and `SKILL.md` folders: point it at this repo.
    - Your own runtime (any SDK or API): `pmos render generic` writes a system prompt per agent,
      `models.json` and `grants.json` to `build/generic/`.
-2. **Add your context.** Fill in `context/` (product, customers, glossary, roadmap) and replace
+2. **Add your context.** Fill in `context/` (product, customers, glossary, roadmap), set `product:`
+   in `context/product.md` (it picks a pack's product overlay skills), and replace
    `packs/pm/skills/product/staking-prd/SKILL.md` with your own PRD skill.
 3. **Ask for work.** Say "draft a PRD for X" to the CoS. It creates a `pm/prd` task, delegates it,
    and replies with a short digest, then with an approval request before anything is published.
@@ -80,6 +81,7 @@ through every step.
 | **Role** | What the Worker becomes for a task: persona, skills, context, tier, principles | `packs/<pack>/roles.yaml` | `pm/doc-writer` |
 | **Skill** | How-to knowledge, loaded by reference | `packs/<pack>/skills/<path>/SKILL.md` | `pm:domain/prd-structure` |
 | **Principle** | A rule of good work with a one-line `check` the Reviewer scores | `packs/<pack>/skills/principles/<name>/SKILL.md` | `pm:plan-to-capacity` |
+| **Standard** | A document type as data: its sections, the rules `scripts/check_doc.py` checks, and judgment lines; a mode's `standard:` adds them to its `done` and `task show` prints the outline | `packs/<pack>/standards/<name>.yaml` ([schema](contracts/standard.schema.json)) | `pm:standards/prd` |
 | **Agent** | Who executes: CoS, Worker, Reviewer, Operator | `agents/`, `packs/<pack>/agents/` | `worker` |
 | **Envelope** | A task's work order: mode, verb, inputs, acceptance, risk, approval, budget; immutable once queued | `state/tasks/<id>.json` ([schema](contracts/task.schema.json)) | `T-20261024-001` |
 | **Grant** | What a mode may do in one system: `read`, `draft` or `write`; you approve a pack's grants when you install it | `grants:` in `mode.yaml` | `jira: read` |
@@ -107,6 +109,7 @@ Built-in packs:
 | Tier | A role's model size: `small`, `mid` or `top`, mapped to model ids in `pm-os.yaml` |
 | Effort | How hard the model reasons, separate from tier: `low`, `medium`, `high` or `max`. `task new --effort` > mode > role > agent > `defaults.effort`; risk `high` raises it one level and `low` lowers it (not on an explicit `--effort`). Defaults: Worker roles `medium`, reviewers `high` (a low-risk review runs at `medium`), Operator `low`, CoS `medium`. `effort_map` in `pm-os.yaml` names each provider's parameter |
 | Dispatch | How the CoS runs a subagent: `background` (default: start it, reply, report when it lands) or `foreground` (wait). Resolved like effort, without risk scaling; `task show` prints both: `delegate to: worker-mid · effort: medium · run: background` |
+| Overlay | Skills a pack adds for one product (`overlays:` in `pack.yaml`), picked by `task new --product` or `product:` in `context/product.md` |
 | Gate | Where a task waits for you: mid-way (a `blocked` result with one question) or at the end (`awaiting_approval`) |
 | Admission | The checks `pmos pack add` runs before it installs a pack (below) |
 | Golden eval | A sample task (eval@1, `kind: golden`) in a mode's `evals/` or a pack's `evals/workflows/`, with `expect` lines a grader checks |
@@ -187,7 +190,8 @@ change, the Operator copies it into `packs/`, and you run the install command th
    `must` lines (every one holds, or the review fails) and optional `should` lines (they set the
    score). A line is text the Reviewer judges, `{code: "<command>"}` that pmos runs at `task result`
    (`{outputs.<name>}`, `{task}`, `{outputs_dir}` filled in), or `{principle: <ref>}`. Optional:
-   `verbs`, `calls`, `grants`, `risk`, `principles`, `evals`.
+   `verbs`, `calls`, `grants`, `risk`, `skills`, `principles` (document-type ones; voice and style
+   go on the role), `standard` (its lines join `done`), `evals`.
 3. Edit `SKILL.md`: a `description` in the frontmatter, then numbered steps, each tagged (see the
    next section) and at most 60 words. Start with `task show <id>`; end with
    `task result <id> outputs/<id>/result.json`. `pmos lint` checks this and the word budgets.
@@ -227,7 +231,8 @@ Every step in a mode's `SKILL.md` carries a tag:
 
 Promote a `[candidate-code]` step to a script when you can write a unit test for it, or when traces
 show it is high-volume or keeps failing review. Codified steps live in each mode's `scripts/`
-folder (e.g. `check_prd.py`, `capacity.py`) and in pack scripts (`todos.py`, `forge.py`).
+folder (e.g. `check_plan.py`, `capacity.py`), in pack scripts (`todos.py`, `forge.py`) and in core
+(`check_doc.py` checks any document against its standard).
 
 ## Evals
 
@@ -238,8 +243,8 @@ format in [evals/framework/README.md](evals/framework/README.md)), so any hub th
 the CoS, a registry, CI — can run a pack's evals; `pmos eval` is the reference runner and writes
 eval-result@1 ([schema](contracts/eval-result.schema.json)). Each case says which features it
 `covers`, and admission enforces coverage: every exported mode has a golden case and a failure-path
-case (`failure: true`), every script and `actions:` handler a conformance case, a router a workflow
-case. Core is the pack `core`; `evals/framework/` is its conformance folder.
+case (`failure: true`), every script and `actions:` handler a conformance case, every standard a
+passing and a failure-path conformance case, a router a workflow case. Core is the pack `core`; `evals/framework/` is its conformance folder.
 
 | Kind | Where | What it checks |
 | --- | --- | --- |

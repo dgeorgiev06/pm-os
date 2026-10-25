@@ -13,12 +13,13 @@ steps:
     expect:
       stdout:
         - 'script:scripts/pmos\.py'
-        - 'script:modes/prd/scripts/check_prd\.py'
+        - 'script:modes/sprint-planning/scripts/capacity\.py'
+        - 'standard:pm:prd'
         - 'action:todos\.apply_diff'
         - 'action:repo\.sync_pack'
         - 'router:pm/router'
         - '(?i)no gaps'
   - run: rm -r packs/pm/evals/conformance && $PMOS eval --coverage
-    expect: {exit: nonzero, stdout: ['(?i)gap', 'script:modes/prd/scripts/check_prd\.py']}
+    expect: {exit: nonzero, stdout: ['(?i)gap', 'script:modes/sprint-planning/scripts/capacity\.py', 'standard:pm:prd']}
   - run: $PMOS validate
-    expect: {exit: nonzero, output: ['script:modes/prd/scripts/check_prd\.py', 'packs/pm/evals/conformance/']}
+    expect: {exit: nonzero, output: ['standard:pm:prd', 'packs/pm/evals/conformance/']}

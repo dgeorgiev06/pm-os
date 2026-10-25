@@ -40,8 +40,15 @@
         "modes": { "type": "array", "items": { "type": "string" } },
         "roles": { "type": "array", "items": { "type": "string" } },
         "skills": { "type": "array", "items": { "type": "string" } },
-        "principles": { "type": "array", "items": { "type": "string" } }
+        "principles": { "type": "array", "items": { "type": "string" } },
+        "standards": { "type": "array", "items": { "type": "string" }, "description": "Document standards (standards/<name>.yaml) other packs may apply" }
       }
+    },
+    "overlays": {
+      "type": "object",
+      "description": "Product overlays: <product> -> skills added to a task of this pack for that product (`task new --product`, else context/product.md `product:`). Bare refs = this pack.",
+      "propertyNames": { "pattern": "^[a-z0-9-]+$" },
+      "additionalProperties": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
     }
   }
 }

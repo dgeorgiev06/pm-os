@@ -279,6 +279,8 @@ def is_exported(pack: str, kind: str, local: str) -> bool:
     names = exports.get(kind) or []
     if kind == "modes":  # exports.modes may be bare ("prd") or prefixed ("pm/prd")
         names = [q_role(n, pack) for n in names]
+    if kind == "standards":  # exports.standards: "prd" or "standards/prd"
+        names = [n.split("/")[-1] for n in names]
     return local in names
 
 
@@ -307,6 +309,94 @@ def all_skills() -> dict[str, Path]:
                     out[f"{name}:{skill_md.parent.relative_to(base).as_posix()}"] = skill_md
         _CACHE["skills"] = out
     return _CACHE["skills"]
+
+
+def all_standards() -> dict[str, Path]:
+    """'<pack>:standards/<name>' -> standards/<name>.yaml, for every installed pack (core has none)."""
+    if "standards" not in _CACHE:
+        out = {}
+        for name, p in packs().items():
+            d = p["dir"] / "standards" if name != CORE else None
+            for f in sorted(d.glob("*.yaml")) if d and d.is_dir() else []:
+                out[f"{name}:standards/{f.stem}"] = f
+        _CACHE["standards"] = out
+    return _CACHE["standards"]
+
+
+def q_standard(ref: str, owner: str) -> str:
+    """prd / standards/prd (inside pack OWNER) or pm:standards/prd -> pm:standards/prd."""
+    pack, _, local = ref.partition(":") if ":" in ref else (owner, "", ref)
+    return f"{pack}:{local if local.startswith('standards/') else 'standards/' + local}"
+
+
+def load_standard(sid: str) -> dict | None:
+    path = all_standards().get(sid)
+    if not path:
+        return None
+    try:
+        data = load_yaml(path)
+    except yaml.YAMLError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def mode_standard(man: dict, pack: str) -> dict | None:
+    """A mode's `standard:` as {ref (qualified), output (or None when it can't be told), data (or None)}.
+    The string form applies to the mode's only doc_ref output."""
+    raw = man.get("standard")
+    if not raw:
+        return None
+    if isinstance(raw, dict):
+        ref, output = str(raw.get("ref") or ""), raw.get("output")
+    else:
+        ref = str(raw)
+        docs = [k for k, t in (man.get("returns") or {}).items() if str(t).rstrip("?") == "doc_ref"]
+        output = docs[0] if len(docs) == 1 else None
+    sid = q_standard(ref, pack)
+    return {"ref": sid, "output": output, "data": load_standard(sid)}
+
+
+def standard_output_ok(man: dict, output: str | None) -> bool:
+    return bool(output) and str((man.get("returns") or {}).get(output, "")).rstrip("?") == "doc_ref"
+
+
+def known_products() -> dict[str, list[str]]:
+    """product -> the installed packs that declare an overlay for it (pack.yaml `overlays:`)."""
+    out: dict[str, list[str]] = {}
+    for name, p in packs().items():
+        for product in (p["manifest"].get("overlays") or {}) if name != CORE else []:
+            out.setdefault(product, []).append(name)
+    return out
+
+
+def context_product_file() -> Path:
+    return ROOT / config()["paths"]["context"] / "product.md"
+
+
+def resolve_product(flag: str | None, parent: dict | None, pack: str) -> dict:
+    """The task's product and its overlay skills: --product, else the parent's, else `product:` in
+    context/product.md's frontmatter. Unknown products are refused; a product from context is ignored
+    when no installed pack declares overlays (products don't apply there)."""
+    known = known_products()
+    if flag:
+        product, source = flag, "flag"
+    elif parent and parent.get("product"):
+        product, source = parent["product"], "parent"
+    else:
+        meta = frontmatter(context_product_file())[0] if context_product_file().exists() else {}
+        product, source = (str(meta.get("product") or "").strip() or None), "context"
+        if product and not known:
+            product = None
+    if not product:
+        return {"product": None, "product_source": None, "overlay_skills": []}
+    if product not in known:
+        where = {"flag": "--product", "parent": "the parent task",
+                 "context": f"{rel(context_product_file())} (frontmatter product:)"}[source]
+        raise PmosError(f"unknown product '{product}' (from {where}); known products, from the packs' overlays: "
+                        f"{', '.join(sorted(known)) or 'none'}")
+    overlay = (packs()[pack]["manifest"].get("overlays") or {}).get(product) or [] if pack != CORE else []
+    return {"product": product, "product_source": source,
+            "overlay_skills": list(dict.fromkeys(q_skill(s, pack) for s in overlay))}
 
 
 def all_principles() -> dict[str, dict]:
@@ -484,11 +574,28 @@ CODE_PLACEHOLDER = re.compile(r"\{([^{}\s]*)\}")     # {outputs.prd}, {inputs.pl
 CHECKLIST_ORDER = {"core": 0, "must": 1, "code": 2, "should": 3}
 
 
+def standard_lines(man: dict, pack: str) -> list[dict]:
+    """The must lines a mode's `standard:` adds: the code line `standard` (check_doc.py on the output) and
+    one judged line per `judgment:` entry of the standard (standard-1, …)."""
+    std = mode_standard(man, pack)
+    if not std:
+        return []
+    out = []
+    if standard_output_ok(man, std["output"]):
+        cmd = f"python scripts/check_doc.py --standard {std['ref']} {{outputs.{std['output']}}}"
+        out.append({"id": "standard", "kind": "code", "section": "must", "text": f"`{cmd}` exits 0",
+                    "command": cmd, "timeout": None, "source": "standard"})
+    for i, line in enumerate((std["data"] or {}).get("judgment") or [], 1):
+        out.append({"id": f"standard-{i}", "kind": "must", "section": "must", "text": str(line), "source": "standard"})
+    return out
+
+
 def done_lines(man: dict, pack: str) -> list[dict]:
-    """The mode's `done:` block as lines {id, kind: must|code|should, text, command?, timeout?, principle?}.
+    """The mode's definition of done as lines {id, kind: must|code|should, text, command?, timeout?,
+    principle?, source?}: the lines its `standard:` adds (source: standard), then its `done:` block.
     Ids: an explicit `id`, else must-N / should-N for judged lines, code-N for code lines, and the
     principle's qualified ref for a cited principle."""
-    principles, out = all_principles(), []
+    principles, out = all_principles(), standard_lines(man, pack)
     for section in ("must", "should"):
         n_text = n_code = 0
         for raw in (man.get("done") or {}).get(section) or []:
@@ -669,6 +776,79 @@ def principles_for(mode: dict, role: dict) -> list[tuple[str, str, dict]]:
 
 
 # --------------------------------------------------------------------------- validate
+def skill_ref_errors(where: str, ref: str, owner: str) -> list[str]:
+    """A skill reference (a role's, a mode's or an overlay's): it exists and OWNER may see it."""
+    sid = q_skill(ref, owner)
+    if sid not in all_skills():
+        return [f"{where}: skill '{sid}' not found"]
+    err = visibility_error(owner, sid.split(":")[0], "skills", sid.split(":", 1)[1])
+    return [f"{where}: {err}"] if err else []
+
+
+def standard_file_errors(pack_dir: Path) -> list[str]:
+    """Each standards/<name>.yaml matches contracts/standard.schema.json, is named after its file, has
+    distinct section ids and forbid patterns that compile."""
+    errors = []
+    d = pack_dir / "standards"
+    for f in sorted(d.glob("*.yaml")) if d.is_dir() else []:
+        where = rel(f)
+        try:
+            data = load_yaml(f)
+        except yaml.YAMLError as e:
+            errors.append(f"{where}: standard is not valid YAML: {str(e).splitlines()[0]}")
+            continue
+        errs = schema_errors(data, "standard", f"{where} (standard)")
+        if errs:
+            errors += errs
+            continue
+        if data["name"] != f.stem:
+            errors.append(f"{where}: standard name '{data['name']}' must match its file name ('{f.stem}')")
+        ids = [s["id"] for s in data["sections"]]
+        errors += [f"{where}: standard has two sections with the id '{i}'" for i in sorted({i for i in ids if ids.count(i) > 1})]
+        for rule in data.get("forbid") or []:
+            try:
+                re.compile(rule["pattern"])
+            except re.error as e:
+                errors.append(f"{where}: forbid '{rule['id']}': pattern doesn't compile ({e})")
+    return errors
+
+
+def mode_standard_errors(mm: dict, where: str, pack: str) -> list[str]:
+    std = mode_standard(mm, pack)
+    if not std:
+        return []
+    errors, sid = [], std["ref"]
+    if sid not in all_standards():
+        errors.append(f"{where}: standard {sid} not found (a standard is packs/<pack>/standards/<name>.yaml)")
+    else:
+        target, local = sid.split(":")[0], sid.split("/")[-1]
+        err = visibility_error(pack, target, "standards", local)
+        if err:
+            errors.append(f"{where}: {sid}: {err}")
+        elif std["data"] is None:
+            errors.append(f"{where}: standard {sid} can't be read")
+    if not standard_output_ok(mm, std["output"]):
+        docs = [k for k, t in (mm.get("returns") or {}).items() if str(t).rstrip("?") == "doc_ref"]
+        errors.append(f"{where}: standard: output '{std['output'] or '?'}' is not a doc_ref output in returns "
+                      f"(doc_ref outputs: {', '.join(docs) or 'none'}); write standard: {{ref, output}}")
+    return errors
+
+
+def principle_once_errors(mm: dict, where: str, pack: str) -> list[str]:
+    """A principle is cited once per task: document-type principles on the mode, voice and style on the
+    role. A mode (principles or done lines) and its default role citing the same one is an error."""
+    try:
+        role = resolve_role(mm["default_role"], pack)
+    except PmosError:
+        return []      # reported with the role checks
+    mine = {q_skill(x, pack) for x in mm.get("principles") or []}
+    mine |= {ln["principle"] for ln in done_lines(mm, pack) if ln.get("principle")}
+    theirs = {q_skill(x, role["_pack"]) for x in role.get("principles") or []}
+    return [f"{where}: mode {mm['name']} and its default role {role['_pack']}/{role['_name']} both cite principle "
+            f"{pid}; cite it once (document-type principles on the mode, voice and style on the role)"
+            for pid in sorted(mine & theirs)]
+
+
 def check_pack(name: str, check_grants: bool = True) -> tuple[list[str], list[str]]:
     """Errors and warnings for one installed pack (including core). Admission passes
     check_grants=False, because grants are approved after the structural checks pass."""
@@ -722,6 +902,13 @@ def check_pack(name: str, check_grants: bool = True) -> tuple[list[str], list[st
         if pr["meta"].get("always") and name != CORE:
             errors.append(f"{rel(pr['path'])}: only core principles may set 'always: true'")
 
+    # document standards (standards/<name>.yaml) and product overlays
+    if name != CORE:
+        errors += standard_file_errors(p["dir"])
+        for product, refs in (man.get("overlays") or {}).items():
+            for s in refs or []:
+                errors += skill_ref_errors(f"{where_pack}: overlays.{product}", s, name)
+
     # roles
     if paths["roles"] and paths["roles"].exists():
         errors += schema_errors(load_yaml(paths["roles"]), "roles", rel(paths["roles"]))
@@ -733,13 +920,7 @@ def check_pack(name: str, check_grants: bool = True) -> tuple[list[str], list[st
         if r.get("agent") not in agents:
             errors.append(f"role {fq}: agent '{r.get('agent')}' not found")
         for s in r.get("skills", []):
-            sid = q_skill(s, name)
-            if sid not in skills:
-                errors.append(f"role {fq}: skill '{sid}' not found")
-            else:
-                err = visibility_error(name, sid.split(":")[0], "skills", sid.split(":", 1)[1])
-                if err:
-                    errors.append(f"role {fq}: {err}")
+            errors += skill_ref_errors(f"role {fq}", s, name)
         for pr in r.get("principles", []):
             pid = q_skill(pr, name)
             if pid not in principles:
@@ -794,6 +975,10 @@ def check_pack(name: str, check_grants: bool = True) -> tuple[list[str], list[st
                 err = visibility_error(name, pid.split(":")[0], "principles", pid.split(":", 1)[1])
                 if err:
                     errors.append(f"{where}: {err}")
+        for s in mm.get("skills", []) or []:
+            errors += skill_ref_errors(where, s, name)
+        errors += mode_standard_errors(mm, where, name)
+        errors += principle_once_errors(mm, where, name)
         errors += done_errors(mm, where, name)
         for call in mm.get("calls", []):
             if call == "*":     # any mode visible to this pack; checked when a child is created
@@ -824,6 +1009,10 @@ def check_pack(name: str, check_grants: bool = True) -> tuple[list[str], list[st
         for pname in exports.get("principles", []) or []:
             if f"{name}:{pname}" not in principles:
                 errors.append(f"{where_pack}: exports principle '{pname}', which the pack doesn't contain")
+        for sname in exports.get("standards", []) or []:
+            if q_standard(sname, name) not in all_standards():
+                errors.append(f"{where_pack}: exports standard '{sname}', which the pack doesn't contain "
+                              f"(standards/{sname.split('/')[-1]}.yaml)")
         router = man.get("router")
         if router and q_role(router, name) not in exported:
             errors.append(f"{where_pack}: router '{router}' must be an exported mode")
@@ -868,9 +1057,25 @@ def components_of(name: str, d: Path, man: dict) -> list[dict]:
         if sf.exists():
             out.append({"file": rel(sf), "kind": "mode", "pack": name, "id": mm.get("name"),
                         "text": sf.read_text(encoding="utf-8")})
-        lines = [ln["text"] for ln in done_lines(mm, name) if ln["kind"] != "code" and not ln.get("principle")]
+        lines = [ln["text"] for ln in done_lines(mm, name)
+                 if ln["kind"] != "code" and not ln.get("principle") and ln.get("source") != "standard"]
         if lines:
             out.append({"file": rel(mf), "kind": "manifest", "pack": name, "id": mm.get("name"), "text": lines})
+    for sf in [] if core else sorted((d / "standards").glob("*.yaml")):
+        try:
+            data = load_yaml(sf) or {}
+        except yaml.YAMLError:
+            continue                     # validate reports it
+        labels, lines = [], []
+        for s in data.get("sections") or [] if isinstance(data, dict) else []:
+            if isinstance(s, dict) and s.get("contains"):
+                labels.append(f"sections.{s.get('id')}.contains")
+                lines.append(str(s["contains"]))
+        for i, j in enumerate((data.get("judgment") or []) if isinstance(data, dict) else [], 1):
+            labels.append(f"judgment.{i}")
+            lines.append(str(j))
+        out.append({"file": rel(sf), "kind": "standard", "pack": name, "id": f"{name}:standards/{sf.stem}",
+                    "text": lines, "labels": labels})
     for key in [] if core else ("cos", "cos_section"):
         if man.get(key) and (d / man[key]).is_file():
             out.append({"file": rel(d / man[key]), "kind": "cos", "pack": name,
@@ -1049,7 +1254,7 @@ def cmd_validate(_args) -> int:
     non_core = [n for n in packs() if n != CORE]
     print(f"OK: {len(non_core)} pack(s) ({', '.join(non_core)}), {len(discover_modes())} mode(s), "
           f"{len(all_roles())} role(s), {len(all_skills()) - len(all_principles())} skill(s), "
-          f"{len(all_principles())} principle(s), {len(all_agents())} agent(s).")
+          f"{len(all_principles())} principle(s), {len(all_standards())} standard(s), {len(all_agents())} agent(s).")
     return 0
 
 
@@ -1337,7 +1542,7 @@ def cmd_role_show(args) -> int:
     return 0
 
 
-def role_lines(role: dict) -> list[str]:
+def role_lines(role: dict, with_skills: bool = True) -> list[str]:
     owner, skills, principles = role["_pack"], all_skills(), all_principles()
     ctx = ROOT / config()["paths"]["context"]
     effort, _ = resolve_setting("effort", None, None, role)
@@ -1345,7 +1550,7 @@ def role_lines(role: dict) -> list[str]:
     out = [f"## Role: {owner}/{role['_name']} (agent: {role['agent']}, tier: {role['tier']}, run: {dispatch}, "
            f"effort: {effort})",
            f"- persona: {role['persona']}"]
-    for s in role.get("skills", []):
+    for s in role.get("skills", []) if with_skills else []:
         sid = q_skill(s, owner)
         out.append(f"- skill: {rel(skills[sid]) if sid in skills else sid + ' (missing)'}")
     for pr in role.get("principles", []):
@@ -1720,6 +1925,7 @@ def cmd_task_new(args) -> int:
     approval, risk, approval_from = envelope_floor(args, man, parent)
     effort = resolve_effort(args.effort, man, role, risk)
     dispatch, dispatch_source = resolve_setting("dispatch", args.dispatch, man, role)
+    product = resolve_product(args.product, parent, pack)   # product, product_source, overlay_skills
 
     depth = 0
     if parent:
@@ -1792,6 +1998,7 @@ def cmd_task_new(args) -> int:
         "review_effort": review_effort(risk),
         "dispatch": dispatch,
         "dispatch_source": dispatch_source,
+        **product,
         "result": None,
         "result_path": None,
         "history": [{"ts": now(), "from": None, "to": "queued", "by": args.by, "note": args.note}],
@@ -1896,6 +2103,46 @@ def checklist_line(c: dict, state: bool = True) -> str:
     return f"`{c['id']}` [{c['kind']}] {text}"
 
 
+def task_skills(task: dict, mode: dict, role: dict) -> list[tuple[str, str, Path | None]]:
+    """(tag, qualified ref, SKILL.md) for every skill a task loads: the role's, then the mode's, then the
+    product overlay's (stored at `task new`), each once."""
+    skills, out, seen = all_skills(), [], set()
+    sources = [("role", role.get("skills") or [], role["_pack"]),
+               ("mode", mode["manifest"].get("skills") or [], mode["pack"]),
+               (f"overlay: {task.get('product')}", task.get("overlay_skills") or [], mode["pack"])]
+    for tag, refs, owner in sources:
+        for ref in refs:
+            sid = q_skill(ref, owner)
+            if sid not in seen:
+                seen.add(sid)
+                out.append((tag, sid, skills.get(sid)))
+    return out
+
+
+def standard_outline(man: dict, pack: str) -> list[str]:
+    """The `task show` section that prints a mode's document standard: one line per section (title,
+    required or optional, what it contains, its rules), then the forbidden patterns."""
+    std = mode_standard(man, pack)
+    if not std or not std["data"]:
+        return []
+    data = std["data"]
+    out = ["", f"## Document standard: {std['ref']} (outputs.{std['output']}; check_doc.py runs it at task result)",
+           f"{data.get('summary', '')}. Write these sections, in this order:"]
+    for s in data.get("sections") or []:
+        rules = []
+        if s.get("numbered"):
+            p = s["numbered"]["prefix"]
+            rules.append(f"numbered {p}1, {p}2, …" + (" with no gaps" if s["numbered"].get("contiguous", True) else ""))
+        if s.get("fields"):
+            rules.append(f"a table with columns {', '.join(s['fields'])}")
+        if s.get("min_items"):
+            rules.append(f"at least {s['min_items']} items")
+        out.append(f"- {s['title']} ({'required' if s.get('required') else 'optional'}): {s.get('contains', '')}"
+                   + "".join(f" · {r}" for r in rules))
+    out += [f"- never: {r['message']}" for r in data.get("forbid") or []]
+    return out
+
+
 def cmd_task_show(args) -> int:
     task = load_task(args.id)
     if args.json:
@@ -1928,18 +2175,22 @@ def cmd_task_show(args) -> int:
         out.append(f"- may call: {', '.join(man['calls'])}")
     for extra in man.get("roles", []):
         out.append(f"- also uses role: {q_role(extra, mode['pack'])} (`pmos role show {q_role(extra, mode['pack'])}`)")
-    out += ["", *role_lines(role)]
+    out += standard_outline(man, mode["pack"])
+    out += ["", *role_lines(role, with_skills=False)]
+    out += ["", "## Skills (load each before you start)"]
+    out += [f"- [{tag}] {sid} ({rel(path) if path else 'missing'})" for tag, sid, path in task_skills(task, mode, role)]
     out += ["", "## Principles (read each before you start; the Reviewer scores these checks)"]
     for group, pid, pr in principles_for(mode, role):
         out.append(f"- [{group}] {pid}: {pr['meta']['check']} ({rel(pr['path'])})")
-    out += ["", "## Definition of done (mode.yaml `done`: every must holds, code lines run at `task result`; "
-                "the share of should lines that hold sets the score)"]
+    out += ["", "## Definition of done (mode.yaml `done` and its standard's lines: every must holds, code lines run "
+                "at `task result`; the share of should lines that hold sets the score)"]
     out += [f"- {ln['kind']} `{ln['id']}`: {ln['text']}" for ln in done_lines(man, mode["pack"])]
     out += [
         "",
         f"# Task {env['id']} · {env['verb']} · state: {task['state']}",
         f"- approval: {env['approval']} · risk: {env['risk']} · review effort: {task.get('review_effort', '—')}",
         f"- outputs: {rel(path_of('outputs') / env['id'])}/",
+        *([f"- product: {task['product']} (from {task.get('product_source')})"] if task.get("product") else []),
         "",
     ]
     if mode.get("fallback"):
@@ -2830,11 +3081,19 @@ def view_scripts(v: dict) -> list[str]:
     return out
 
 
+def view_standards(v: dict) -> list[str]:
+    """The names of a pack's document standards (standards/<name>.yaml); core has none."""
+    d = v["dir"] / "standards"
+    return [] if v["core"] or not d.is_dir() else [f.stem for f in sorted(d.glob("*.yaml"))]
+
+
 def view_features(v: dict) -> dict[str, str]:
     """feature ref -> what covers it: exported modes need a golden and a failure-path case, scripts and
-    action handlers a conformance case, a router a workflow case."""
+    action handlers a conformance case, a standard a passing and a failure-path conformance case, a
+    router a workflow case."""
     out = {f"mode:{m['name']}": "golden + failure" for m in v["modes"] if m["exported"]}
     out.update({f"script:{s}": "conformance" for s in view_scripts(v)})
+    out.update({f"standard:{v['name']}:{s}": "conformance pass + failure" for s in view_standards(v)})
     out.update({f"action:{k}": "conformance" for k in (v["manifest"].get("actions") or {})})
     if v["manifest"].get("router"):
         out[f"router:{q_role(v['manifest']['router'], v['name'])}"] = "workflow"
@@ -2920,6 +3179,16 @@ def coverage(v: dict, cases: list[dict]) -> tuple[list[tuple[str, str, list[str]
             if not failure:
                 gaps.append(f"coverage: {ref} has no failure-path case (`failure: true`); add a golden case to "
                             f"{mode_evals[ref]} or a conformance case to {conf_dir}")
+        elif need == "conformance pass + failure":
+            passing = covering(ref, lambda c: c.get("kind") == "conformance" and not c.get("failure"))
+            failing = covering(ref, lambda c: c.get("kind") == "conformance" and bool(c.get("failure")))
+            rows.append((ref, need, passing + [f"{n} (failure)" for n in failing]))
+            if not passing:
+                gaps.append(f"coverage: {ref} has no passing case (check_doc.py on a document that meets it); "
+                            f"add one to {conf_dir}")
+            if not failing:
+                gaps.append(f"coverage: {ref} has no failure-path case (`failure: true`, a document that fails it); "
+                            f"add one to {conf_dir}")
         elif need == "conformance":
             hits = covering(ref, lambda c: c.get("kind") == "conformance")
             rows.append((ref, need, hits))
@@ -3304,7 +3573,9 @@ def cmd_eval(args) -> int:
         gold = [c for c in cases if c.get("kind") == "golden"]
         if mode:
             local = mode.split("/", 1)[1]
-            conf = [c for c in conf if any(r == f"mode:{mode}" or r.startswith(f"script:modes/{local}/")
+            std = mode_standard(next(m["manifest"] for m in v["modes"] if m["name"] == mode), pack)
+            std_ref = "standard:" + std["ref"].replace(":standards/", ":") if std else None
+            conf = [c for c in conf if any(r in (f"mode:{mode}", std_ref) or r.startswith(f"script:modes/{local}/")
                                            for r in c.get("covers") or [])]
             gold = [c for c in gold if c["_mode"] == mode]
         plan.append((v, conf if kind in ("conformance", "all") else [], gold if kind in ("golden", "all") else []))
@@ -3522,6 +3793,8 @@ def build_parser() -> argparse.ArgumentParser:
     n.add_argument("--note", help="a note for the task history")
     n.add_argument("--instructions", help="the PM's own instructions, verbatim; the Worker follows them")
     n.add_argument("--origin", help="where the task came from, as PACK:REF, e.g. cos:td-12 (a todo)")
+    n.add_argument("--product", help="the product this task is for: adds the pack's overlay skills for it "
+                                     "(pack.yaml overlays); default: the parent's, else product: in context/product.md")
     n.set_defaults(fn=cmd_task_new)
 
     s = t.add_parser("show", help="print a task's brief: mode, role, principles, then envelope, history")

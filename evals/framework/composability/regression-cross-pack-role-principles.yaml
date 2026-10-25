@@ -7,13 +7,14 @@ severity: medium
 regression: true
 desc: >-
   Reuse across packs works: gtm/brief runs under pm/doc-writer and task show lists the core
-  principles, gtm's own and pm's, with the same lines in the review checklist.
+  principles and gtm's own (pm/doc-writer, a general writer, cites none of pm's document-type
+  principles; those live on pm's modes), with the same lines in the review checklist.
 setup:
   install: [gtm]
 steps:
   - run: $PMOS task new --mode gtm/brief --verb draft --inputs '{"goal":"g"}'
     capture: {T: '(T-\d{8}-\d{3,})'}
   - run: $PMOS task show $T
-    expect: {stdout: ['core:grounded', 'gtm:one-page', 'pm:testable-requirements', 'pm:cite-customer-claims', 'pm/doc-writer']}
+    expect: {stdout: ['core:grounded', 'gtm:one-page', 'pm/doc-writer'], stdout_not: ['pm:testable-requirements']}
   - run: $PMOS task show $T --for-review
     expect: {stdout: '(?i)checklist[\s\S]*gtm:one-page'}

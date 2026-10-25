@@ -4,7 +4,7 @@ contract: pack@1
 author: forge-evals
 summary: "Fixture pack for forge's conformance cases"
 requires:
-  core: ^0.4
+  core: ^0.5
 depends: []
 exports:
   modes: [note]

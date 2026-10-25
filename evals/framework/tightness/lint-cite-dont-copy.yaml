@@ -23,7 +23,7 @@ steps:
     expect: {exit: 1, stdout: 'packs/pm/roles\.yaml: role pm/doc-writer restates principle core:grounded'}
   - name: the same paragraph in two component files
     run: |
-      $PY $FX/bin/yset.py packs/pm/roles.yaml 'roles.doc-writer.rubric' '["Problem, personas, requirements, success metrics and open questions present"]'
+      $PY $FX/bin/yset.py packs/pm/roles.yaml 'roles.doc-writer.rubric' '["Leads each section with its point, in the reader'"'"'s terms (glossary.md)"]'
       para="Before drafting, read the staking release calendar, the custodian onboarding checklist and the open incident list, then note which of them changes the scope of this document."
       printf '\n%s\n' "$para" >> packs/pm/skills/domain/prd-structure/SKILL.md
       printf '\n%s\n' "$(echo "$para" | sed 's/Before drafting/Before planning/')" >> packs/pm/skills/domain/sprint-planning/SKILL.md

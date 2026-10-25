@@ -1,0 +1,46 @@
+# The PRD document standard: the one place pm states a PRD's outline and rules.
+# check_doc.py checks the sections and rules; `task show` prints the outline; the judgment lines
+# become must lines the Reviewer judges (standard-1, …). pm/prd applies it (mode.yaml `standard:`).
+name: prd
+version: 0.1.0
+summary: A product requirements document for pm/prd
+sections:
+  - id: problem
+    title: Problem
+    required: true
+    contains: Who has the problem, the evidence for it, and why it matters now.
+  - id: personas
+    title: Personas
+    aliases: [users]
+    required: true
+    contains: Who uses it and what each of them needs from it.
+  - id: requirements
+    title: Requirements
+    required: true
+    contains: One requirement per line, grouped as Must, Should or Later.
+    numbered: {prefix: R, contiguous: true}
+  - id: success-metrics
+    title: Success metrics
+    aliases: [metrics]
+    required: true
+    contains: Each metric with its target and how it is measured.
+  - id: open-questions
+    title: Open questions
+    required: true
+    contains: What is still undecided, one question per line.
+  - id: non-goals
+    title: Non-goals
+    required: false
+    contains: What this deliberately does not cover.
+  - id: risks
+    title: Risks and dependencies
+    aliases: [risks]
+    required: false
+    contains: What could stop or delay it, and what it waits on.
+forbid:
+  - id: markers
+    pattern: '\b(TODO|TBD|XXX)\b'
+    message: an unresolved TODO, TBD or XXX marker
+judgment:
+  - Every success metric has a baseline or an explicit "to measure" note.
+  - Every open question names the person who owns the answer.

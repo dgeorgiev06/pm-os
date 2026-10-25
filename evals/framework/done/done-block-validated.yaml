@@ -42,17 +42,17 @@ steps:
   - name: a code line whose script doesn't exist
     run: |
       cp prd.bak packs/pm/modes/prd/mode.yaml &&
-      $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml done.must.0.code 'python packs/pm/modes/prd/scripts/nope.py {outputs.prd}' --str && $PMOS validate
+      $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml done.must '[{code: "python packs/pm/modes/prd/scripts/nope.py {outputs.prd}"}]' && $PMOS validate
     expect: {exit: nonzero, output: ['nope\.py', '(?i)not found|does not exist|missing']}
   - name: a code line whose script is outside the pack's and core's scripts (so no case covers it)
     run: |
       cp prd.bak packs/pm/modes/prd/mode.yaml && echo 'print(1)' > context/check.py &&
-      $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml done.must.0.code 'python context/check.py {outputs.prd}' --str && $PMOS validate
+      $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml done.must '[{code: "python context/check.py {outputs.prd}"}]' && $PMOS validate
     expect: {exit: nonzero, output: ['context/check\.py', '(?i)cover']}
   - name: a placeholder naming an output the mode doesn't return
     run: |
       cp prd.bak packs/pm/modes/prd/mode.yaml &&
-      $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml done.must.0.code 'python packs/pm/modes/prd/scripts/check_prd.py {outputs.banana}' --str && $PMOS validate
+      $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml done.must '[{code: "python scripts/check_doc.py --standard pm:standards/prd {outputs.banana}"}]' && $PMOS validate
     expect: {exit: nonzero, output: ['banana', '(?i)returns']}
   - name: an unknown principle
     run: |
@@ -70,7 +70,7 @@ steps:
       stdout: '^OK'
       files:
         contains:
-          pm-os.yaml: '(?m)^version: 0\.4\.0'
-          packs/pm/pack.yaml: ['(?m)^version: 0\.3\.0', 'core: \^0\.4']
-          packs/cos/pack.yaml: ['(?m)^version: 0\.3\.0', 'core: \^0\.4']
-          packs/forge/pack.yaml: ['(?m)^version: 0\.3\.0', 'core: \^0\.4']
+          pm-os.yaml: '(?m)^version: 0\.5\.0'
+          packs/pm/pack.yaml: ['(?m)^version: 0\.4\.0', 'core: \^0\.5']
+          packs/cos/pack.yaml: ['(?m)^version: 0\.3\.1', 'core: \^0\.5']
+          packs/forge/pack.yaml: ['(?m)^version: 0\.4\.0', 'core: \^0\.5']

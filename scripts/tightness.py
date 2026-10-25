@@ -8,10 +8,12 @@ long average sentence is a warning. Settings: `lint:` in pm-os.yaml (DEFAULTS be
 
 pmos finds the files (`pmos lint`, `pmos validate`, `pmos pack add`, and `forge.py lint` through
 `pmos lint DIR`); this module only reads text. A component is a dict:
-  {"file": "packs/pm/modes/prd/SKILL.md", "kind": principle|skill|mode|agent|cos|role|manifest,
+  {"file": "packs/pm/modes/prd/SKILL.md", "kind": principle|skill|mode|agent|cos|role|manifest|standard,
    "pack": "pm", "id": "pm:testable-requirements" (principles and roles), "text": "..."}
 `role` and `manifest` components (roles.yaml personas and rubrics, mode.yaml done lines)
-are only checked for copied principles.
+are only checked for copied principles. A `standard` (standards/<name>.yaml) is data: its `text` is
+the `contains` and `judgment` lines, with their `labels`; each must be one sentence of at most
+`lint.budgets.standard_line` words, with no filler, copying no principle.
 """
 from __future__ import annotations
 
@@ -21,7 +23,8 @@ import re
 import yaml
 
 DEFAULTS = {
-    "budgets": {"principle": 120, "principle_check": 25, "skill": 400, "mode": 450, "agent": 500, "cos": 1000},
+    "budgets": {"principle": 120, "principle_check": 25, "skill": 400, "mode": 450, "agent": 500, "cos": 1000,
+                "standard_line": 25},
     "warn_at": 0.9,            # warn at this share of a budget; fail over it
     "max_raise": 1.5,          # a file's `budget:` (with `budget_reason:`) may be at most this times its kind's
     "step_max_words": 60,      # per numbered step of a mode SKILL.md
@@ -233,6 +236,8 @@ def lint(targets: list[dict], context: list[dict], cfg: dict | None = None, cos_
                         err(f"{c['file']}:{line_no}: paragraph is a near-duplicate of {f2}:{l2} ({sim:.0%} similar); "
                             f"keep it in one place and point to it")
                         break
+        if c["kind"] == "standard":
+            _check_standard_lines(c, int(budgets.get("standard_line", 25)), fill, err)
         if c["kind"] != "principle":
             _check_copies(c, masked if c["kind"] in BUDGETED else None, first, principles, s["copy_words"], err)
         if c["kind"] in BUDGETED:
@@ -258,8 +263,22 @@ def lint(targets: list[dict], context: list[dict], cfg: dict | None = None, cos_
             "error_lines": errors, "warning_lines": warnings, "notes": notes}
 
 
+def _check_standard_lines(c: dict, max_words: int, fill, err) -> None:
+    """Each contains/judgment line of a standard: one sentence, at most MAX_WORDS words, no filler."""
+    for label, line in zip(c.get("labels") or [], c["text"]):
+        where = f"{c['file']}: {label}"
+        n = count_words(line)
+        if n > max_words:
+            err(f"{where}: {n} words, over lint.budgets.standard_line ({max_words}); one short sentence")
+        if len(re.split(r"(?<=[.!?])\s+(?=[A-Z0-9(\"'*\[])", prose(line).strip())) > 1:
+            err(f"{where}: more than one sentence; a standard's line is one sentence")
+        for phrase, rx in fill:
+            if rx.search(prose(line)):
+                err(f"{where}: filler '{phrase}'")
+
+
 def _parse(c: dict) -> tuple[dict, list[str], int, list[str]]:
-    if c["kind"] in ("role", "manifest"):
+    if c["kind"] in ("role", "manifest", "standard"):
         lines = [str(x) for x in c["text"]] if isinstance(c["text"], list) else str(c["text"]).splitlines()
         return {}, lines, 1, lines
     meta, lines, first = split_frontmatter(c["text"])
@@ -313,7 +332,7 @@ def _check_steps(file: str, masked: list[str], first: int, max_words: int, err) 
 
 
 def _check_copies(c: dict, masked: list[str] | None, first: int, principles, n: int, err) -> None:
-    if c["kind"] in ("role", "manifest"):
+    if c["kind"] in ("role", "manifest", "standard"):
         units = [(None, str(t)) for t in (c["text"] if isinstance(c["text"], list) else [c["text"]])]
     else:
         units = paragraphs(masked or [], first)
@@ -328,7 +347,7 @@ def _check_copies(c: dict, masked: list[str] | None, first: int, principles, n: 
                 reported.add(pid)
                 quote = " ".join(sorted(common)[0])
                 where = f"{c['file']}:{line_no}" if line_no else c["file"]
-                who = f" {c['kind']} {c['id']}" if c.get("id") and c["kind"] in ("role", "manifest") else ""
+                who = f" {c['kind']} {c['id']}" if c.get("id") and c["kind"] in ("role", "manifest", "standard") else ""
                 err(f"{where}:{who} restates principle {pid} ('{quote} …'); cite the principle instead")
 
 

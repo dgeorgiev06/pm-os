@@ -11,6 +11,8 @@ desc: >-
   line holds and the score (5 × the share of should lines that hold) is at least 4. On `revise`,
   `task show` lists exactly the failed line ids with their fix first.
 steps:
+  - name: four should lines (two mode lines added, the cited principle, the role's rubric)
+    run: $PY $FX/bin/yset.py packs/pm/modes/prd/mode.yaml done.should '["Names one owner", "Fits on two pages"]'
   - run: $PMOS task new --mode pm/prd --inputs '{"goal":"g"}' --acceptance "Names the validator set"
     capture: {T: '(T-\d{8}-\d{3,})'}
   - run: $PMOS task move $T running && $PY $FX/bin/mkresult.py --task $T --submit
@@ -21,7 +23,7 @@ steps:
     expect: {exit: nonzero, output: '(?i)evidence', task: {id: $T, state: in_review}}
   - name: a failed line without a fix is refused
     run: |
-      $PY $FX/bin/verdicts.py --task $T --fail must-1 > v.json &&
+      $PY $FX/bin/verdicts.py --task $T --fail standard-1 > v.json &&
       $PY - <<'PY'
       import json; v = json.load(open("v.json"))
       for l in v["lines"]:
@@ -34,7 +36,7 @@ steps:
     run: |
       $PY $FX/bin/verdicts.py --task $T > v.json && $PY - <<'PY'
       import json; v = json.load(open("v.json"))
-      v["lines"].append({"id": "code-1", "pass": True, "evidence": "ran it"})
+      v["lines"].append({"id": "standard", "pass": True, "evidence": "ran it"})
       json.dump(v, open("v.json", "w"))
       PY
       $PMOS task review $T --verdicts v.json
@@ -71,4 +73,4 @@ steps:
       task:
         id: $T
         state: awaiting_approval
-        fields: {result.review.score: '^5(\.0)?$', result.review.lines.0.evidence: '.', result.review.lines: '"id": "code-1"[^}]*"settled": true'}
+        fields: {result.review.score: '^5(\.0)?$', result.review.lines.0.evidence: '.', result.review.lines: '"id": "standard"[^}]*"settled": true'}

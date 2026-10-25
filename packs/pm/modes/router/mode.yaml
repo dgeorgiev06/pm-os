@@ -1,5 +1,5 @@
 name: pm/router
-version: 0.2.0
+version: 0.2.1
 contract: task@1
 author: dima
 summary: Turn a goal-level PM ask into a small plan of pm modes, run them, and assemble the outcome
@@ -13,7 +13,7 @@ returns:
   outcome: doc_ref
 skill: SKILL.md
 default_role: program-manager
-calls: [pm/prd@^0.3, pm/sprint-planning@^0.3, pm/jira-tickets@^0.3, pm/release-notes@^0.2]
+calls: [pm/prd@^0.4, pm/sprint-planning@^0.3, pm/jira-tickets@^0.3, pm/release-notes@^0.2]
 grants: {}
 approval: none            # children carry their own approvals
 risk: medium

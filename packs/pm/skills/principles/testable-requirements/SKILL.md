@@ -8,4 +8,4 @@ check: "Every requirement or acceptance criterion is a testable statement with a
 
 Vague requirements turn review into argument and QA into guesswork. 'Fast' becomes 'p95 under 300 ms'; 'handles failover' becomes 'routes new stake away from an operator within one epoch of it failing health checks'.
 
-- Number requirements so tests and tickets can point at them.
+- Say who or what observes the requirement being met: a test, a dashboard, a report.

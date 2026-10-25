@@ -22,7 +22,7 @@
     "approval": "before_publish"
   },
   "expect": [
-    "check_prd.py passes",
+    "prd.md passes check_doc.py --standard pm:standards/prd, and the standard's judgment lines hold",
     "at least one requirement on operator failover",
     "success metrics include a reliability or uptime measure",
     "no claims about customers that are not in the brief"

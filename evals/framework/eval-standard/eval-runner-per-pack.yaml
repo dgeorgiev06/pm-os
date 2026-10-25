@@ -7,7 +7,7 @@ desc: >-
   `pmos eval [PACK | PACK/MODE | --all] [--kind conformance|golden|all] [--json]` runs a pack's
   cases: one table per pack plus totals, eval-result@1 JSON with --json (also written to
   build/evals/results.json), a non-zero exit on any failure. A PACK/MODE target picks the cases
-  covering that mode or its scripts.
+  covering that mode, its scripts or its standard.
 steps:
   - run: $PMOS eval cos --kind conformance
     expect: {stdout: ['(?m)^cos: \d+/\d+ passed', '(?m)^total: \d+ passed, 0 failed']}
@@ -20,7 +20,7 @@ steps:
       $PMOS eval pm/prd --kind conformance --json > /dev/null && $PY - <<'PY'
       import json, sys
       cases = json.load(open("build/evals/results.json"))["cases"]
-      off = [c["name"] for c in cases if not any(r == "mode:pm/prd" or r.startswith("script:modes/prd/") for r in c["covers"])]
+      off = [c["name"] for c in cases if not any(r in ("mode:pm/prd", "standard:pm:prd") or r.startswith("script:modes/prd/") for r in c["covers"])]
       print(len(cases), "cases; off-target:", off)
       sys.exit(1 if off or not cases else 0)
       PY
@@ -33,5 +33,6 @@ steps:
     run: $PMOS eval pm --kind golden
     expect: {files: {exists: 'build/evals/pm__workflows/*/prompt.md'}}
   - name: a failing case fails the run
-    run: printf 'print("PASS")\n' > packs/pm/modes/prd/scripts/check_prd.py && $PMOS eval pm/prd --kind conformance
+    run: |
+      $PY $FX/bin/yset.py packs/pm/standards/prd.yaml sections '[{id: any, title: Any, required: false, contains: "Anything."}]' && $PMOS eval pm/prd --kind conformance
     expect: {exit: nonzero, stdout: '(?i)\bfail'}

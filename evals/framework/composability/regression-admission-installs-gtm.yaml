@@ -6,7 +6,7 @@ owner: composability
 severity: high
 regression: true
 desc: >-
-  A three-pack workflow installs on the first try: gtm (depends pm@^0.3) passes admission, asks for
+  A three-pack workflow installs on the first try: gtm (depends pm@^0.4) passes admission, asks for
   grant approval, then shows up in the catalog and AGENTS.md as one line.
 setup:
   copy: {packs/gtm: packs/gtm}

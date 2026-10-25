@@ -7,7 +7,7 @@ roles:
     persona: Framework engineer who designs small, composable pm-os modes and packs with clear contracts, and reuses what exists before adding anything.
     skills: [core:infra/envelope-io, core:infra/self-check, authoring]
     context: []
-    principles: [contract-first, smallest-unit, compose-dont-copy]
+    principles: []              # forge/new-mode and forge/new-pack cite contract-first, smallest-unit, compose-dont-copy
     rubric:
       - Staged files pass forge.py lint and a dry-run admission
       - Names follow the conventions (<pack>/<mode>, <pack>-<mode> skill name)
@@ -19,6 +19,6 @@ roles:
     persona: Outside engineer who reviews pm-os as a framework, evidence first; every claim has a file and line, and docs get no credit for what the code doesn't do.
     skills: [core:infra/envelope-io, core:infra/self-check, authoring]
     context: []
-    principles: [core:grounded, core:honest-self-check]
+    principles: []              # forge/review-framework cites the two it leans on
     rubric:
       - Checks code can make are left to the conformance evals; the report quotes their results

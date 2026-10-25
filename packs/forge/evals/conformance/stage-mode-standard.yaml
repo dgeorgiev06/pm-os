@@ -1,0 +1,37 @@
+kind: conformance
+name: stage-mode-standard
+covers: [script:scripts/forge.py, mode:forge/new-mode]
+desc: >-
+  Without --standard the skeleton mode.yaml shows `standard:` commented out. `stage-mode --standard
+  NAME` writes a stub `standards/NAME.yaml`, exports it, points the mode's `standard:` at it, and adds
+  the passing and failure-path conformance cases (with their fixtures) the coverage rule needs;
+  the staged pack has no coverage gaps and passes a dry-run admission.
+setup:
+  install: [demo]
+steps:
+  - run: $PMOS task new --mode forge/new-mode --inputs '{"pack":"demo","name":"brief","purpose":"a brief"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - name: without --standard, the field is a comment
+    run: $PMOS task move $T running && $PY $PACK/scripts/forge.py stage-mode --task $T --pack demo --name brief --summary "Short brief"
+    expect: {files: {contains: {outputs/$T/staged/demo/modes/brief/mode.yaml: '(?m)^# standard: '}}}
+  - run: $PMOS task new --mode forge/new-mode --inputs '{"pack":"demo","name":"memo","purpose":"a memo"}'
+    capture: {U: '(T-\d{8}-\d{3,})'}
+  - name: with --standard, a stub standard and its cases
+    run: $PMOS task move $U running && $PY $PACK/scripts/forge.py stage-mode --task $U --pack demo --name memo --summary "A memo" --standard memo
+    expect:
+      stdout: ['standards/memo\.yaml', 'evals/conformance/standard-memo\.yaml', 'evals/conformance/standard-memo-rejects\.yaml']
+      files:
+        exists:
+          - outputs/$U/staged/demo/standards/memo.yaml
+          - outputs/$U/staged/demo/evals/fixtures/memo-good.md
+          - outputs/$U/staged/demo/evals/fixtures/memo-bad.md
+        contains:
+          outputs/$U/staged/demo/pack.yaml: 'standards: \[memo\]'
+          outputs/$U/staged/demo/modes/memo/mode.yaml: '(?m)^standard: \{ref: memo, output: doc\}'
+          outputs/$U/staged/demo/evals/conformance/standard-memo.yaml: 'standard:demo:memo'
+          outputs/$U/staged/demo/evals/conformance/standard-memo-rejects.yaml: ['standard:demo:memo', 'failure: true']
+  - run: $PMOS eval --coverage outputs/$U/staged/demo
+    expect: {stdout: ['standard:demo:memo', '(?i)no gaps']}
+  - name: a dry-run admission runs the stub cases
+    run: $PMOS pack add outputs/$U/staged/demo --upgrade --dry-run
+    expect: {stdout: ['(?i)passes admission', 'conformance: \d+/\d+']}

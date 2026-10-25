@@ -19,15 +19,15 @@ steps:
         contains:
           'build/evals/pm__prd/golden-01/grader.md':
             - '(?i)done\.must'
-            - '`must-1`'
+            - '`standard-1`'
             - '`pm:testable-requirements`'
-            - '`code-1`[^\n]*check_prd\.py'
+            - '`standard`[^\n]*check_doc\.py'
             - '`task-1`'
-            - '`should-1`'
+            - '`pm:cite-customer-claims`'
             - '`role-rubric-1`'
         not_contains: {'build/evals/pm__prd/golden-01/grader.md': '`expect-1`'}
   - name: explicit expect lines get expect-N ids, before the score lines
-    run: $PY $FX/bin/yset.py packs/pm/modes/prd/evals/golden-01.json expect '["check_prd.py passes"]' && $PMOS eval pm/prd --kind golden
+    run: $PY $FX/bin/yset.py packs/pm/modes/prd/evals/golden-01.json expect '["check_doc.py passes"]' && $PMOS eval pm/prd --kind golden
     expect:
       files:
-        contains: {'build/evals/pm__prd/golden-01/grader.md': ['`expect-1`[^\n]*check_prd\.py passes', '`should-1`']}
+        contains: {'build/evals/pm__prd/golden-01/grader.md': ['`expect-1`[^\n]*check_doc\.py passes', '`role-rubric-1`']}

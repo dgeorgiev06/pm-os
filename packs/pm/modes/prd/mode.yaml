@@ -1,5 +1,5 @@
 name: pm/prd
-version: 0.3.0
+version: 0.4.0
 contract: task@1
 author: dima
 summary: Draft a PRD from a goal and references, written for institutional staking customers
@@ -12,17 +12,14 @@ returns:
   prd: doc_ref
 skill: SKILL.md
 default_role: doc-writer
+skills: [domain/prd-structure]   # how to write one well; the outline is the standard
 calls: []
 grants: { docs: draft, jira: read }
 approval: before_publish
 risk: medium
+standard: {ref: prd, output: prd}   # pm:standards/prd: its sections and rules (done line `standard`) and judgment lines (standard-N)
 principles: [testable-requirements, cite-customer-claims]
-done:                   # the definition of done: every must holds, or the review fails
+done:                   # the definition of done, beyond the standard's lines: every must holds, or the review fails
   must:
-    - code: "python packs/pm/modes/prd/scripts/check_prd.py {outputs.prd}"
-    - "Covers the goal's personas, requirements and success metrics"
     - principle: testable-requirements
-  should:                 # the share that holds sets the score
-    - 'Success metrics have a baseline or an explicit "to measure" note'
-    - "Open questions list owners"
 evals: evals/

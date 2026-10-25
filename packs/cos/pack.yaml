@@ -1,10 +1,10 @@
 name: cos
-version: 0.3.0
+version: 0.3.1
 contract: pack@1
 author: dima
 summary: Chief of Staff — talks to the PM, routes to packs and modes, keeps the todo list, batches approvals, posts digests
 requires:
-  core: ^0.4
+  core: ^0.5
 depends: []
 cos: COS.md                # this pack supplies the Chief of Staff; AGENTS.md is generated from it
 actions:                   # handlers `pmos action run` calls for approved actions
