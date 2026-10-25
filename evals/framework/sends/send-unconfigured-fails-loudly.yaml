@@ -3,7 +3,7 @@ name: send-unconfigured-fails-loudly
 covers: [script:scripts/pmos.py]
 failure: true
 desc: >-
-  With no comms tool mapped (adapters.claude-code.grants_to_tools comms:send is empty), `action run` exits 1,
+  With no tool mapped for the channel (adapters.claude-code.channel_tools is empty), `action run` exits 1,
   names the missing configuration, leaves the task approved and records no receipt.
 setup:
   copy:

@@ -1,5 +1,5 @@
 name: release-comms/release-notify
-version: 0.1.2
+version: 0.2.0
 contract: task@1
 author: dima
 summary: "Customer and internal release notices: start pm/release-notes first and pass its notes as release_notes, $from ref"
@@ -13,7 +13,7 @@ returns:
 skill: SKILL.md
 default_role: pm/doc-writer
 skills: [domain/customer-impact]
-calls: [cos/notify@^0.1]
+calls: [cos/notify@^0.2]
 grants: { docs: read, comms: draft }
 approval: before_execute
 risk: high

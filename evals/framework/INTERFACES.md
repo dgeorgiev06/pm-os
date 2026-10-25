@@ -220,7 +220,7 @@ Core cases touched by these packs: `one-version-rule`, `regression-forge-stages-
 set `release-comms` aside first (its `depends: pm@^0.4` would block their 0.5.0 fixture bump, which is
 the C2 check working as designed); `done-block-validated` pins cos 0.4.1 and forge 0.4.1.
 
-## Send receipts — core 0.5.1
+## Send receipts — core 0.6.0
 
 A send is done only when a receipt says so. Contract first: cases in `evals/framework/sends/`.
 
@@ -228,7 +228,29 @@ A send is done only when a receipt says so. Contract first: cases in `evals/fram
 | --- | --- | --- | --- |
 | SR1 | `external_systems` | pm-os.yaml `external_systems: [comms]`: systems whose actions reach people outside pmos. An approved task with an action on one of them is not `done` until every such action has a receipt. | send-gap-not-done-without-receipt |
 | SR2 | Handler reply | A handler prints one JSON object on stdout. `{"receipt": "<id>"}` = sent. Exit 0 with no receipt on an external action = recorded (verified, not sent). On any other action, exit 0 = applied, as before. Exit non-zero = failed. | send-gap-not-done-without-receipt, send-retry-skips-sent |
-| SR3 | `pmos action run ID [--key K] [--receipt KEY=RECEIPT …]` | `--receipt` gives the handler the receipt as `"receipt"` in its action file. Without a receipt from the handler's reply, a `--receipt` given for an external action is recorded as its receipt. A receipt for a key that is not an action of the task, or for a non-external action, is refused (key word `receipt`), before any handler runs. Exit 0: every action applied or sent, task `done`. Exit 1: a handler failed or refused (`not configured` included), task stays `approved`. Exit 2: nothing failed but a send is pending (`pending_send` in the JSON). | receipt-for-unknown-key-refused, send-unconfigured-fails-loudly |
+| SR3 | `pmos action run ID [--key K] [--receipt KEY=RECEIPT …]` | `--receipt` gives the handler the receipt as `"receipt"` in its action file. A receipt for a key that is not an action of the task, or for a non-external action, is refused (key word `receipt`), before any handler runs. Exit 0: every action applied or sent, task `done`. Exit 1: a handler failed or refused (`not configured` included), task stays `approved`. Exit 2: nothing failed but a send is pending (`pending_send` in the JSON). | receipt-for-unknown-key-refused, send-unconfigured-fails-loudly |
 | SR4 | `applied.json` | `{applied, recorded, sent: [{key, receipt}], failed, skipped, manual}`. A key with a receipt, or applied, is skipped on retry (`already applied`); a recorded one runs again. | send-retry-skips-sent |
 | SR5 | `task move ID done` from `approved` | Refused while an external action is unsent (key word `pending send`). `task move` still can't enter `approved`; only `action run` moves a task from `approved` to `done`. | send-gap-not-done-without-receipt |
 | SR6 | `task show` and `task state` | On an approved task: `pending send: <keys>` in the task part, and each action line ends `· sent <receipt>` or `· pending send`. `task show --json` and `task state --json` include `sent`. | send-gap-not-done-without-receipt |
+
+## Channels — core 0.6.0, channels 0.1.0
+
+A channel is a pack-level unit: a folder `packs/<pack>/channels/<name>/` with `channel.yaml`
+([schema](../../contracts/channel.schema.json), `pm-os/channel@1`) and a handler in the pack's `actions:`.
+Adding one is a folder, one `actions:` line, `exports.channels`, and `pmos pack add`. Cases:
+`evals/framework/channels/`, `packs/channels/evals/conformance/`.
+
+| # | Interface | Shape and rules | Cases |
+| --- | --- | --- | --- |
+| CH1 | `channel.yaml` | Fields: `name` (= folder name), `version`, `summary` (≤140 chars), `system` (e.g. `comms`), `format` (`plain` \| `markdown` \| `slack_mrkdwn`), `limits` (`max_words`, `max_chars`, optional), `recipient` (`{type, pattern}`, the pattern is a regex the recipient must match), `send: {handler: <action name>}` (must be a key of the pack's `actions:`), optional `conventions` (skill ref). | channel-schema-refused |
+| CH2 | Refs and exports | `<pack>:channel/<name>`, bare inside its pack. `exports.channels: [<name>]` in pack.yaml. Visible like modes: own pack, or exported by a pack in `depends`. | channel-registry |
+| CH3 | `pmos channel show [REF] [--from PACK] [--json]` | With REF: JSON `{ref, pack, name, dir, system, format, limits, recipient, send: {handler, script}}`. Without REF: a list of channels visible to PACK (default: all). Unknown: exit 1, `unknown channel '<ref>'; known channels: …`. Not visible to `--from PACK`: exit 1, naming `depends`. | channel-registry |
+| CH4 | `pmos channel check REF --text FILE [--recipient R]` | Enforces `limits` (key words `max_words`, `max_chars`) and the recipient pattern (key word `recipient`). Exit 0 or 1 with each problem. | email, slack, channel-schema-refused |
+| CH5 | `pmos channel render REF --text FILE` | Prints the text in the channel's format. `markdown`: unchanged. `slack_mrkdwn`: `**b**` → `*b*`, `[t](u)` → `<u\|t>`. `plain`: bold and italics marks removed, links `t (u)`, headings' `#` removed. | email, slack |
+| CH6 | Send handler | The channel's `send.handler` action in its own pack (`scripts/send.py <name>` in the channels pack). Reads its action file. Refuses a channel that isn't its own, a recipient outside the pattern, and an unmapped channel (`not configured`: no `adapters.claude-code.channel_tools` entry for the ref or its system). Mapped and no receipt: stdout `{"sent": false, "verified": true, …}`, exit 0. With `"receipt"` in the action file: stdout `{"sent": true, "receipt": "…"}`. | email, slack, notify-send-handler |
+| CH7 | `comms.send` forwarder | cos's `comms.send` handler (`build_actions.py send`) takes the action's `channel` ref from the registry (CH3), refuses an unknown one, and runs that channel's handler (`python <pack>/<script> <action file>`), passing its stdout and exit code through. release-comms' `comms.send` forwards to it, as before. | send-gap-not-done-without-receipt |
+| CH8 | Templates and generic templates | A template's `channel:` front matter is a ref (or absent); its optional `format:` must equal the channel's format. A draft entry without a template uses `templates/generic-<format>.md` for its channel's format. A template whose `channel:` differs from the entry's, or whose format differs, is refused. | notify-channel-refs |
+| CH9 | `pm-os.yaml` `adapters.claude-code.channel_tools` | `{<ref or system>: [MCP tool names]}`. Empty by default; a missing entry is refused by CH6. | send-unconfigured-fails-loudly |
+| CH10 | Pack-level grants | pack.yaml `grants: {<system>: read\|draft\|write}`, for a pack whose channels send (no mode needed). `pack add` lists them with the modes' grants; `--approve-grants` records them in `state/grant-approvals.jsonl`. | channels-pack-grants |
+| CH11 | `forge.py stage-channel --task ID --pack P --name N --summary S --format F --recipient-type T --recipient-pattern RX --recipient-example E [--system comms] [--max-words N] [--max-chars N] [--script CMD]` | The task must be `running`. Writes under `outputs/<id>/staged/P/`: `channels/N/channel.yaml`, a `pack.yaml` copy with the `actions:` line `comms.send-N: <command>` and `exports.channels`, a version bump, and `evals/conformance/channel-N.yaml` (covers `channel:P/N`, `action:comms.send-N` and the send script). The command is the pack's `scripts/send.py N` when it has one, else a stub `scripts/send_N.py` that refuses until written; `--script` names another. Refuses an existing channel. | stage-channel |
+| CH12 | Starter channels | Pack `channels` 0.1.0: `email` (plain, max_chars 10000, recipient an address) and `slack` (slack_mrkdwn, max_words 150, recipient a Slack channel id). Each has its handler line, a conformance case, and a `channel:` coverage line. | email, slack, channel-registry |

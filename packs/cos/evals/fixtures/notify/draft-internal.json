@@ -1,4 +1,4 @@
 {"notifications": [
-  {"channel": "slack", "audience": "internal",
+  {"channel": "channels:channel/slack", "audience": "internal",
    "fields": {"message": "Release 2.4 ships 2026-10-30: routing and reporting changes are live. Support notes are in the runbook."}}
 ]}

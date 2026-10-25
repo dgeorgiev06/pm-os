@@ -9,7 +9,7 @@ desc: >-
   receipt (exit 2, task approved) and the task is done once every receipt is recorded.
 setup:
   copy:
-    send/channels.yaml: channels.yaml
+    send/release-channels.yaml: channels.yaml
     send/draft-release.json: draft.json
   files:
     notes.md: 'Release 2.4 ships 2026-10-30. Routing rules per account; report lag fixed.'
@@ -33,9 +33,9 @@ steps:
   - name: it writes the draft and starts one cos/notify child per audience
     run: |
       mkdir -p outputs/$R && cp draft.json outputs/$R/draft.json &&
-      $PMOS task new --parent $R --mode cos/notify@^0.1 --verb draft --approval none --risk high --inputs "{\"draft\":\"outputs/$R/draft.json\",\"audience\":\"external\"}"
+      $PMOS task new --parent $R --mode cos/notify@^0.2 --verb draft --approval none --risk high --inputs "{\"draft\":\"outputs/$R/draft.json\",\"audience\":\"external\"}"
     capture: {CE: '(T-\d{8}-\d{3,})'}
-  - run: $PMOS task new --parent $R --mode cos/notify@^0.1 --verb draft --approval none --risk medium --inputs "{\"draft\":\"outputs/$R/draft.json\",\"audience\":\"internal\"}"
+  - run: $PMOS task new --parent $R --mode cos/notify@^0.2 --verb draft --approval none --risk medium --inputs "{\"draft\":\"outputs/$R/draft.json\",\"audience\":\"internal\"}"
     capture: {CI: '(T-\d{8}-\d{3,})'}
   - name: the release task waits for its children
     run: $PMOS task move $R waiting
@@ -66,7 +66,7 @@ steps:
   - run: $PMOS task approve $R --by pm
   - name: a comms tool is mapped; the sends are verified, not sent
     run: |
-      sed -i 's/comms:send: \[\]/comms:send: [mcp__slack__post_message]/' pm-os.yaml &&
+      $PY $FX/bin/yset.py pm-os.yaml adapters.claude-code.channel_tools '{"channels:channel/slack": ["mcp__slack__post_message"], "channels:channel/email": ["mcp__gmail__send_message"]}' &&
       PMOS_CHANNELS_FILE=channels.yaml $PMOS action run $R
     expect: {exit: 2, stdout: 'pending_send'}
   - name: the task is still approved and not done

@@ -17,7 +17,7 @@ steps:
       PMOS_CHANNELS_FILE=channels.yaml $PY packs/cos/modes/notify/scripts/build_actions.py build draft.json --audience internal --task $T --out outputs/$T &&
       PMOS_CHANNELS_FILE=channels.yaml $PY $FX/bin/mkresult.py --task $T --status needs_approval --submit \
         --outputs-json "{\"messages\": \"outputs/$T/messages.json\"}" \
-        --action "$($PY -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))[0]))' outputs/$T/actions.json)" &&
+        --action "{\"system\":\"comms\",\"op\":\"send\",\"idempotency_key\":\"$T-team-slack-1\",\"payload\":{\"audience\":\"internal\",\"channel\":\"channels:channel/slack\",\"recipient\":\"C0PRODUCT1\",\"text\":\"Note.\"},\"preview\":\"Note.\"}" &&
       $PY $FX/bin/advance.py --task $T --to awaiting_approval && $PMOS task approve $T --by pm
   - name: a receipt for a key that is not an action is refused
     run: $PMOS action run $T --receipt no-such-key=C-RCPT-9

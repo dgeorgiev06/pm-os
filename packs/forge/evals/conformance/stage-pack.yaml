@@ -12,7 +12,7 @@ steps:
     expect:
       stdout: '"role": "acme-writer"'
       files:
-        contains: {outputs/$T/staged/acme/pack.yaml: 'core: \^0\.5'}
+        contains: {outputs/$T/staged/acme/pack.yaml: 'core: \^0\.6'}
         exists: [outputs/$T/staged/acme/roles.yaml, outputs/$T/staged/acme/evals/conformance, outputs/$T/staged/acme/evals/workflows]
   - run: |
       $PY $PACK/scripts/forge.py stage-mode --task $T --pack acme --name brief --summary "Brief" --into outputs/$T/staged/acme --router --script render_brief

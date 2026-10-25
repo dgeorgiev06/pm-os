@@ -1,6 +1,6 @@
 # pm-os core config. Harness- and model-neutral: nothing here assumes one vendor.
 framework: pm-os
-version: 0.5.1          # core version; packs declare `requires.core` against it
+version: 0.6.0          # core version; packs declare `requires.core` against it
 contract: task@1
 
 paths:
@@ -78,6 +78,9 @@ adapters:
       jira:write: []         # e.g. mcp__jira__create_issue, mcp__jira__update_issue
       comms:send: []         # set to your Slack/email MCP tool names, e.g. [mcp__slack__post_message]; empty = comms.send is refused
       repo:write: [Write, Edit]
+    # Channels (packs' channels/<name>/channel.yaml) send through the MCP tools mapped here, by channel ref or by its
+    # system. A channel with no entry is refused: `action run` says `not configured` and the task stays approved.
+    channel_tools: {}       # e.g. {"channels:channel/slack": [mcp__slack__post_message], "channels:channel/email": [mcp__gmail__send_message]}
       # Actions with a pack handler (pack.yaml `actions:`) run through `pmos action run` (shell:pmos).
   generic:
     provider: anthropic

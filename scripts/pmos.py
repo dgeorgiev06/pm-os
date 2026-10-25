@@ -297,6 +297,163 @@ def visibility_error(owner: str | None, target: str, kind: str, local: str) -> s
     return None
 
 
+# --------------------------------------------------------------------------- channels (CH1-CH6)
+def all_channels() -> dict[str, dict]:
+    """'pack:channel/name' -> {ref, pack, name, dir, path, spec} for every installed pack's channels/."""
+    out: dict[str, dict] = {}
+    for pname, p in packs().items():
+        if pname == CORE:
+            continue
+        for cfile in sorted((p["dir"] / "channels").glob("*/channel.yaml")):
+            name = cfile.parent.name
+            out[f"{pname}:channel/{name}"] = {"ref": f"{pname}:channel/{name}", "pack": pname, "name": name,
+                                             "dir": cfile.parent, "path": cfile, "spec": load_yaml(cfile) or {}}
+    return out
+
+
+def channel_ref(ref: str, from_pack: str | None = None) -> str:
+    """'pack:channel/name' as given; a bare 'channel/name' (or 'name') means the calling pack's own."""
+    if ":" in ref:
+        return ref
+    if not from_pack:
+        raise PmosError(f"channel '{ref}' needs its pack: write pack:channel/{ref.split('/')[-1]}")
+    return f"{from_pack}:{ref if ref.startswith('channel/') else 'channel/' + ref}"
+
+
+def can_see_channel(from_pack: str | None, ch: dict) -> bool:
+    if from_pack is None or from_pack == ch["pack"]:
+        return True
+    return ch["pack"] in depends_on(from_pack) and is_exported(ch["pack"], "channels", ch["name"])
+
+
+def resolve_channel(ref: str, from_pack: str | None = None) -> dict:
+    full = channel_ref(ref, from_pack)
+    chans = all_channels()
+    if full not in chans:
+        raise PmosError(f"unknown channel '{full}'; known channels: {', '.join(sorted(chans)) or 'none'}")
+    ch = chans[full]
+    if from_pack and from_pack != ch["pack"]:
+        if ch["pack"] not in depends_on(from_pack):
+            raise PmosError(f"pack '{from_pack}' uses channel '{full}' without listing '{ch['pack']}' in depends")
+        if not is_exported(ch["pack"], "channels", ch["name"]):
+            raise PmosError(f"channel '{full}' is internal to pack '{ch['pack']}' (not in its exports)")
+    return ch
+
+
+def channel_command(ch: dict) -> str:
+    """The command the channel's send handler runs: its pack's actions: entry (script and fixed args)."""
+    handler = ch["spec"]["send"]["handler"]
+    actions = packs()[ch["pack"]]["manifest"].get("actions") or {}
+    return actions.get(handler, "")
+
+
+def text_words(text: str) -> int:
+    """Whitespace tokens with a letter or digit, as lint counts them."""
+    return sum(1 for t in text.split() if re.search(r"[A-Za-z0-9]", t))
+
+
+def render_text(text: str, fmt: str) -> str:
+    """Markdown in, the channel's format out (CH5)."""
+    if fmt == "markdown":
+        return text
+    if fmt == "slack_mrkdwn":
+        t = re.sub(r"\*\*(.+?)\*\*", r"*\1*", text)
+        t = re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", r"<\2|\1>", t)
+        return re.sub(r"(?m)^#{1,6}\s+(.*)$", r"*\1*", t)
+    t = re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", r"\1 (\2)", text)
+    t = re.sub(r"\*\*(.+?)\*\*", r"\1", t)
+    t = re.sub(r"(?<![\w*])\*(?!\s)(.+?)\*(?!\w)", r"\1", t)
+    t = re.sub(r"`([^`]+)`", r"\1", t)
+    return re.sub(r"(?m)^#{1,6}\s+", "", t)
+
+
+def channel_check(ch: dict, text: str, recipient: str | None = None) -> list[str]:
+    """Limits and recipient rules of one channel (CH4). Empty = passes."""
+    spec, problems = ch["spec"], []
+    limits = spec.get("limits") or {}
+    if "max_words" in limits and text_words(text) > limits["max_words"]:
+        problems.append(f"max_words: {text_words(text)} words, over {ch['ref']}'s limit of {limits['max_words']}")
+    if "max_chars" in limits and len(text) > limits["max_chars"]:
+        problems.append(f"max_chars: {len(text)} characters, over {ch['ref']}'s limit of {limits['max_chars']}")
+    pattern = spec["recipient"]["pattern"]
+    if recipient is not None and not re.fullmatch(pattern, recipient):
+        problems.append(f"recipient '{recipient}' is not a {spec['recipient']['type']} "
+                        f"({ch['ref']} accepts /{pattern}/)")
+    return problems
+
+
+def channel_errors(name: str) -> list[str]:
+    """Admission and validate checks for one pack's channels: schema, folder name, handler, pattern, exports."""
+    p = packs()[name]
+    man, actions = p["manifest"], p["manifest"].get("actions") or {}
+    errors, names = [], set()
+    for cfile in sorted((p["dir"] / "channels").glob("*/channel.yaml")):
+        where, spec = rel(cfile), load_yaml(cfile) or {}
+        names.add(cfile.parent.name)
+        errors += schema_errors(spec, "channel", where)
+        if spec.get("name") != cfile.parent.name:
+            errors.append(f"{where}: name '{spec.get('name')}' must equal its folder ({cfile.parent.name})")
+        handler = (spec.get("send") or {}).get("handler")
+        if handler and handler not in actions:
+            errors.append(f"{where}: send.handler '{handler}' is not an actions: entry of {rel(p['dir'] / 'pack.yaml')}")
+        pattern = ((spec.get("recipient") or {}).get("pattern")) or ""
+        try:
+            re.compile(pattern)
+        except re.error as e:
+            errors.append(f"{where}: recipient.pattern is not a regular expression ({e})")
+    for ch in (man.get("exports") or {}).get("channels") or []:
+        if ch not in names:
+            errors.append(f"{rel(p['dir'] / 'pack.yaml')}: exports channel '{ch}', which the pack doesn't contain")
+    return errors
+
+
+def read_text_arg(path: str) -> str:
+    return sys.stdin.read() if path == "-" else Path(path).read_text(encoding="utf-8")
+
+
+def cmd_channel_show(args) -> int:
+    if not args.ref:
+        rows = [c for c in all_channels().values() if can_see_channel(args.from_pack, c)]
+        if args.json:
+            print(json.dumps([{"ref": c["ref"], "format": c["spec"]["format"], "system": c["spec"]["system"]}
+                              for c in rows], indent=2))
+        else:
+            for c in rows:
+                print(f"{c['ref']}  {c['spec']['format']}  {c['spec']['system']}  {c['spec']['summary']}")
+        if not rows:
+            print("(no channels)")
+        return 0
+    ch = resolve_channel(args.ref, args.from_pack)
+    spec = ch["spec"]
+    info = {"ref": ch["ref"], "pack": ch["pack"], "name": ch["name"], "dir": rel(ch["dir"]),
+            "system": spec["system"], "format": spec["format"], "limits": spec.get("limits") or {},
+            "recipient": spec["recipient"], "send": {"handler": spec["send"]["handler"], "command": channel_command(ch)}}
+    if args.json:
+        print(json.dumps(info, indent=2, ensure_ascii=False))
+    else:
+        print(f"{ch['ref']}: {spec['format']}, {spec['system']}, limits {info['limits'] or 'none'}, "
+              f"recipient {spec['recipient']['type']} /{spec['recipient']['pattern']}/, sends via {info['send']['handler']}")
+    return 0
+
+
+def cmd_channel_check(args) -> int:
+    ch = resolve_channel(args.ref, args.from_pack)
+    text = read_text_arg(args.text)
+    problems = channel_check(ch, text, args.recipient)
+    if problems:
+        for pr in problems:
+            print(f"error: {pr}", file=sys.stderr)
+        return 1
+    print(f"ok: {ch['ref']}: {text_words(text)} words, {len(text)} characters")
+    return 0
+
+
+def cmd_channel_render(args) -> int:
+    ch = resolve_channel(args.ref, args.from_pack)
+    print(render_text(read_text_arg(args.text), ch["spec"]["format"]))
+    return 0
+
+
 # --------------------------------------------------------------------------- registry
 def all_skills() -> dict[str, Path]:
     """'<pack>:<path>' -> SKILL.md, for skills and principles of every installed pack."""
@@ -1025,6 +1182,8 @@ def check_pack(name: str, check_grants: bool = True) -> tuple[list[str], list[st
             for mname in sorted(mode_names - set(exported) - called):
                 warnings.append(f"mode {mname} is internal (not in exports.modes) and no mode of pack '{name}' "
                                 f"calls it, so nothing can start it; export it or add it to a mode's calls")
+    if name != CORE:
+        errors += channel_errors(name)
     errors += eval_errors(name)      # eval@1: every case valid, every feature covered
     rep = lint_report([name])        # tightness: budgets, mode structure, filler, cite don't copy
     errors += [f"lint: {e}" for e in rep["error_lines"]]
@@ -1260,11 +1419,12 @@ def cmd_validate(_args) -> int:
 
 # --------------------------------------------------------------------------- packs CLI
 def mode_grants(pack: str) -> dict[str, str]:
+    """What a pack asks for: its modes' grants, and its own pack-level grants (channels that send)."""
     union: dict[str, str] = {}
-    for m in discover_modes():
-        if m["pack"] != pack:
-            continue
-        for system, level in (m["manifest"].get("grants") or {}).items():
+    pack_level = ((packs().get(pack) or {}).get("manifest") or {}).get("grants") or {}
+    sources = [pack_level] + [m["manifest"].get("grants") or {} for m in discover_modes() if m["pack"] == pack]
+    for grants in sources:
+        for system, level in grants.items():
             if GRANT_LEVEL.get(level, 0) > GRANT_LEVEL.get(union.get(system), 0):
                 union[system] = level
     return dict(sorted(union.items()))
@@ -2717,7 +2877,7 @@ def cmd_action_run(args) -> int:
             continue
         # the handler's receipt (SR2), else the one the Operator's tool returned and gave with --receipt (SR3)
         reply_receipt = handler_reply(proc.stdout).get("receipt") or receipts.get(key)
-        if reply_receipt:
+        if reply_receipt:                       # the handler confirms the send (SR2)
             entry["receipt"] = str(reply_receipt)
             applied.append(entry)
             sent.append({"key": key, "receipt": entry["receipt"]})
@@ -3181,6 +3341,11 @@ def view_standards(v: dict) -> list[str]:
     return [] if v["core"] or not d.is_dir() else [f.stem for f in sorted(d.glob("*.yaml"))]
 
 
+def view_channels(v: dict) -> list[str]:
+    """The names of a pack's channels (channels/<name>/channel.yaml); core has none."""
+    return [] if v["core"] else [f.parent.name for f in sorted((v["dir"] / "channels").glob("*/channel.yaml"))]
+
+
 def view_features(v: dict) -> dict[str, str]:
     """feature ref -> what covers it: exported modes need a golden and a failure-path case, scripts and
     action handlers a conformance case, a standard a passing and a failure-path conformance case, a
@@ -3188,6 +3353,7 @@ def view_features(v: dict) -> dict[str, str]:
     out = {f"mode:{m['name']}": "golden + failure" for m in v["modes"] if m["exported"]}
     out.update({f"script:{s}": "conformance" for s in view_scripts(v)})
     out.update({f"standard:{v['name']}:{s}": "conformance pass + failure" for s in view_standards(v)})
+    out.update({f"channel:{v['name']}/{c}": "conformance" for c in view_channels(v)})
     out.update({f"action:{k}": "conformance" for k in (v["manifest"].get("actions") or {})})
     if v["manifest"].get("router"):
         out[f"router:{q_role(v['manifest']['router'], v['name'])}"] = "workflow"
@@ -3948,6 +4114,25 @@ def build_parser() -> argparse.ArgumentParser:
     ar.add_argument("--receipt", action="append", default=[], metavar="KEY=RECEIPT",
                     help="the id the external tool returned for an external action; marks it sent (repeatable)")
     ar.set_defaults(fn=cmd_action_run)
+
+    chn = sub.add_parser("channel", help="the channel registry: show channels, check a text against one, render it").add_subparsers(
+        dest="channel_cmd", required=True)
+    cs = chn.add_parser("show", help="a channel's format, limits, recipient and send handler (no REF: list them)")
+    cs.add_argument("ref", nargs="?", help="pack:channel/name, or channel/name with --from")
+    cs.add_argument("--from", dest="from_pack", help="the calling pack: its depends and exports decide what it sees")
+    cs.add_argument("--json", action="store_true", help="print the channel as JSON (the fields cos/notify reads)")
+    cs.set_defaults(fn=cmd_channel_show)
+    cc = chn.add_parser("check", help="check a text's limits and a recipient against a channel")
+    cc.add_argument("ref")
+    cc.add_argument("--text", required=True, help="a file, or - for stdin")
+    cc.add_argument("--recipient", help="check this recipient against the channel's pattern")
+    cc.add_argument("--from", dest="from_pack", help="the calling pack: its depends and exports decide what it sees")
+    cc.set_defaults(fn=cmd_channel_check)
+    cr = chn.add_parser("render", help="print a Markdown text in the channel's format")
+    cr.add_argument("ref")
+    cr.add_argument("--text", required=True, help="a file, or - for stdin")
+    cr.add_argument("--from", dest="from_pack", help="the calling pack: its depends and exports decide what it sees")
+    cr.set_defaults(fn=cmd_channel_render)
     return p
 
 

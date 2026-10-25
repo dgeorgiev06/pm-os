@@ -4,7 +4,7 @@ contract: pack@1
 author: framework-evals
 summary: "Fixture: accepts types outside the vocabulary"
 requires:
-  core: ^0.5
+  core: ^0.6
 depends: []
 exports:
   modes: [badtype/main]

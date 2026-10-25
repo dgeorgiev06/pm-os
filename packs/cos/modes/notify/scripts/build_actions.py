@@ -7,12 +7,14 @@
                                check the draft and render it for one audience. Writes DIR/messages.json
                                and DIR/actions.json: one comms.send action per channel and recipient.
   merge OUT IN [IN ...]        join messages files (a parent task's, from its notify children).
-  send ACTION.json             the comms.send handler `pmos action run` calls. It re-verifies one action
-                               and refuses until pm-os.yaml maps comms:send to a tool.
+  send ACTION.json             the comms.send handler: forwards the action to its channel's own send handler
+                               (channel.yaml send.handler, in the channel's pack), which checks it and replies.
 
-Channels: PMOS_CHANNELS_FILE, else context/channels.yaml (copy context/channels.example.yaml).
-Recipients come only from that file. Templates are in modes/notify/templates/ (generic) or next to the
-mode that uses them; each has YAML front matter with its audience, channel, max_words and fields.
+A channel is a registry ref, `<pack>:channel/<name>` (`pmos channel show`): its format, limits and recipient
+come from there, and an unknown or invisible one is refused with the channels that are known. Recipients come
+only from context/channels.yaml (PMOS_CHANNELS_FILE overrides). Templates are in modes/notify/templates/
+(generic-<format>.md) or next to the mode that uses them. Each has YAML front matter (audience, an optional
+channel ref, max_words, fields); its body is Markdown, rendered into the channel's format.
 """
 from __future__ import annotations
 
@@ -21,6 +23,8 @@ import datetime as dt
 import json
 import os
 import re
+import shlex
+import subprocess
 import sys
 from pathlib import Path
 
@@ -29,7 +33,6 @@ import yaml
 SCRIPT_DIR = Path(__file__).resolve().parent
 TEMPLATES = SCRIPT_DIR.parent / "templates"
 TYPES = {"string", "number", "integer", "bool", "list", "date"}
-CHANNEL_KINDS = {"slack", "email"}
 AUDIENCES = {"internal", "external"}
 FRONT = re.compile(r"\A---\n(.*?)\n---\n(.*)\Z", re.S)
 BLOCK = re.compile(r"\{\{#(\w+)\}\}(.*?)\{\{/\1\}\}", re.S)
@@ -56,15 +59,60 @@ def rel(path: Path) -> str:
         return str(path)
 
 
+class Problem(Exception):
+    pass
+
+
+def pmos(*args: str, stdin: str | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, str(ROOT / "scripts" / "pmos.py"), *args], cwd=ROOT,
+                          input=stdin, capture_output=True, text=True)
+
+
+def pmos_problems(proc: subprocess.CompletedProcess) -> list[str]:
+    lines = [ln.replace("error: ", "", 1) for ln in (proc.stderr or proc.stdout).splitlines() if ln.strip()]
+    return lines or ["the channel check failed"]
+
+
 def words(text: str) -> int:
     """Whitespace tokens with a letter or digit, as lint counts them."""
     return sum(1 for t in text.split() if re.search(r"[A-Za-z0-9]", t))
 
 
-# --------------------------------------------------------------------------- channels
+# --------------------------------------------------------------------------- channels (the registry)
+_CHANNELS: dict[str, dict] = {}
+
+
+def channel_info(ref: str) -> dict:
+    """pmos channel show REF --from cos: format, limits, recipient, send command. Cached per run."""
+    if ref not in _CHANNELS:
+        proc = pmos("channel", "show", str(ref), "--from", "cos", "--json")
+        if proc.returncode != 0:
+            raise Problem(pmos_problems(proc)[-1])
+        _CHANNELS[ref] = json.loads(proc.stdout)
+    return _CHANNELS[ref]
+
+
+def channel_problems(ref: str, text: str, recipient: str | None = None) -> list[str]:
+    """The channel's limits and recipient pattern, checked by pmos (CH4)."""
+    args = ["channel", "check", ref, "--text", "-", "--from", "cos"]
+    if recipient is not None:
+        args += ["--recipient", str(recipient)]
+    proc = pmos(*args, stdin=text)
+    return [] if proc.returncode == 0 else pmos_problems(proc)
+
+
+def channel_render(ref: str, text: str) -> str:
+    proc = pmos("channel", "render", ref, "--text", "-", "--from", "cos", stdin=text)
+    if proc.returncode != 0:
+        raise Problem(pmos_problems(proc)[-1])
+    return proc.stdout[:-1] if proc.stdout.endswith("\n") else proc.stdout
+
+
+# --------------------------------------------------------------------------- channels.yaml (recipients)
 class Channels:
-    def __init__(self, data: dict, where: str):
-        self.where = where
+    """context/channels.yaml: per audience, the channels (registry refs) and their recipients."""
+
+    def __init__(self, data: dict):
         self.internal_only = set(data.get("internal_only_fields") or [])
         self.audiences: dict[str, list[dict]] = {}
         for aud, spec in (data.get("audiences") or {}).items():
@@ -72,13 +120,13 @@ class Channels:
             for c in (spec or {}).get("channels") or []:
                 target = c.get("target")
                 targets = target if isinstance(target, list) else [target]
-                chans.append({"name": c["name"], "kind": c["kind"], "targets": [str(t) for t in targets if t]})
+                chans.append({"name": c["name"], "channel": c["channel"], "targets": [str(t) for t in targets if t]})
             self.audiences[aud] = chans
 
-    def find(self, name: str) -> tuple[str, dict] | None:
+    def find(self, ref: str) -> tuple[str, dict] | None:
         for aud, chans in self.audiences.items():
             for c in chans:
-                if c["name"] == name:
+                if c["channel"] == ref:
                     return aud, c
         return None
 
@@ -88,18 +136,10 @@ def load_channels() -> Channels:
         else ROOT / "context" / "channels.yaml"
     if not path.exists():
         raise Problem(f"no channels file at {path}; copy context/channels.example.yaml to context/channels.yaml")
-    return Channels(yaml.safe_load(path.read_text(encoding="utf-8")) or {}, rel(path))
-
-
-class Problem(Exception):
-    pass
+    return Channels(yaml.safe_load(path.read_text(encoding="utf-8")) or {})
 
 
 # --------------------------------------------------------------------------- templates
-def generic_template(channel: str) -> Path:
-    return TEMPLATES / f"generic-{channel}.md"
-
-
 def load_template(ref: str, cfg: Channels) -> dict:
     path = Path(ref) if Path(ref).is_absolute() else ROOT / ref
     if not path.exists():
@@ -117,6 +157,7 @@ def load_template(ref: str, cfg: Channels) -> dict:
         if leaked:
             raise Problem(f"template '{ref}' is external but declares internal-only field '{leaked[0]}'")
     return {"ref": ref, "audience": meta.get("audience", "any"), "channel": meta.get("channel"),
+            "format": meta.get("format"),
             "max_words": int(meta.get("max_words", 250)), "fields": fields, "body": m.group(2).rstrip("\n")}
 
 
@@ -169,7 +210,7 @@ def render(body: str, fields: dict) -> str:
 
 
 def check_draft(draft: dict, cfg: Channels) -> tuple[list[dict], list[str]]:
-    """Returns the rendered entries and every problem found."""
+    """Returns the rendered entries (text in each channel's format) and every problem found."""
     problems: list[str] = []
     if not isinstance(draft, dict) or not isinstance(draft.get("notifications"), list) or not draft["notifications"]:
         return [], ["draft: 'notifications' must be a non-empty list"]
@@ -192,13 +233,31 @@ def check_draft(draft: dict, cfg: Channels) -> tuple[list[dict], list[str]]:
                 tpl = load_template(entry["template"], cfg)
             else:
                 channel, aud = entry.get("channel"), entry.get("audience")
-                if channel not in CHANNEL_KINDS or aud not in AUDIENCES:
-                    problems.append(f"{label}: without a template it needs channel (slack|email) and audience "
-                                    f"(internal|external)")
+                if not channel or aud not in AUDIENCES:
+                    problems.append(f"{label}: without a template it needs channel (a registry ref, e.g. "
+                                    f"channels:channel/slack) and audience (internal|external)")
                     continue
-                tpl = load_template(rel(generic_template(channel)), cfg)
+                generic = TEMPLATES / f"generic-{channel_info(channel)['format']}.md"
+                if not generic.exists():
+                    raise Problem(f"no generic template for {channel} ({generic.name}); name a template")
+                tpl = load_template(rel(generic), cfg)
         except Problem as e:
             problems.append(f"{label}: {e}")
+            continue
+        channel = entry.get("channel") or tpl["channel"]
+        if not channel:
+            problems.append(f"{label}: no channel (the template names none and the entry gives none)")
+            continue
+        if tpl["channel"] and entry.get("channel") and entry["channel"] != tpl["channel"]:
+            problems.append(f"{label}: channel '{entry['channel']}' does not match its template ({tpl['channel']})")
+            continue
+        try:
+            info = channel_info(channel)
+        except Problem as e:
+            problems.append(f"{label}: {e}")
+            continue
+        if tpl["format"] and tpl["format"] != info["format"]:
+            problems.append(f"{label}: template {tpl['ref']} is {tpl['format']}, but {channel} sends {info['format']}")
             continue
         audience = tpl["audience"]
         if audience == "any":
@@ -227,9 +286,15 @@ def check_draft(draft: dict, cfg: Channels) -> tuple[list[dict], list[str]]:
         text = render(tpl["body"], fields)
         for leftover in sorted(set(PLACEHOLDER.findall(text))):
             problems.append(f"{label}: leftover placeholder {leftover} in the text")
+        try:
+            text = channel_render(channel, text)
+        except Problem as e:
+            problems.append(f"{label}: {e}")
+            continue
         if words(text) > tpl["max_words"]:
             problems.append(f"{label}: message is {words(text)} words, over max_words ({tpl['max_words']})")
-        rendered.append({"index": i, "audience": audience, "channel": entry.get("channel") or tpl["channel"],
+        problems += [f"{label}: {p}" for p in channel_problems(channel, text)]
+        rendered.append({"index": i, "audience": audience, "channel": channel, "format": info["format"],
                          "template": tpl["ref"], "fields": fields, "text": text, "max_words": tpl["max_words"]})
     # nothing from the internal-only section may reach an external message
     for ext in [r for r in rendered if r["audience"] == "external"]:
@@ -258,11 +323,18 @@ def check_messages(doc: dict, cfg: Channels) -> tuple[int, list[str]]:
             problems.append(f"{label}: leftover placeholder {leftover} in the text")
         if m.get("max_words") and words(text) > int(m["max_words"]):
             problems.append(f"{label}: message is {words(text)} words, over max_words ({m['max_words']})")
-        found = cfg.find(m.get("channel", ""))
+        ref = m.get("channel", "")
+        try:
+            channel_info(ref)
+        except Problem as e:
+            problems.append(f"{label}: {e}")
+            continue
+        found = cfg.find(ref)
         if not found:
-            problems.append(f"{label}: unknown channel '{m.get('channel')}'")
+            problems.append(f"{label}: channel '{ref}' is not in channels.yaml")
         elif m.get("recipient") not in found[1]["targets"]:
-            problems.append(f"{label}: unknown recipient '{m.get('recipient')}' for channel {m.get('channel')}")
+            problems.append(f"{label}: unknown recipient '{m.get('recipient')}' for channel {ref}")
+        problems += [f"{label}: {p}" for p in channel_problems(ref, text, m.get("recipient"))]
     return len(msgs), problems
 
 
@@ -307,27 +379,29 @@ def cmd_build(a) -> int:
     rendered, problems = check_draft(doc, cfg)
     wanted = [c for c in (a.channels or "").split(",") if c]
     known = {c["name"] for c in cfg.audiences.get(a.audience, [])}
-    problems += [f"unknown channel '{c}' for {a.audience}" for c in wanted if c not in known]
+    problems += [f"unknown channel '{c}' for {a.audience} in channels.yaml (known: {', '.join(sorted(known)) or 'none'})"
+                 for c in wanted if c not in known]
     if problems:
         return fail([f"{a.draft}: {p}" for p in problems])
     messages, actions, n = [], [], 0
     for r in [r for r in rendered if r["audience"] == a.audience]:
-        chans = [c for c in cfg.audiences.get(a.audience, []) if c["kind"] == r["channel"]
+        chans = [c for c in cfg.audiences.get(a.audience, []) if c["channel"] == r["channel"]
                  and (not wanted or c["name"] in wanted)]
         if not chans:
             problems.append(f"entry {r['index']}: no {r['channel']} channel for {a.audience} in channels.yaml")
             continue
         for c in chans:
             for target in c["targets"]:
+                problems += [f"entry {r['index']}: {p}" for p in channel_problems(r["channel"], r["text"], target)]
                 n += 1
                 key = f"{a.task}-{c['name']}-{n}"
-                messages.append({"audience": a.audience, "channel": c["name"], "kind": c["kind"],
-                                 "template": r["template"], "recipient": target, "text": r["text"],
-                                 "words": words(r["text"]), "max_words": r["max_words"],
+                messages.append({"audience": a.audience, "channel": r["channel"], "channel_name": c["name"],
+                                 "format": r["format"], "template": r["template"], "recipient": target,
+                                 "text": r["text"], "words": words(r["text"]), "max_words": r["max_words"],
                                  "idempotency_key": key, "send_at": a.send_at})
                 actions.append({"system": "comms", "op": "send", "idempotency_key": key,
-                                "payload": {"audience": a.audience, "channel": c["name"], "kind": c["kind"],
-                                            "recipient": target, "text": r["text"], "send_at": a.send_at},
+                                "payload": {"audience": a.audience, "channel": r["channel"], "recipient": target,
+                                            "text": r["text"], "send_at": a.send_at},
                                 "preview": f"to {target}: {r['text']}"})
     if not messages and not problems:
         problems.append(f"no notification for audience {a.audience}")
@@ -356,6 +430,7 @@ def cmd_merge(a) -> int:
 
 
 def cmd_send(path: str) -> int:
+    """comms.send: check the action against channels.yaml, then hand it to the channel's own send handler."""
     act = load_json(path)
     if not isinstance(act, dict) or not isinstance(act.get("action"), dict):
         return fail([f"{path}: not an action file (expected {{\"task_id\", \"action\"}}, as pmos action run writes it)"])
@@ -364,21 +439,27 @@ def cmd_send(path: str) -> int:
         return fail([f"{path}: not a comms.send action"])
     payload = action.get("payload") or {}
     cfg = load_channels()
-    found = cfg.find(payload.get("channel", ""))
+    ref = payload.get("channel", "")
+    found = cfg.find(ref)
     if not found:
-        return fail([f"{path}: unknown channel '{payload.get('channel')}'"])
+        return fail([f"{path}: channel '{ref}' is not in channels.yaml"])
     if payload.get("recipient") not in found[1]["targets"]:
-        return fail([f"{path}: unknown recipient '{payload.get('recipient')}' for channel {payload.get('channel')}"])
+        return fail([f"{path}: unknown recipient '{payload.get('recipient')}' for channel {ref}"])
     if PLACEHOLDER.search(payload.get("text", "")):
         return fail([f"{path}: leftover placeholder in the text"])
-    pm_os = yaml.safe_load((ROOT / "pm-os.yaml").read_text(encoding="utf-8")) or {}
-    tools = (((pm_os.get("adapters") or {}).get("claude-code") or {}).get("grants_to_tools") or {}).get("comms:send") or []
-    if not tools:
-        return fail(["comms.send is not configured: set adapters.claude-code.grants_to_tools comms:send in "
-                     "pm-os.yaml to your Slack/email MCP tool names"])
-    print(f"recorded: comms.send {action.get('idempotency_key')} to {payload['recipient']} via "
-          f"{', '.join(tools)} (verified; the Operator sends it with that tool)")
-    return 0
+    try:
+        info = channel_info(ref)
+    except Problem as e:
+        return fail([f"{path}: {e}"])
+    command = shlex.split(info["send"]["command"])
+    if not command:
+        return fail([f"{path}: channel {ref} has no send handler"])
+    handler = ROOT / Path(info["dir"]).parent.parent / command[0]
+    proc = subprocess.run([sys.executable, str(handler), *command[1:], path], cwd=ROOT,
+                          capture_output=True, text=True, env={**os.environ, "PMOS_ROOT": str(ROOT)})
+    sys.stdout.write(proc.stdout)
+    sys.stderr.write(proc.stderr)
+    return proc.returncode
 
 
 def main() -> int:

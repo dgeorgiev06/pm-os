@@ -1,4 +1,4 @@
 {"notifications": [
-  {"template": "packs/cos/modes/notify/templates/generic-email.md", "audience": "external",
+  {"template": "packs/cos/modes/notify/templates/generic-plain.md", "channel": "channels:channel/email", "audience": "external",
    "fields": {"subject": "Release 2.4 is out"}}
 ]}

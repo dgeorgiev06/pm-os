@@ -3,27 +3,32 @@ name: notify-send-handler
 covers: [action:comms.send, script:modes/notify/scripts/build_actions.py]
 failure: true
 desc: >-
-  The comms.send handler: it refuses while pm-os.yaml maps no comms tool; once one is mapped it records a
-  verified send, and it refuses a recipient that is not in channels.yaml.
+  The comms.send handler forwards an action to its channel's own send handler. It refuses a recipient that
+  channels.yaml doesn't list and a list that is not an action. While no tool is mapped for the channel the
+  channel refuses (not configured); once mapped the action is verified and not yet sent, and a receipt
+  passed back is returned.
 setup:
   copy:
     notify/channels.yaml: channels.yaml
   files:
-    act.json: '{"task_id": "T-20261025-905", "action": {"system": "comms", "op": "send", "idempotency_key": "T-20261025-905-customer-email-1", "payload": {"channel": "customer-email", "kind": "email", "recipient": "customers@example.test", "text": "Subject: Release 2.4 is out\n\nRouting changes are live.", "send_at": null}, "preview": "Subject: Release 2.4 is out"}}'
+    act.json: '{"task_id": "T-20261025-905", "action": {"system": "comms", "op": "send", "idempotency_key": "T-20261025-905-customer-email-1", "payload": {"audience": "external", "channel": "channels:channel/email", "recipient": "customers@example.test", "text": "Subject: Release 2.4 is out\n\nRouting changes are live."}, "preview": "Subject: Release 2.4 is out"}}'
+    rcpt.json: '{"task_id": "T-20261025-905", "receipt": "msg-7f3a", "action": {"system": "comms", "op": "send", "idempotency_key": "T-20261025-905-customer-email-1", "payload": {"audience": "external", "channel": "channels:channel/email", "recipient": "customers@example.test", "text": "Routing changes are live."}, "preview": "Routing changes are live."}}'
+    bad.json: '{"task_id": "T-20261025-905", "action": {"system": "comms", "op": "send", "idempotency_key": "T-20261025-905-customer-email-2", "payload": {"audience": "external", "channel": "channels:channel/email", "recipient": "evil@example.test", "text": "Routing changes are live."}, "preview": "Routing changes are live."}}'
     list.json: '[{"system": "comms", "op": "send"}]'
-    bad.json: '{"task_id": "T-20261025-905", "action": {"system": "comms", "op": "send", "idempotency_key": "T-20261025-905-customer-email-2", "payload": {"channel": "customer-email", "kind": "email", "recipient": "evil@example.test", "text": "Routing changes are live.", "send_at": null}, "preview": "Routing changes are live."}}'
 steps:
-  - name: a plain actions list is not an action file
-    run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py send list.json
+  - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py send list.json
     expect: {exit: nonzero, stderr: 'not an action file'}
-  - run: |
-      PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py send act.json
-    expect: {exit: nonzero, stderr: 'comms.send is not configured'}
-  - name: a comms tool is mapped
+  - name: no tool is mapped for the channel, so the channel's handler refuses
+    run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py send act.json
+    expect: {exit: nonzero, stderr: 'not configured'}
+  - name: a tool is mapped; the action is verified, not sent
     run: |
-      sed -i 's/comms:send: \[\]/comms:send: [mcp__slack__post_message]/' pm-os.yaml &&
+      $PY $CORE_BIN/yset.py pm-os.yaml adapters.claude-code.channel_tools '{"channels:channel/email": ["mcp__gmail__send_message"]}' &&
       PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py send act.json
-    expect: {stdout: 'recorded: comms.send T-20261025-905-customer-email-1'}
-  - run: |
-      PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py send bad.json
+    expect: {exit: 0, stdout: '"sent": false'}
+  - name: the tool's receipt comes back through the forwarder
+    run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py send rcpt.json
+    expect: {exit: 0, stdout: 'msg-7f3a'}
+  - name: a recipient channels.yaml doesn't list is refused before any channel runs
+    run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py send bad.json
     expect: {exit: nonzero, stderr: "unknown recipient 'evil@example.test'"}

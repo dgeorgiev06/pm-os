@@ -11,7 +11,7 @@ setup:
     send/channels.yaml: channels.yaml
     send/draft.json: draft.json
 steps:
-  - name: a cos/notify task is approved with one internal Slack send
+  - name: a cos/notify task is approved with one slack send
     run: |
       $PMOS task new --mode cos/notify --verb draft --inputs '{"draft":"draft.json","audience":"internal"}'
     capture: {T: '(T-\d{8}-\d{3,})'}
@@ -23,9 +23,9 @@ steps:
         --outputs-json "{\"messages\": \"outputs/$T/messages.json\"}" \
         --action "$($PY -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))[0]))' outputs/$T/actions.json)" &&
       PMOS_CHANNELS_FILE=channels.yaml $PY $FX/bin/advance.py --task $T --to awaiting_approval && $PMOS task approve $T --by pm
-  - name: a comms tool is mapped
+  - name: a comms tool is mapped for the channel
     run: |
-      sed -i 's/comms:send: \[\]/comms:send: [mcp__slack__post_message]/' pm-os.yaml
+      $PY $FX/bin/yset.py pm-os.yaml adapters.claude-code.channel_tools '{"channels:channel/slack": ["mcp__slack__post_message"]}'
   - name: the Operator runs the action; the send is verified, not sent, so the task stays approved
     run: PMOS_CHANNELS_FILE=channels.yaml $PMOS action run $T
     expect: {exit: 2, stdout: 'pending_send'}

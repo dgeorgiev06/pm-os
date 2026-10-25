@@ -18,7 +18,7 @@ steps:
       PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py build draft-internal.json --audience internal --task T-20261025-903 --out o &&
       $PY - <<'PY'
       import json, sys
-      allowed = {"#product-updates", "customers@example.test", "partners@example.test"}
+      allowed = {"C0PRODUCT1", "customers@example.test", "partners@example.test"}
       got = {m["recipient"] for m in json.load(open("o/messages.json"))["messages"]}
       print("recipients from channels.yaml" if got <= allowed else f"unknown recipients: {got - allowed}")
       sys.exit(0 if got <= allowed else 1)

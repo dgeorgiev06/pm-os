@@ -8,8 +8,8 @@
   "$defs": {
     "ref": {
       "type": "string",
-      "pattern": "^(mode:[a-z0-9-]+/[a-z0-9-]+|router:[a-z0-9-]+/[a-z0-9-]+|action:[a-z0-9_-]+\\.[a-z0-9_-]+|principle:[a-z0-9-]+:[a-z0-9-]+|standard:[a-z0-9-]+:[a-z0-9-]+|script:(?!/)(?!.*\\.\\.)[A-Za-z0-9_./-]+)$",
-      "description": "A feature of the case's own pack: mode:<pack>/<mode>, router:<pack>/<mode>, action:<system>.<op> (a handler in pack.yaml `actions:`), script:<path relative to the pack> (core: relative to the repo root), principle:<pack>:<name> (optional), standard:<pack>:<name> (a standards/<name>.yaml; needs a passing and a failure-path conformance case)"
+      "pattern": "^(mode:[a-z0-9-]+/[a-z0-9-]+|router:[a-z0-9-]+/[a-z0-9-]+|action:[a-z0-9_-]+\\.[a-z0-9_-]+|principle:[a-z0-9-]+:[a-z0-9-]+|standard:[a-z0-9-]+:[a-z0-9-]+|channel:[a-z0-9-]+/[a-z0-9-]+|script:(?!/)(?!.*\\.\\.)[A-Za-z0-9_./-]+)$",
+      "description": "A feature of the case's own pack: mode:<pack>/<mode>, router:<pack>/<mode>, action:<system>.<op> (a handler in pack.yaml `actions:`), script:<path relative to the pack> (core: relative to the repo root), principle:<pack>:<name> (optional), standard:<pack>:<name> (a standards/<name>.yaml; needs a passing and a failure-path conformance case), channel:<pack>/<name> (a channels/<name>/channel.yaml; needs a conformance case)"
     },
     "covers": {
       "type": "array",

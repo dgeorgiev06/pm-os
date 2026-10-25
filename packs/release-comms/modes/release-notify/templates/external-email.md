@@ -1,6 +1,6 @@
 ---
 audience: external
-channel: email
+channel: channels:channel/email
 max_words: 250
 fields:
   version: {type: string, required: true}

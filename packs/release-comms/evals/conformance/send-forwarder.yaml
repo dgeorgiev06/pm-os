@@ -3,23 +3,26 @@ name: send-forwarder
 covers: [action:comms.send, script:scripts/send.py]
 failure: true
 desc: >-
-  release-comms' comms.send handler hands each merged child action to cos/notify's handler: it refuses while
-  pm-os.yaml maps no comms tool, records a verified send once one is mapped, and refuses an unknown recipient.
+  release-comms' comms.send handler hands each merged child action to cos/notify's forwarder, which hands it to
+  the channel's send handler: refused while no tool is mapped for the channel, verified (not sent) once one is,
+  and a receipt passed back through the chain is returned.
 setup:
   copy:
     release/channels.yaml: channels.yaml
   files:
-    act.json: '{"task_id": "T-20261025-911", "action": {"system": "comms", "op": "send", "idempotency_key": "T-20261025-911-customer-email-1", "payload": {"channel": "customer-email", "kind": "email", "recipient": "customers@example.test", "text": "Subject: 2.4 is out\n\nRouting rules are live.", "send_at": null}, "preview": "Subject: 2.4 is out"}}'
-    bad.json: '{"task_id": "T-20261025-911", "action": {"system": "comms", "op": "send", "idempotency_key": "T-20261025-911-customer-email-2", "payload": {"channel": "customer-email", "kind": "email", "recipient": "evil@example.test", "text": "Routing rules are live.", "send_at": null}, "preview": "Routing rules are live."}}'
+    act.json: '{"task_id": "T-20261025-911", "action": {"system": "comms", "op": "send", "idempotency_key": "T-20261025-911-customer-email-1", "payload": {"audience": "external", "channel": "channels:channel/email", "recipient": "customers@example.test", "text": "Subject: 2.4 is out\n\nRouting rules are live."}, "preview": "Subject: 2.4 is out"}}'
+    rcpt.json: '{"task_id": "T-20261025-911", "receipt": "msg-9c21", "action": {"system": "comms", "op": "send", "idempotency_key": "T-20261025-911-customer-email-1", "payload": {"audience": "external", "channel": "channels:channel/email", "recipient": "customers@example.test", "text": "Routing rules are live."}, "preview": "Routing rules are live."}}'
+    bad.json: '{"task_id": "T-20261025-911", "action": {"system": "comms", "op": "send", "idempotency_key": "T-20261025-911-customer-email-2", "payload": {"audience": "external", "channel": "channels:channel/email", "recipient": "evil@example.test", "text": "Routing rules are live."}, "preview": "Routing rules are live."}}'
 steps:
-  - run: |
-      PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/scripts/send.py act.json
-    expect: {exit: nonzero, stderr: 'comms.send is not configured'}
-  - name: a comms tool is mapped
+  - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/scripts/send.py act.json
+    expect: {exit: nonzero, stderr: 'not configured'}
+  - name: a tool is mapped; the action is verified, not sent
     run: |
-      sed -i 's/comms:send: \[\]/comms:send: [mcp__slack__post_message]/' pm-os.yaml &&
+      $PY $CORE_BIN/yset.py pm-os.yaml adapters.claude-code.channel_tools '{"channels:channel/email": ["mcp__gmail__send_message"]}' &&
       PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/scripts/send.py act.json
-    expect: {stdout: 'recorded: comms.send T-20261025-911-customer-email-1'}
-  - run: |
-      PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/scripts/send.py bad.json
+    expect: {exit: 0, stdout: '"sent": false'}
+  - name: the receipt comes back through both forwarders
+    run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/scripts/send.py rcpt.json
+    expect: {exit: 0, stdout: 'msg-9c21'}
+  - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/scripts/send.py bad.json
     expect: {exit: nonzero, stderr: "unknown recipient 'evil@example.test'"}

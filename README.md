@@ -86,6 +86,7 @@ through every step.
 | **Envelope** | A task's work order: mode, verb, inputs, acceptance, risk, approval, budget; immutable once queued | `state/tasks/<id>.json` ([schema](contracts/task.schema.json)) | `T-20261024-001` |
 | **Grant** | What a mode may do in one system: `read`, `draft` or `write`; you approve a pack's grants when you install it | `grants:` in `mode.yaml` | `jira: read` |
 | **Action** | One external change a result proposes (system, op, payload, preview, idempotency key); it runs only after your approval | `actions` in `result.json` | `jira.create_issue` |
+| **Channel** | A place a message can be sent: its format, limits, recipient pattern and send handler; a folder in a pack, added with `pmos pack add` | `packs/<pack>/channels/<name>/channel.yaml` | `channels:channel/email` |
 
 **Writing a reference.** The last column is the full form, which works everywhere. Inside a pack a
 bare name means "this pack": `prd`, `doc-writer`, `domain/prd-structure`, `plan-to-capacity` (this
@@ -101,7 +102,8 @@ Built-in packs:
 | --- | --- |
 | `cos` | The Chief of Staff manual ([COS.md](packs/cos/COS.md), copied into `AGENTS.md`) and your todo list ([routing and delegation](docs/routing-and-delegation.md)) |
 | `pm` | PRDs, sprint planning, roadmap diffs, Jira tickets, release notes, and the `pm/router` |
-| `forge` | Builds pm-os itself: `forge/new-mode`, `forge/new-pack`, and `forge/review-framework` (re-runs a framework review) |
+| `forge` | Builds pm-os itself: `forge/new-mode`, `forge/new-pack`, `forge/review-framework` (re-runs a framework review), and `stage-channel` |
+| `channels` | Starter channels: `email` (plain text to an address) and `slack` (mrkdwn to a channel id), each sent through the tool mapped in pm-os.yaml |
 
 | Other terms | Meaning |
 | --- | --- |
@@ -172,6 +174,15 @@ so any pack can be swapped, even the one that supplies the CoS (`cos_pack` in `p
 Any change to a pack bumps its `version` (and each changed mode's). A pack can't be removed while
 another depends on it or it has open tasks. For a pack from another repo, clone it (e.g. into
 `vendor/`) and `pack add` the folder.
+
+## Adding a channel
+
+A channel is a folder, and adding one is the same as adding a pack: `packs/<pack>/channels/<name>/channel.yaml`
+([schema](contracts/channel.schema.json)) with `format` (`plain`, `markdown` or `slack_mrkdwn`), `limits`, a
+`recipient` pattern and `send.handler`; the pack's `actions:` line that names the send script; the channel in
+`exports.channels`. Its conformance case covers `channel:<pack>/<name>`. Then `pmos pack add packs/<pack> --upgrade`.
+`pmos channel show <ref>` prints what cos/notify will see; `forge.py stage-channel` writes all of it for you.
+Updating a channel is a version bump; its grants need approval again only if they widen.
 
 ## Adding to a pack
 

@@ -52,9 +52,11 @@ Fixtures: `evals/fixtures/`; cases assume only core and `depends` (steps get `$P
 
 ## Packs, versions, grants
 
-`pack.yaml` (`contracts/pack.schema.json`): `requires: {core: ^0.5}`, `depends`, `exports`, and
+`pack.yaml` (`contracts/pack.schema.json`): `requires: {core: ^0.6}`, `depends`, `exports`, and
 optionally `router`, `actions` (`<system>.<op>: <script> [args]`), `overlays` (product → skills) and
 `cos_section`.
 
-Bump every changed mode's version and its pack's; `pmos pack add --upgrade` refuses otherwise.
+Bump every changed mode's and pack's version; `pmos pack add --upgrade` refuses otherwise.
 Wider grants need the PM's `--approve-grants`.
+
+Channels: `forge.py stage-channel`.

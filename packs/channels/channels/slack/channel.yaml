@@ -1,0 +1,13 @@
+name: slack
+version: 0.1.0
+summary: "Slack message to one channel id, in mrkdwn"
+system: comms
+format: slack_mrkdwn
+limits:
+  max_words: 150
+recipient:
+  type: slack channel id
+  pattern: '[CG][A-Z0-9]{8,}'
+  example: C0123456789
+send:
+  handler: comms.send-slack

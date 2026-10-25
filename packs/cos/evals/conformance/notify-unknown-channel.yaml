@@ -16,4 +16,4 @@ steps:
   - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py build draft-internal.json --audience partners --task T-20261025-902 --out o
     expect: {exit: nonzero, stderr: "audience 'partners'"}
   - run: PMOS_CHANNELS_FILE=channels.yaml $PY $PACK/modes/notify/scripts/build_actions.py build draft-no-channel.json --audience external --task T-20261025-902 --out o
-    expect: {exit: nonzero, stderr: 'no slack channel for external'}
+    expect: {exit: nonzero, stderr: 'no channels:channel/slack channel for external'}

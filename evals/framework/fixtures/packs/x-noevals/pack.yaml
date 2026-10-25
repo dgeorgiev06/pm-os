@@ -4,7 +4,7 @@ contract: pack@1
 author: framework-evals
 summary: "Fixture: a mode without golden evals"
 requires:
-  core: ^0.5
+  core: ^0.6
 depends: []
 exports:
   modes: [x-noevals/main]

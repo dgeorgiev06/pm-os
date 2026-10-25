@@ -7,7 +7,7 @@ Operator runs `apply` for an approved task.
              [--script NAME ...] [--router] [--standard NAME]
       Copy the installed pack to the staging area (or use --into, a pack staged by forge/new-pack),
       add a skeleton mode with the eval@1 cases the coverage rule needs (a golden case and a failure
-      case), export it, and bump the pack's minor version. --script adds modes/<mode>/scripts/NAME.py
+      case), export it, and bump the pack's patch version. --script adds modes/<mode>/scripts/NAME.py
       with a conformance case; --router makes the mode the pack's router, with a workflow case;
       --standard adds a stub document standard standards/NAME.yaml (exported, applied to the mode's
       `doc` output) with a passing and a failure-path conformance case and their fixtures.
@@ -153,7 +153,7 @@ version: 0.1.0
 contract: pack@1
 summary: "{summary}"
 requires:
-  core: ^0.5
+  core: ^0.6
 depends: []                       # other packs this one uses, e.g. [pm@^0.4]
 exports:
   modes: []
@@ -282,6 +282,15 @@ def bump_minor(pack_yaml: Path) -> str:
     return new
 
 
+def bump_patch(pack_yaml: Path) -> str:
+    """A channel added to a pack is additive: a patch bump, so packs that pin the pack's ^0.x still resolve it."""
+    text = pack_yaml.read_text(encoding="utf-8")
+    m = re.search(r"^version: (\d+)\.(\d+)\.(\d+)", text, flags=re.M)
+    new = f"{m.group(1)}.{m.group(2)}.{int(m.group(3)) + 1}"
+    pack_yaml.write_text(text[:m.start()] + f"version: {new}" + text[m.end():], encoding="utf-8")
+    return new
+
+
 def add_export(pack_yaml: Path, kind: str, item: str) -> None:
     text = pack_yaml.read_text(encoding="utf-8")
     m = re.search(rf"^(\s+{kind}: \[)(.*?)(\])", text, flags=re.M)
@@ -381,6 +390,106 @@ def cmd_stage_mode(a) -> int:
     version = bump_minor(pack_dir / "pack.yaml") if bump else None
     print(json.dumps({"staged_pack": rel(pack_dir), "mode_dir": rel(mode_dir), "cases": written,
                       "pack_version": version}, indent=2))
+    return 0
+
+
+def add_actions_line(pack_yaml: Path, kind: str, command: str) -> None:
+    """Add `kind: command` under the pack's actions: (creating the block before exports: if there is none)."""
+    text = pack_yaml.read_text(encoding="utf-8")
+    if re.search(rf"^  {re.escape(kind)}:", text, flags=re.M):
+        raise SystemExit(f"error: {pack_yaml} already has an actions: entry for {kind}")
+    if re.search(r"^actions:\s*(#.*)?$", text, flags=re.M):
+        text = re.sub(r"^(actions:\s*(?:#.*)?\n)", lambda m: f"{m.group(1)}  {kind}: {command}\n", text, count=1,
+                      flags=re.M)
+    else:
+        text = re.sub(r"^(exports:)", f"actions:\n  {kind}: {command}\n\\1", text, count=1, flags=re.M)
+    pack_yaml.write_text(text, encoding="utf-8")
+
+
+def add_channel_export(pack_yaml: Path, name: str) -> None:
+    text = pack_yaml.read_text(encoding="utf-8")
+    if not re.search(r"^  channels: \[", text, flags=re.M):
+        text = re.sub(r"^(exports:\s*\n)", "\\1  channels: []\n", text, count=1, flags=re.M)
+        pack_yaml.write_text(text, encoding="utf-8")
+    add_export(pack_yaml, "channels", name)
+
+
+STUB = """#!/usr/bin/env python3
+\"\"\"send_{ident} — the send handler of the {name} channel. A stub: write the send before approving any.
+
+pmos action run calls it with an action file. Check the action with `pmos channel check {pack}:channel/{name}`,
+then print {{"sent": false, "verified": true}} (the Operator sends with its tool) or, when the action file has a
+"receipt", {{"sent": true, "receipt": "..."}}.
+\"\"\"
+import sys
+
+sys.stderr.write("error: the {name} channel's send is not configured yet (this handler is a stub)\n")
+sys.exit(1)
+"""
+
+CHANNEL_CASE = """kind: conformance
+name: channel-{name}
+covers: [channel:{pack}/{name}, action:comms.send-{name}, script:{script}]
+failure: true
+desc: >-
+  The {name} channel ({format}): its limits and recipient pattern hold, and its send refuses while no tool is
+  mapped for it in pm-os.yaml.
+setup:
+  files:
+    short.txt: "Release 2.4 is out."
+    act.json: '{{"task_id": "T-20261025-930", "action": {{"system": "comms", "op": "send", "idempotency_key": "T-20261025-930-{name}-1", "payload": {{"audience": "external", "channel": "{pack}:channel/{name}", "recipient": "{example}", "text": "Release 2.4 is out."}}, "preview": "Release 2.4 is out."}}}}'
+steps:
+  - name: a short message to an accepted recipient passes the channel's checks
+    run: $PMOS channel check {pack}:channel/{name} --text short.txt --recipient '{example}'
+    expect: {{exit: 0}}
+  - name: the send refuses while no tool is mapped
+    run: $PY $PACK/{command} act.json
+    expect: {{exit: nonzero, stderr: 'not configured'}}
+"""
+
+
+def cmd_stage_channel(a) -> int:
+    """Stage a channel in a pack: channels/<name>/channel.yaml, its actions: line and export, a version bump and a
+    conformance case. The channel's send handler is the pack's shared scripts/send.py (or the script you name)."""
+    if not re.fullmatch(r"[a-z0-9-]+", a.name):
+        return fail("channel name: lowercase letters, digits and hyphens only")
+    task = pmos("task", "state", a.task)
+    if task.returncode != 0 or task.stdout.strip() != "running":
+        return fail(f"task {a.task} must be running to stage a channel (move it to running first)")
+    pack_dir = staging(a.task) / a.pack
+    if not pack_dir.exists():
+        installed = installed_pack_dir(a.pack)
+        shutil.copytree(installed, pack_dir)
+    chan_dir = pack_dir / "channels" / a.name
+    if chan_dir.exists():
+        return fail(f"{chan_dir} already exists")
+    spec = {"name": a.name, "version": "0.1.0", "summary": a.summary, "system": a.system, "format": a.format}
+    if a.max_words or a.max_chars:
+        spec["limits"] = {k: v for k, v in (("max_words", a.max_words), ("max_chars", a.max_chars)) if v}
+    spec["recipient"] = {"type": a.recipient_type, "pattern": a.recipient_pattern, "example": a.recipient_example}
+    spec["send"] = {"handler": f"comms.send-{a.name}"}
+    chan_dir.mkdir(parents=True)
+    (chan_dir / "channel.yaml").write_text(yaml.safe_dump(spec, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    if a.script:
+        command = a.script
+    elif (pack_dir / "scripts" / "send.py").exists():
+        command = f"scripts/send.py {a.name}"          # the pack's shared send, by channel name
+    else:
+        ident = a.name.replace("-", "_")
+        command = f"scripts/send_{ident}.py"
+        (pack_dir / "scripts").mkdir(exist_ok=True)
+        (pack_dir / command).write_text(STUB.format(ident=ident, name=a.name, pack=a.pack), encoding="utf-8")
+    add_actions_line(pack_dir / "pack.yaml", f"comms.send-{a.name}", command)
+    add_channel_export(pack_dir / "pack.yaml", a.name)
+    new_version = bump_patch(pack_dir / "pack.yaml")
+    case = CHANNEL_CASE.format(name=a.name, pack=a.pack, format=a.format, example=a.recipient_example,
+                               command=command, script=command.split()[0])
+    (pack_dir / "evals" / "conformance").mkdir(parents=True, exist_ok=True)
+    (pack_dir / "evals" / "conformance" / f"channel-{a.name}.yaml").write_text(case, encoding="utf-8")
+    print(json.dumps({"channel": f"{a.pack}:channel/{a.name}", "pack_version": new_version,
+                      "staged": rel(pack_dir), "files": [rel(chan_dir / "channel.yaml"),
+                      rel(pack_dir / "evals" / "conformance" / f"channel-{a.name}.yaml"), rel(pack_dir / "pack.yaml")],
+                      "next": f"pmos pack add {rel(pack_dir)} --upgrade (dry-run first)"}, indent=2))
     return 0
 
 
@@ -521,6 +630,16 @@ def main() -> int:
     sm.add_argument("--standard", help="add a stub document standard standards/STANDARD.yaml for the mode's doc output, "
                                        "with its passing and failure-path conformance cases")
     sm.set_defaults(fn=cmd_stage_mode)
+    sc = sub.add_parser("stage-channel", help="stage a channel in an installed pack (channels/<name>/channel.yaml)")
+    for flag in ("--task", "--pack", "--name", "--summary", "--format", "--recipient-type", "--recipient-pattern",
+                 "--recipient-example"):
+        sc.add_argument(flag, required=True)
+    sc.add_argument("--system", default="comms", help="the comms system it sends through (default comms)")
+    sc.add_argument("--max-words", type=int, dest="max_words")
+    sc.add_argument("--max-chars", type=int, dest="max_chars")
+    sc.add_argument("--script", help="the send command, relative to the pack, with its fixed args (default: the pack's "
+                                     "scripts/send.py NAME, or a stub scripts/send_NAME.py that refuses until written)")
+    sc.set_defaults(fn=cmd_stage_channel)
     sp = sub.add_parser("stage-pack")
     for flag in ("--task", "--name", "--summary"):
         sp.add_argument(flag, required=True)

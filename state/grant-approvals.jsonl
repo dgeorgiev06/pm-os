@@ -23,3 +23,11 @@
 {"ts": "2026-10-25T14:52:55+00:00", "pack": "cos", "version": "0.4.2", "grants": {"calendar": "read", "comms": "draft", "docs": "read", "todos": "draft"}}
 {"ts": "2026-10-25T14:57:41+00:00", "pack": "release-comms", "version": "0.1.2", "grants": {"comms": "draft", "docs": "read"}}
 {"ts": "2026-10-25T14:58:13+00:00", "pack": "release-comms", "version": "0.1.3", "grants": {"comms": "draft", "docs": "read"}}
+{"ts": "2026-10-25T15:08:46+00:00", "pack": "channels", "version": "0.1.0", "grants": {"comms": "draft"}}
+{"ts": "2026-10-25T15:08:54+00:00", "pack": "pm", "version": "0.4.1", "grants": {"docs": "draft", "jira": "draft", "roadmap": "draft"}}
+{"ts": "2026-10-25T15:09:16+00:00", "pack": "forge", "version": "0.5.0", "grants": {"repo": "draft"}}
+{"ts": "2026-10-25T15:09:36+00:00", "pack": "cos", "version": "0.5.0", "grants": {"calendar": "read", "comms": "draft", "docs": "read", "todos": "draft"}}
+{"ts": "2026-10-25T15:09:49+00:00", "pack": "release-comms", "version": "0.2.0", "grants": {"comms": "draft", "docs": "read"}}
+{"ts": "2026-10-25T15:14:04+00:00", "pack": "forge", "version": "0.5.0", "grants": {"repo": "draft"}}
+{"ts": "2026-10-25T15:16:16+00:00", "pack": "forge", "version": "0.5.0", "grants": {"repo": "draft"}}
+{"ts": "2026-10-25T15:18:02+00:00", "pack": "forge", "version": "0.5.0", "grants": {"repo": "draft"}}

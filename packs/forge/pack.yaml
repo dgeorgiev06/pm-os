@@ -1,10 +1,10 @@
 name: forge
-version: 0.4.1
+version: 0.5.0
 contract: pack@1
 author: dima
 summary: Builds and reviews pm-os itself — new modes or packs, staged and checked before they land, and on-demand framework reviews
 requires:
-  core: ^0.5
+  core: ^0.6
 depends: []
 cos_section: COS-section.md    # appended to AGENTS.md while forge is installed
 actions:                       # handlers `pmos action run` calls for approved actions

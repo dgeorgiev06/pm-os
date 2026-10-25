@@ -18,11 +18,11 @@ steps:
       PMOS_CHANNELS_FILE=channels.yaml $PY packs/cos/modes/notify/scripts/build_actions.py build draft.json --audience internal --task $T --out outputs/$T &&
       PMOS_CHANNELS_FILE=channels.yaml $PY $FX/bin/mkresult.py --task $T --status needs_approval --submit \
         --outputs-json "{\"messages\": \"outputs/$T/messages.json\"}" \
-        --action "{\"system\":\"comms\",\"op\":\"send\",\"idempotency_key\":\"$T-team-slack-1\",\"payload\":{\"audience\":\"internal\",\"channel\":\"team-slack\",\"recipient\":\"#product-updates\",\"text\":\"First note.\"},\"preview\":\"First note.\"}" \
-        --action "{\"system\":\"comms\",\"op\":\"send\",\"idempotency_key\":\"$T-team-slack-2\",\"payload\":{\"audience\":\"internal\",\"channel\":\"team-slack\",\"recipient\":\"#product-updates\",\"text\":\"Second note.\"},\"preview\":\"Second note.\"}" &&
+        --action "{\"system\":\"comms\",\"op\":\"send\",\"idempotency_key\":\"$T-team-slack-1\",\"payload\":{\"audience\":\"internal\",\"channel\":\"channels:channel/slack\",\"recipient\":\"C0PRODUCT1\",\"text\":\"First note.\"},\"preview\":\"First note.\"}" \
+        --action "{\"system\":\"comms\",\"op\":\"send\",\"idempotency_key\":\"$T-team-slack-2\",\"payload\":{\"audience\":\"internal\",\"channel\":\"channels:channel/slack\",\"recipient\":\"C0PRODUCT1\",\"text\":\"Second note.\"},\"preview\":\"Second note.\"}" &&
       $PY $FX/bin/advance.py --task $T --to awaiting_approval && $PMOS task approve $T --by pm
   - run: |
-      sed -i 's/comms:send: \[\]/comms:send: [mcp__slack__post_message]/' pm-os.yaml
+      $PY $FX/bin/yset.py pm-os.yaml adapters.claude-code.channel_tools '{"channels:channel/slack": ["mcp__slack__post_message"]}'
   - name: the first receipt is recorded; the second send is still pending
     run: PMOS_CHANNELS_FILE=channels.yaml $PMOS action run $T --receipt $T-team-slack-1=C-RCPT-1
     expect: {exit: 2, stdout: 'pending_send'}

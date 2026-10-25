@@ -1,0 +1,17 @@
+kind: conformance
+name: channel-schema-refused
+covers: [script:scripts/pmos.py]
+failure: true
+desc: >-
+  A channel.yaml that breaks contracts/channel.schema.json (here: a format that isn't one of the three)
+  is refused by `pmos validate` with the file named, and the channel isn't registered.
+steps:
+  - name: a copy of the starter channel with a format the schema doesn't allow
+    run: |
+      mkdir -p packs/channels/channels/bad &&
+      sed 's/format: slack_mrkdwn/format: pdf/' packs/channels/channels/slack/channel.yaml > packs/channels/channels/bad/channel.yaml &&
+      sed -i 's/name: slack/name: bad/' packs/channels/channels/bad/channel.yaml
+    expect: {exit: 0}
+  - name: validate names the file and the field
+    run: $PMOS validate
+    expect: {exit: nonzero, stdout: 'channels/bad/channel.yaml'}

@@ -1,0 +1,16 @@
+kind: conformance
+name: channel-registry
+covers: [script:scripts/pmos.py]
+failure: true
+desc: >-
+  `pmos channel show` is the registry. It prints a channel's JSON (format, limits, recipient, send handler),
+  refuses an unknown channel with the channels it knows, and refuses a channel the calling pack does not see
+  (not in its depends, key word `depends`).
+steps:
+  - run: $PMOS channel show channels:channel/slack --json
+    expect: {stdout: ['"format": "slack_mrkdwn"', '"handler": "comms.send-slack"']}
+  - run: $PMOS channel show channels:channel/no-such
+    expect: {exit: nonzero, stderr: ['unknown channel', 'known channels: .*channels:channel/email']}
+  - name: a pack that does not depend on channels cannot see its channels
+    run: $PMOS channel show channels:channel/email --from forge
+    expect: {exit: nonzero, stderr: 'depends'}

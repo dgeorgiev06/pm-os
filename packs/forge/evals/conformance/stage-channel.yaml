@@ -1,0 +1,30 @@
+kind: conformance
+name: stage-channel
+covers: [script:scripts/forge.py]
+desc: >-
+  `forge.py stage-channel` stages a channel in a pack: channels/<name>/channel.yaml, an actions: line naming its
+  send script, the channel exported, a version bump and a conformance case. A channel that breaks the schema is
+  refused by the staged pack's dry-run admission; nothing under packs/ changes.
+setup:
+  install: [demo]
+steps:
+  - run: $PMOS task new --mode forge/new-mode --inputs '{"pack":"demo","name":"brief","purpose":"a brief"}'
+    capture: {T: '(T-\d{8}-\d{3,})'}
+  - name: a channel is staged in an installed pack
+    run: $PMOS task move $T running && $PY $PACK/scripts/forge.py stage-channel --task $T --pack demo --name webhook --summary "Webhook" --format plain --recipient-type "https URL" --recipient-pattern 'https://.+' --recipient-example 'https://hooks.example.test/x'
+    expect:
+      stdout: ['"channel": "demo:channel/webhook"', '"pack_version": "0.1.1"']
+      files:
+        exists: [outputs/$T/staged/demo/channels/webhook/channel.yaml, outputs/$T/staged/demo/evals/conformance/channel-webhook.yaml]
+        contains:
+          outputs/$T/staged/demo/channels/webhook/channel.yaml: ['handler: comms.send-webhook', 'format: plain']
+          outputs/$T/staged/demo/pack.yaml: ['comms.send-webhook: scripts/send_webhook.py', 'channels: \[webhook\]']
+        absent: packs/demo/channels
+  - name: the staged channel passes a dry-run admission
+    run: $PMOS pack add outputs/$T/staged/demo --upgrade --dry-run
+    expect: {stdout: '(?i)passes admission'}
+  - name: a staged channel with an unknown format is refused at admission
+    run: |
+      sed -i 's/format: plain/format: pdf/' outputs/$T/staged/demo/channels/webhook/channel.yaml &&
+      $PMOS pack add outputs/$T/staged/demo --upgrade --dry-run
+    expect: {exit: nonzero, stdout: 'channels/webhook/channel.yaml'}

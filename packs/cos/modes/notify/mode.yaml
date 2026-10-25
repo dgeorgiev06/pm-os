@@ -1,5 +1,5 @@
 name: cos/notify
-version: 0.1.2
+version: 0.2.0
 contract: task@1
 author: dima
 summary: "Notify one audience from a checked template; propose one comms.send per recipient"
