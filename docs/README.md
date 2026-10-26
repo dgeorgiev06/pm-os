@@ -5,6 +5,8 @@ deeper.
 
 | Doc | What's in it |
 | --- | --- |
+| [implementation-spec.md](implementation-spec.md) | **The active plan**: the locked model, the gaps against `main`, and Stage A/B/C with exit criteria |
+| [target-model.md](target-model.md) | What the spec builds, drawn: the three axes, the layered map, one task end to end, and `pm/prd` rewritten against the target |
 | [architecture.md](architecture.md) | The design: principles, the four agents, who owns which state, the improvement loop, cost/speed/accuracy levers |
 | [decisions.md](decisions.md) | Every design decision so far and why |
 | [diagrams.md](diagrams.md) | Phase 0 (built today) and the final durable-runtime design, as diagrams |
