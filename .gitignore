@@ -14,6 +14,10 @@ CLAUDE.md
 __pycache__/
 *.tmp
 
+# Local Python environment (pmos needs PyYAML and jsonschema: pip install -r requirements.txt)
+.venv/
+venv/
+
 # Personal: the PM's todo list (template: context/todos.example.yaml)
 context/todos.yaml
 
